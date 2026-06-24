@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import Properties from "./Properties";
 import Tenants from "./Tenants";
@@ -117,3 +117,4 @@ export default function App() {
     </div>
   );
 }
+
