@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 
 const PAYMENT_METHODS = ["تحويل بنكي", "نقدي", "شيك", "STC Pay"];
