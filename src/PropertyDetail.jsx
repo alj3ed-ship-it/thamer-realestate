@@ -21,7 +21,7 @@ export default function PropertyDetail({ propertyId, onBack }) {
     setLoading(true)
     const [prop, unts] = await Promise.all([
       supabase.from('properties').select('*').eq('id', propertyId).single(),
-      supabase.from('units').select('*').eq('property_id', propertyId).order('unit_number')
+      supabase.from('units').select('*').eq('property_id', propertyId).order('created_at')
     ])
     setProperty(prop.data)
     setUnits(unts.data || [])
@@ -57,15 +57,23 @@ export default function PropertyDetail({ propertyId, onBack }) {
       property_id: propertyId,
       unit_number: form.unit_number.trim(),
       unit_type: form.unit_type,
-      floor: form.floor !== '' ? parseInt(form.floor) : null,
-      area_sqm: form.area_sqm !== '' ? parseFloat(form.area_sqm) : null,
-      monthly_rent: form.monthly_rent !== '' ? parseFloat(form.monthly_rent) : null,
+      floor: form.floor !== '' && form.floor !== null ? parseInt(form.floor) : null,
+      area_sqm: form.area_sqm !== '' && form.area_sqm !== null ? parseFloat(form.area_sqm) : null,
+      monthly_rent: form.monthly_rent !== '' && form.monthly_rent !== null ? parseFloat(String(form.monthly_rent).replace(/,/g, '')) : null,
       status: form.status,
       notes: form.notes.trim() || null
     }
-    if (editingId) await supabase.from('units').update(payload).eq('id', editingId)
-    else await supabase.from('units').insert([payload])
-    setSaving(false); setShowForm(false); fetchAll()
+    let error
+    if (editingId) {
+      const res = await supabase.from('units').update(payload).eq('id', editingId)
+      error = res.error
+    } else {
+      const res = await supabase.from('units').insert([payload])
+      error = res.error
+    }
+    setSaving(false)
+    if (error) { setFormError(error.message); return }
+    setShowForm(false); fetchAll()
   }
 
   async function handleDelete(unit) {
@@ -159,7 +167,12 @@ export default function PropertyDetail({ propertyId, onBack }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>رقم الوحدة</label>
-                <input value={form.unit_number} onChange={e => setForm({ ...form, unit_number: e.target.value })} placeholder="مثال: 1+2+3" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
+                <input
+                  value={form.unit_number}
+                  onChange={e => setForm({ ...form, unit_number: e.target.value })}
+                  placeholder="مثال: 1+2+3"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }}
+                />
               </div>
               <div>
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>النوع</label>
@@ -169,15 +182,30 @@ export default function PropertyDetail({ propertyId, onBack }) {
               </div>
               <div>
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>الدور</label>
-                <input type="number" value={form.floor} onChange={e => setForm({ ...form, floor: e.target.value })} placeholder="اختياري" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
+                <input
+                  value={form.floor}
+                  onChange={e => setForm({ ...form, floor: e.target.value })}
+                  placeholder="اختياري"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }}
+                />
               </div>
               <div>
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>المساحة (م²)</label>
-                <input type="number" value={form.area_sqm} onChange={e => setForm({ ...form, area_sqm: e.target.value })} placeholder="اختياري" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
+                <input
+                  value={form.area_sqm}
+                  onChange={e => setForm({ ...form, area_sqm: e.target.value })}
+                  placeholder="اختياري"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }}
+                />
               </div>
               <div>
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>الإيجار السنوي (ريال)</label>
-                <input type="number" value={form.monthly_rent} onChange={e => setForm({ ...form, monthly_rent: e.target.value })} placeholder="مثال: 69000" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
+                <input
+                  value={form.monthly_rent}
+                  onChange={e => setForm({ ...form, monthly_rent: e.target.value })}
+                  placeholder="مثال: 69000"
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }}
+                />
               </div>
               <div>
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>الحالة</label>
