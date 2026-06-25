@@ -19,11 +19,14 @@ const T = {
   defaulters: "\u0627\u0644\u0645\u062A\u0639\u062B\u0631\u0648\u0646",
   units: "\u0627\u0644\u0648\u062D\u062F\u0627\u062A",
   logout: "\u062E\u0631\u0648\u062C",
+  totalDebt: "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0645\u062A\u0639\u062B\u0631",
+  totalRemaining: "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0628\u0627\u0642\u064A",
+  sar: "\u0631.\u0633",
 };
 
 const NAV_ITEMS = [
   { key: "dashboard", label: T.dashboard, icon: "\uD83C\uDFE0" },
-  { key: "properties", label: T.properties, icon: "\uD83C\uDFE2" },
+  { key: "properties", label: T.properties, icon: "\uD83C\uDFE2\uD83C\uDFE2\uD83C\uDFE2" },
   { key: "tenants", label: T.tenants, icon: "\uD83D\uDC64" },
   { key: "leases", label: T.leases, icon: "\uD83D\uDCC4" },
   { key: "payments", label: T.payments, icon: "\uD83D\uDCB0" },
@@ -93,8 +96,7 @@ export default function App() {
 
   const cardStyle = {
     background: "#fff", borderRadius: "12px", padding: "24px 20px",
-    boxShadow: "0 2px 12px rgba(0,0,0,0.07)", textAlign: "center", flex: 1,
-    cursor: "pointer"
+    boxShadow: "0 2px 12px rgba(0,0,0,0.07)", textAlign: "center", flex: 1, cursor: "pointer"
   };
 
   return (
@@ -128,10 +130,9 @@ export default function App() {
           <div style={{ padding: "32px" }}>
             <h2 style={{ color: "#1B4D7A", marginBottom: "24px" }}>{T.dashboard}</h2>
 
-            {/* البطاقات الرئيسية */}
-            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "24px" }}>
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "32px" }}>
               {[
-                { label: T.properties, value: stats.properties, icon: "\uD83C\uDFE2", color: "#2E6394", page: "properties" },
+                { label: T.properties, value: stats.properties, icon: "\uD83C\uDFE2\uD83C\uDFE2\uD83C\uDFE2", color: "#2E6394", page: "properties" },
                 { label: T.units, value: stats.units, icon: "\uD83D\uDEAA\uD83D\uDEAA\uD83D\uDEAA", color: "#27ae60", page: null },
                 { label: T.tenants, value: stats.tenants, icon: "\uD83D\uDC64", color: "#8e44ad", page: "tenants" },
                 { label: T.leases, value: stats.leases, icon: "\uD83D\uDCC4", color: "#e67e22", page: "leases" },
@@ -145,18 +146,19 @@ export default function App() {
               ))}
             </div>
 
-            {/* قسم المتعثرون المنفصل */}
-            <h3 style={{ color: "#991b1b", marginBottom: "16px" }}>\u26A0\uFE0F {T.defaulters}</h3>
+            <h3 style={{ color: "#991b1b", marginBottom: "16px" }}>{"\u26A0\uFE0F"} {T.defaulters}</h3>
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
               {[
-                { label: "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0645\u062A\u0639\u062B\u0631", value: defaulterStats.total, color: "#991b1b", bg: "#fee2e2" },
-                { label: "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0628\u0627\u0642\u064A", value: defaulterStats.remaining, color: "#854d0e", bg: "#fef9c3" },
+                { label: T.totalDebt, value: defaulterStats.total, color: "#991b1b", bg: "#fee2e2" },
+                { label: T.totalRemaining, value: defaulterStats.remaining, color: "#854d0e", bg: "#fef9c3" },
               ].map(card => (
                 <div key={card.label} onClick={() => setActivePage("defaulters")} style={{
-                  ...cardStyle, background: card.bg, flex: "0 0 200px"
+                  background: card.bg, borderRadius: "12px", padding: "24px 20px",
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.07)", textAlign: "center",
+                  flex: "0 0 200px", cursor: "pointer"
                 }}>
                   <div style={{ fontSize: "22px", fontWeight: "bold", color: card.color, margin: "8px 0" }}>
-                    {card.value.toLocaleString()} \u0631.\u0633
+                    {card.value.toLocaleString()} {T.sar}
                   </div>
                   <div style={{ color: card.color, fontSize: "14px" }}>{card.label}</div>
                 </div>
