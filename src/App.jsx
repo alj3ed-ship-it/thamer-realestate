@@ -35,6 +35,7 @@ export default function App() {
   const [role, setRole] = useState(null);
   const [activePage, setActivePage] = useState("dashboard");
   const [stats, setStats] = useState({ properties: 0, units: 0, tenants: 0, leases: 0, payments: 0 });
+  const [defaulterStats, setDefaulterStats] = useState({ total: 0, remaining: 0 });
 
   useEffect(() => {
     const savedRole = localStorage.getItem("role");
@@ -43,7 +44,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (role === "admin") fetchStats();
+    if (role === "admin") {
+      fetchStats();
+      fetchDefaulterStats();
+    }
   }, [role, activePage]);
 
   async function fetchStats() {
@@ -63,9 +67,20 @@ export default function App() {
     });
   }
 
+  async function fetchDefaulterStats() {
+    const [d, dp] = await Promise.all([
+      supabase.from("defaulters").select("total_amount"),
+      supabase.from("defaulter_payments").select("amount"),
+    ]);
+    const total = (d.data || []).reduce((s, x) => s + Number(x.total_amount), 0);
+    const collected = (dp.data || []).reduce((s, x) => s + Number(x.amount), 0);
+    setDefaulterStats({ total, remaining: total - collected });
+  }
+
   function goBack() {
     setActivePage("dashboard");
     fetchStats();
+    fetchDefaulterStats();
   }
 
   function handleLogout() {
@@ -78,7 +93,8 @@ export default function App() {
 
   const cardStyle = {
     background: "#fff", borderRadius: "12px", padding: "24px 20px",
-    boxShadow: "0 2px 12px rgba(0,0,0,0.07)", textAlign: "center", flex: 1
+    boxShadow: "0 2px 12px rgba(0,0,0,0.07)", textAlign: "center", flex: 1,
+    cursor: "pointer"
   };
 
   return (
@@ -111,18 +127,38 @@ export default function App() {
         {activePage === "dashboard" && (
           <div style={{ padding: "32px" }}>
             <h2 style={{ color: "#1B4D7A", marginBottom: "24px" }}>{T.dashboard}</h2>
-            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+
+            {/* البطاقات الرئيسية */}
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "24px" }}>
               {[
-                { label: T.properties, value: stats.properties, icon: "\uD83C\uDFE2", color: "#2E6394" },
-                { label: T.units, value: stats.units, icon: "\uD83D\uDEAA", color: "#27ae60" },
-                { label: T.tenants, value: stats.tenants, icon: "\uD83D\uDC64", color: "#8e44ad" },
-                { label: T.leases, value: stats.leases, icon: "\uD83D\uDCC4", color: "#e67e22" },
-                { label: T.payments, value: stats.payments, icon: "\uD83D\uDCB0", color: "#c0392b" },
+                { label: T.properties, value: stats.properties, icon: "\uD83C\uDFE2", color: "#2E6394", page: "properties" },
+                { label: T.units, value: stats.units, icon: "\uD83D\uDEAA\uD83D\uDEAA\uD83D\uDEAA", color: "#27ae60", page: null },
+                { label: T.tenants, value: stats.tenants, icon: "\uD83D\uDC64", color: "#8e44ad", page: "tenants" },
+                { label: T.leases, value: stats.leases, icon: "\uD83D\uDCC4", color: "#e67e22", page: "leases" },
+                { label: T.payments, value: stats.payments, icon: "\uD83D\uDCB0", color: "#c0392b", page: "payments" },
               ].map(card => (
-                <div key={card.label} style={cardStyle}>
+                <div key={card.label} style={cardStyle} onClick={() => card.page && setActivePage(card.page)}>
                   <div style={{ fontSize: "32px" }}>{card.icon}</div>
                   <div style={{ fontSize: "28px", fontWeight: "bold", color: card.color, margin: "8px 0" }}>{card.value}</div>
                   <div style={{ color: "#666", fontSize: "14px" }}>{card.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* قسم المتعثرون المنفصل */}
+            <h3 style={{ color: "#991b1b", marginBottom: "16px" }}>\u26A0\uFE0F {T.defaulters}</h3>
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+              {[
+                { label: "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0645\u062A\u0639\u062B\u0631", value: defaulterStats.total, color: "#991b1b", bg: "#fee2e2" },
+                { label: "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0628\u0627\u0642\u064A", value: defaulterStats.remaining, color: "#854d0e", bg: "#fef9c3" },
+              ].map(card => (
+                <div key={card.label} onClick={() => setActivePage("defaulters")} style={{
+                  ...cardStyle, background: card.bg, flex: "0 0 200px"
+                }}>
+                  <div style={{ fontSize: "22px", fontWeight: "bold", color: card.color, margin: "8px 0" }}>
+                    {card.value.toLocaleString()} \u0631.\u0633
+                  </div>
+                  <div style={{ color: card.color, fontSize: "14px" }}>{card.label}</div>
                 </div>
               ))}
             </div>
