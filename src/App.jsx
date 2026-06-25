@@ -5,6 +5,7 @@ import Tenants from "./Tenants";
 import Leases from "./Leases";
 import Payments from "./Payments";
 import Reports from "./Reports";
+import Defaulters from "./Defaulters";
 import Login from "./Login";
 import ViewerLayout from "./ViewerLayout";
 
@@ -15,6 +16,7 @@ const T = {
   leases: "\u0627\u0644\u0639\u0642\u0648\u062F",
   payments: "\u0627\u0644\u062F\u0641\u0639\u0627\u062A",
   reports: "\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631",
+  defaulters: "\u0627\u0644\u0645\u062A\u0639\u062B\u0631\u0648\u0646",
   units: "\u0627\u0644\u0648\u062D\u062F\u0627\u062A",
   logout: "\u062E\u0631\u0648\u062C",
 };
@@ -26,6 +28,7 @@ const NAV_ITEMS = [
   { key: "leases", label: T.leases, icon: "\uD83D\uDCC4" },
   { key: "payments", label: T.payments, icon: "\uD83D\uDCB0" },
   { key: "reports", label: T.reports, icon: "\uD83D\uDCCA" },
+  { key: "defaulters", label: T.defaulters, icon: "\u26A0\uFE0F" },
 ];
 
 export default function App() {
@@ -130,6 +133,7 @@ export default function App() {
         {activePage === "leases" && <Leases onBack={goBack} />}
         {activePage === "payments" && <Payments onBack={goBack} />}
         {activePage === "reports" && <Reports onBack={goBack} />}
+        {activePage === "defaulters" && <Defaulters onBack={goBack} />}
       </div>
     </div>
   );
