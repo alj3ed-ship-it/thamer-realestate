@@ -8,13 +8,24 @@ import Reports from "./Reports";
 import Login from "./Login";
 import ViewerLayout from "./ViewerLayout";
 
+const T = {
+  dashboard: "\u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645",
+  properties: "\u0627\u0644\u0639\u0642\u0627\u0631\u0627\u062A",
+  tenants: "\u0627\u0644\u0645\u0633\u062A\u0623\u062C\u0631\u0648\u0646",
+  leases: "\u0627\u0644\u0639\u0642\u0648\u062F",
+  payments: "\u0627\u0644\u062F\u0641\u0639\u0627\u062A",
+  reports: "\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631",
+  units: "\u0627\u0644\u0648\u062D\u062F\u0627\u062A",
+  logout: "\u062E\u0631\u0648\u062C \uD83D\uDEAA",
+};
+
 const NAV_ITEMS = [
-  { key: "dashboard", label: "لوحة التحكم", icon: "🏠" },
-  { key: "properties", label: "العقارات", icon: "🏢" },
-  { key: "tenants", label: "المستأجرون", icon: "👤" },
-  { key: "leases", label: "العقود", icon: "📄" },
-  { key: "payments", label: "الدفعات", icon: "💰" },
-  { key: "reports", label: "التقارير", icon: "📊" },
+  { key: "dashboard", label: T.dashboard, icon: "🏠" },
+  { key: "properties", label: T.properties, icon: "🏢" },
+  { key: "tenants", label: T.tenants, icon: "👤" },
+  { key: "leases", label: T.leases, icon: "📄" },
+  { key: "payments", label: T.payments, icon: "💰" },
+  { key: "reports", label: T.reports, icon: "📊" },
 ];
 
 export default function App() {
@@ -66,7 +77,7 @@ export default function App() {
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "Cairo, sans-serif", direction: "rtl" }}>
       <div style={{ width: "220px", background: "#1B4D7A", display: "flex", flexDirection: "column", padding: "24px 0" }}>
         <div style={{ padding: "0 20px 24px", borderBottom: "1px solid #2E6394" }}>
-          <img src="/logo_v6_wide.svg" alt="شعار" style={{ width: "100%" }} />
+          <img src="/logo_v6_wide.svg" alt="logo" style={{ width: "100%" }} />
         </div>
         <nav style={{ flex: 1, padding: "16px 0" }}>
           {NAV_ITEMS.map(item => (
@@ -84,21 +95,21 @@ export default function App() {
           <button onClick={handleLogout} style={{
             width: "100%", padding: "10px", background: "#c0392b", color: "#fff",
             border: "none", borderRadius: "8px", cursor: "pointer", fontFamily: "Cairo, sans-serif", fontSize: "14px"
-          }}>خروج 🚪</button>
+          }}>{T.logout}</button>
         </div>
       </div>
 
       <div style={{ flex: 1, background: "#f0f4f8", overflow: "auto" }}>
         {activePage === "dashboard" && (
           <div style={{ padding: "32px" }}>
-            <h2 style={{ color: "#1B4D7A", marginBottom: "24px" }}>لوحة التحكم</h2>
+            <h2 style={{ color: "#1B4D7A", marginBottom: "24px" }}>{T.dashboard}</h2>
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
               {[
-                { label: "العقارات", value: stats.properties, icon: "🏢", color: "#2E6394" },
-                { label: "الوحدات", value: stats.units, icon: "🚪", color: "#27ae60" },
-                { label: "المستأجرون", value: stats.tenants, icon: "👤", color: "#8e44ad" },
-                { label: "العقود", value: stats.leases, icon: "📄", color: "#e67e22" },
-                { label: "الدفعات", value: stats.payments, icon: "💰", color: "#c0392b" },
+                { label: T.properties, value: stats.properties, icon: "🏢", color: "#2E6394" },
+                { label: T.units, value: stats.units, icon: "🚪", color: "#27ae60" },
+                { label: T.tenants, value: stats.tenants, icon: "👤", color: "#8e44ad" },
+                { label: T.leases, value: stats.leases, icon: "📄", color: "#e67e22" },
+                { label: T.payments, value: stats.payments, icon: "💰", color: "#c0392b" },
               ].map(card => (
                 <div key={card.label} style={cardStyle}>
                   <div style={{ fontSize: "32px" }}>{card.icon}</div>
