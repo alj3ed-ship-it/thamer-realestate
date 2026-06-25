@@ -32,7 +32,7 @@ export default function Leases({ onBack }) {
     const [l, p, u, t] = await Promise.all([
       supabase.from("leases").select("*").order("created_at", { ascending: false }),
       supabase.from("properties").select("id, name").order("name"),
-      supabase.from("units").select("id, unit_number, property_id"),
+      supabase.from("units").select("id, unit_number, unit_type, property_id"),
       supabase.from("tenants").select("id, name"),
     ]);
     setLeases(l.data || []);
@@ -109,10 +109,9 @@ export default function Leases({ onBack }) {
   }
 
   const total = getTotal();
-  const paymentType = PAYMENT_TYPES.find(p => p.label === form.payment_type);
 
   return (
-    <div dir="rtl" style={{ fontFamily: "sans-serif", padding: "40px", maxWidth: "1000px", margin: "0 auto" }}>
+    <div dir="rtl" style={{ fontFamily: "Cairo, sans-serif", padding: "40px", maxWidth: "1100px", margin: "0 auto" }}>
       <button onClick={onBack} style={{ padding: "8px 16px", marginBottom: "20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
         ← رجوع للوحة التحكم
       </button>
@@ -141,7 +140,7 @@ export default function Leases({ onBack }) {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
           <thead>
             <tr style={{ background: "#f9fafb", textAlign: "right" }}>
-              {["المستأجر", "العقار", "نوع الدفع", "المبلغ", "البداية", "النهاية", ""].map(h => (
+              {["المستأجر", "العقار", "رقم الوحدة", "نوع الوحدة", "نوع الدفع", "المبلغ", "البداية", "النهاية", "الملاحظات", ""].map(h => (
                 <th key={h} style={{ padding: "12px", borderBottom: "2px solid #e5e7eb", color: "#6b7280", fontWeight: 500 }}>{h}</th>
               ))}
             </tr>
@@ -150,10 +149,13 @@ export default function Leases({ onBack }) {
             {leases.map(l => {
               const tenant = tenants.find(t => t.id === l.tenant_id);
               const property = properties.find(p => p.id === l.property_id);
+              const unit = units.find(u => u.id === l.unit_id);
               return (
                 <tr key={l.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
                   <td style={{ padding: "12px", fontWeight: 600, color: "#1B4D7A" }}>{tenant?.name || "—"}</td>
                   <td style={{ padding: "12px", color: "#6b7280" }}>{property?.name || "—"}</td>
+                  <td style={{ padding: "12px", color: "#6b7280" }}>{unit?.unit_number || "—"}</td>
+                  <td style={{ padding: "12px", color: "#6b7280" }}>{unit?.unit_type || "—"}</td>
                   <td style={{ padding: "12px" }}>
                     <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "3px 10px", borderRadius: 6, fontSize: 12 }}>
                       {l.payment_type || "—"}
@@ -162,6 +164,7 @@ export default function Leases({ onBack }) {
                   <td style={{ padding: "12px" }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</td>
                   <td style={{ padding: "12px", color: "#6b7280" }}>{l.start_date || "—"}</td>
                   <td style={{ padding: "12px", color: "#6b7280" }}>{l.end_date || "—"}</td>
+                  <td style={{ padding: "12px", color: "#6b7280", maxWidth: "200px", whiteSpace: "normal", wordBreak: "break-word" }}>{l.notes || "—"}</td>
                   <td style={{ padding: "12px" }}>
                     <button onClick={() => openEditForm(l)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer", marginLeft: 6 }}>تعديل</button>
                     <button onClick={() => handleDelete(l)} disabled={deletingId === l.id} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>
@@ -230,7 +233,7 @@ export default function Leases({ onBack }) {
 
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>المبلغ (ريال)</label>
-                <input type="number" value={form.rent_amount} onChange={e => setForm({ ...form, rent_amount: e.target.value })}
+                <input type="text" value={form.rent_amount} onChange={e => setForm({ ...form, rent_amount: e.target.value })}
                   placeholder="أدخل المبلغ"
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
               </div>
@@ -261,4 +264,3 @@ export default function Leases({ onBack }) {
     </div>
   );
 }
-

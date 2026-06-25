@@ -1,12 +1,12 @@
 ﻿import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 
-const PAYMENT_METHODS = ["تحويل بنكي", "نقدي", "شيك", "STC Pay"];
-const STATUS_OPTIONS = ["مدفوع", "معلق", "متأخر"];
+const PAYMENT_METHODS = ["تحويل بنكي", "نقدي", "شيك"];
+const STATUS_OPTIONS = ["مدفوع", "جزئي", "متأخر"];
 
 const STATUS_STYLE = {
   "مدفوع":  { background: "#dcfce7", color: "#166534" },
-  "معلق":   { background: "#fef9c3", color: "#854d0e" },
+  "جزئي":   { background: "#fef9c3", color: "#854d0e" },
   "متأخر":  { background: "#fee2e2", color: "#991b1b" },
 };
 
@@ -81,8 +81,7 @@ export default function Payments({ onBack }) {
     if (editingId) {
       await supabase.from("payments").update(payload).eq("id", editingId);
     } else {
-const { error } = await supabase.from("payments").insert([payload]);
-console.log(error);      
+      await supabase.from("payments").insert([payload]);
     }
     setSaving(false);
     setShowForm(false);
@@ -97,12 +96,10 @@ console.log(error);
     fetchAll();
   }
 
-  // إحصائيات سريعة
   const totalPaid    = payments.filter(p => p.status === "مدفوع").reduce((s, p) => s + Number(p.amount), 0);
-  const totalPending = payments.filter(p => p.status === "معلق").reduce((s, p) => s + Number(p.amount), 0);
+  const totalPending = payments.filter(p => p.status === "جزئي").reduce((s, p) => s + Number(p.amount), 0);
   const totalLate    = payments.filter(p => p.status === "متأخر").reduce((s, p) => s + Number(p.amount), 0);
 
-  // فلترة
   const filtered = filterStatus === "الكل" ? payments : payments.filter(p => p.status === filterStatus);
 
   function getTenantName(leaseId) {
@@ -128,7 +125,7 @@ console.log(error);
   }
 
   return (
-    <div dir="rtl" style={{ fontFamily: "sans-serif", padding: "40px", maxWidth: "1100px", margin: "0 auto" }}>
+    <div dir="rtl" style={{ fontFamily: "Cairo, sans-serif", padding: "40px", maxWidth: "1100px", margin: "0 auto" }}>
       <button onClick={onBack} style={{ padding: "8px 16px", marginBottom: "20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
         ← رجوع للوحة التحكم
       </button>
@@ -136,11 +133,10 @@ console.log(error);
       <h1 style={{ margin: "0 0 4px" }}>الدفعات</h1>
       <p style={{ color: "#6b7280", margin: "0 0 24px" }}>تتبع وتسجيل دفعات الإيجار</p>
 
-      {/* بطاقات إحصائية */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 28 }}>
         {[
           { label: "إجمالي المدفوع",  value: totalPaid,    bg: "#dcfce7", color: "#166534", border: "#86efac" },
-          { label: "إجمالي المعلق",   value: totalPending, bg: "#fef9c3", color: "#854d0e", border: "#fde047" },
+          { label: "إجمالي الجزئي",   value: totalPending, bg: "#fef9c3", color: "#854d0e", border: "#fde047" },
           { label: "إجمالي المتأخر",  value: totalLate,    bg: "#fee2e2", color: "#991b1b", border: "#fca5a5" },
         ].map(card => (
           <div key={card.label} style={{ background: card.bg, border: `1px solid ${card.border}`, borderRadius: 10, padding: "16px 20px" }}>
@@ -150,7 +146,6 @@ console.log(error);
         ))}
       </div>
 
-      {/* أدوات */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
         <button onClick={openAddForm} style={{ padding: "10px 20px", cursor: "pointer", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: 8 }}>
           + تسجيل دفعة جديدة
@@ -158,9 +153,8 @@ console.log(error);
         <button onClick={fetchAll} style={{ padding: "10px 20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
           تحديث
         </button>
-        {/* فلتر الحالة */}
         <div style={{ marginRight: "auto", display: "flex", gap: 6 }}>
-          {["الكل", "مدفوع", "معلق", "متأخر"].map(s => (
+          {["الكل", "مدفوع", "جزئي", "متأخر"].map(s => (
             <button key={s} onClick={() => setFilterStatus(s)}
               style={{
                 padding: "6px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer",
@@ -220,14 +214,12 @@ console.log(error);
         </table>
       )}
 
-      {/* نموذج الإضافة/التعديل */}
       {showForm && (
         <div style={{ position: "fixed", inset: 0, background: "#0006", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
           <div style={{ background: "#fff", borderRadius: 12, padding: "1.5rem", width: 520, maxWidth: "95%", direction: "rtl", maxHeight: "90vh", overflowY: "auto" }}>
             <h3 style={{ margin: "0 0 1rem" }}>{editingId ? "تعديل الدفعة" : "تسجيل دفعة جديدة"}</h3>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-
               <div style={{ gridColumn: "span 2" }}>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>العقد (المستأجر — العقار)</label>
                 <select value={form.lease_id} onChange={e => setForm({ ...form, lease_id: e.target.value })}
@@ -241,14 +233,10 @@ console.log(error);
 
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>المبلغ (ريال)</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={form.amount}
+                <input type="text" inputMode="numeric" value={form.amount}
                   onChange={e => setForm({ ...form, amount: e.target.value.replace(/[^0-9]/g, "") })}
                   placeholder="مثال: 5000"
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }}
-                />
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
               </div>
 
               <div>
@@ -296,4 +284,3 @@ console.log(error);
     </div>
   );
 }
-
