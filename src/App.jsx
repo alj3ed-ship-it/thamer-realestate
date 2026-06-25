@@ -8,6 +8,7 @@ import Reports from "./Reports";
 import Defaulters from "./Defaulters";
 import Login from "./Login";
 import ViewerLayout from "./ViewerLayout";
+import PropertyDetail from "./PropertyDetail";
 
 const T = {
   dashboard: "\u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645",
@@ -34,6 +35,7 @@ const NAV_ITEMS = [
 export default function App() {
   const [role, setRole] = useState(null);
   const [activePage, setActivePage] = useState("dashboard");
+  const [selectedPropertyId, setSelectedPropertyId] = useState(null);
   const [stats, setStats] = useState({ properties: 0, units: 0, tenants: 0, leases: 0, payments: 0 });
 
   useEffect(() => {
@@ -65,6 +67,7 @@ export default function App() {
 
   function goBack() {
     setActivePage("dashboard");
+    setSelectedPropertyId(null);
     fetchStats();
   }
 
@@ -89,7 +92,7 @@ export default function App() {
         </div>
         <nav style={{ flex: 1, padding: "16px 0" }}>
           {NAV_ITEMS.map(item => (
-            <button key={item.key} onClick={() => setActivePage(item.key)} style={{
+            <button key={item.key} onClick={() => { setActivePage(item.key); setSelectedPropertyId(null); }} style={{
               display: "block", width: "100%", padding: "12px 20px", textAlign: "right",
               background: activePage === item.key ? "#2E6394" : "transparent",
               color: item.key === "defaulters" ? "#fca5a5" : "#fff",
@@ -129,7 +132,18 @@ export default function App() {
             </div>
           </div>
         )}
-        {activePage === "properties" && <Properties onBack={goBack} />}
+        {activePage === "properties" && !selectedPropertyId && (
+          <Properties
+            onBack={goBack}
+            onSelectProperty={(id) => setSelectedPropertyId(id)}
+          />
+        )}
+        {activePage === "properties" && selectedPropertyId && (
+          <PropertyDetail
+            propertyId={selectedPropertyId}
+            onBack={() => setSelectedPropertyId(null)}
+          />
+        )}
         {activePage === "tenants" && <Tenants onBack={goBack} />}
         {activePage === "leases" && <Leases onBack={goBack} />}
         {activePage === "payments" && <Payments onBack={goBack} />}

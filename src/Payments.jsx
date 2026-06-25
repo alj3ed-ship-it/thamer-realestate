@@ -23,12 +23,8 @@ export default function Payments({ onBack }) {
   const [filterStatus, setFilterStatus] = useState("الكل");
 
   const [form, setForm] = useState({
-    lease_id: "",
-    amount: "",
-    payment_date: "",
-    payment_method: "تحويل بنكي",
-    status: "مدفوع",
-    notes: "",
+    lease_id: "", amount: "", payment_date: "",
+    payment_method: "تحويل بنكي", status: "مدفوع", notes: "",
   });
 
   useEffect(() => { fetchAll(); }, []);
@@ -57,12 +53,9 @@ export default function Payments({ onBack }) {
   function openEditForm(p) {
     setEditingId(p.id);
     setForm({
-      lease_id:       p.lease_id       || "",
-      amount:         p.amount         || "",
-      payment_date:   p.payment_date   || "",
-      payment_method: p.payment_method || "تحويل بنكي",
-      status:         p.status         || "مدفوع",
-      notes:          p.notes          || "",
+      lease_id: p.lease_id || "", amount: p.amount || "",
+      payment_date: p.payment_date || "", payment_method: p.payment_method || "تحويل بنكي",
+      status: p.status || "مدفوع", notes: p.notes || "",
     });
     setShowForm(true);
   }
@@ -71,29 +64,20 @@ export default function Payments({ onBack }) {
     if (!form.lease_id || !form.amount || !form.payment_date) return;
     setSaving(true);
     const payload = {
-      lease_id:       form.lease_id,
-      amount:         Number(form.amount),
-      payment_date:   form.payment_date,
-      payment_method: form.payment_method,
-      status:         form.status,
-      notes:          form.notes || null,
+      lease_id: form.lease_id, amount: Number(form.amount),
+      payment_date: form.payment_date, payment_method: form.payment_method,
+      status: form.status, notes: form.notes || null,
     };
-    if (editingId) {
-      await supabase.from("payments").update(payload).eq("id", editingId);
-    } else {
-      await supabase.from("payments").insert([payload]);
-    }
-    setSaving(false);
-    setShowForm(false);
-    fetchAll();
+    if (editingId) await supabase.from("payments").update(payload).eq("id", editingId);
+    else await supabase.from("payments").insert([payload]);
+    setSaving(false); setShowForm(false); fetchAll();
   }
 
   async function handleDelete(id) {
     if (!window.confirm("حذف الدفعة؟")) return;
     setDeletingId(id);
     await supabase.from("payments").delete().eq("id", id);
-    setDeletingId(null);
-    fetchAll();
+    setDeletingId(null); fetchAll();
   }
 
   const totalPaid    = payments.filter(p => p.status === "مدفوع").reduce((s, p) => s + Number(p.amount), 0);
@@ -104,44 +88,57 @@ export default function Payments({ onBack }) {
 
   function getTenantName(leaseId) {
     const lease = leases.find(l => l.id === leaseId);
-    if (!lease) return "—";
-    const tenant = tenants.find(t => t.id === lease.tenant_id);
+    const tenant = tenants.find(t => t.id === lease?.tenant_id);
     return tenant?.name || "—";
   }
 
   function getPropertyName(leaseId) {
     const lease = leases.find(l => l.id === leaseId);
-    if (!lease) return "—";
-    const prop = properties.find(p => p.id === lease.property_id);
+    const prop = properties.find(p => p.id === lease?.property_id);
     return prop?.name || "—";
   }
 
   function getLeaseName(leaseId) {
     const lease = leases.find(l => l.id === leaseId);
-    if (!lease) return "—";
-    const tenant = tenants.find(t => t.id === lease.tenant_id);
-    const prop   = properties.find(p => p.id === lease.property_id);
+    const tenant = tenants.find(t => t.id === lease?.tenant_id);
+    const prop = properties.find(p => p.id === lease?.property_id);
     return `${tenant?.name || "؟"} — ${prop?.name || "؟"}`;
   }
+
+  const cards = [
+    { label: "إجمالي المدفوع", value: totalPaid, status: "مدفوع", bg: "#dcfce7", color: "#166534", border: "#86efac" },
+    { label: "إجمالي الجزئي",  value: totalPending, status: "جزئي", bg: "#fef9c3", color: "#854d0e", border: "#fde047" },
+    { label: "إجمالي المتأخر", value: totalLate, status: "متأخر", bg: "#fee2e2", color: "#991b1b", border: "#fca5a5" },
+  ];
 
   return (
     <div dir="rtl" style={{ fontFamily: "Cairo, sans-serif", padding: "40px", maxWidth: "1100px", margin: "0 auto" }}>
       <button onClick={onBack} style={{ padding: "8px 16px", marginBottom: "20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
         ← رجوع للوحة التحكم
       </button>
-
       <h1 style={{ margin: "0 0 4px" }}>الدفعات</h1>
       <p style={{ color: "#6b7280", margin: "0 0 24px" }}>تتبع وتسجيل دفعات الإيجار</p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 28 }}>
-        {[
-          { label: "إجمالي المدفوع",  value: totalPaid,    bg: "#dcfce7", color: "#166534", border: "#86efac" },
-          { label: "إجمالي الجزئي",   value: totalPending, bg: "#fef9c3", color: "#854d0e", border: "#fde047" },
-          { label: "إجمالي المتأخر",  value: totalLate,    bg: "#fee2e2", color: "#991b1b", border: "#fca5a5" },
-        ].map(card => (
-          <div key={card.label} style={{ background: card.bg, border: `1px solid ${card.border}`, borderRadius: 10, padding: "16px 20px" }}>
-            <div style={{ color: card.color, fontSize: 13, marginBottom: 6 }}>{card.label}</div>
-            <div style={{ color: card.color, fontWeight: 700, fontSize: 22 }}>{card.value.toLocaleString()} ريال</div>
+        {cards.map(card => (
+          <div
+            key={card.label}
+            onClick={() => setFilterStatus(filterStatus === card.status ? "الكل" : card.status)}
+            style={{
+              background: card.bg,
+              border: `2px solid ${filterStatus === card.status ? card.color : card.border}`,
+              borderRadius: 10, padding: "16px 20px", cursor: "pointer",
+              transform: filterStatus === card.status ? "scale(1.02)" : "scale(1)",
+              transition: "all 0.15s",
+              boxShadow: filterStatus === card.status ? `0 4px 12px ${card.border}` : "none",
+            }}
+          >
+            <div style={{ color: card.color, fontSize: 13, marginBottom: 6 }}>
+              {card.label} {filterStatus === card.status && "✓"}
+            </div>
+            <div style={{ color: card.color, fontWeight: 700, fontSize: 22 }}>
+              {card.value.toLocaleString()} ريال
+            </div>
           </div>
         ))}
       </div>
@@ -218,19 +215,15 @@ export default function Payments({ onBack }) {
         <div style={{ position: "fixed", inset: 0, background: "#0006", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
           <div style={{ background: "#fff", borderRadius: 12, padding: "1.5rem", width: 520, maxWidth: "95%", direction: "rtl", maxHeight: "90vh", overflowY: "auto" }}>
             <h3 style={{ margin: "0 0 1rem" }}>{editingId ? "تعديل الدفعة" : "تسجيل دفعة جديدة"}</h3>
-
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div style={{ gridColumn: "span 2" }}>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>العقد (المستأجر — العقار)</label>
                 <select value={form.lease_id} onChange={e => setForm({ ...form, lease_id: e.target.value })}
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14 }}>
                   <option value="">اختر العقد</option>
-                  {leases.map(l => (
-                    <option key={l.id} value={l.id}>{getLeaseName(l.id)}</option>
-                  ))}
+                  {leases.map(l => <option key={l.id} value={l.id}>{getLeaseName(l.id)}</option>)}
                 </select>
               </div>
-
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>المبلغ (ريال)</label>
                 <input type="text" inputMode="numeric" value={form.amount}
@@ -238,13 +231,11 @@ export default function Payments({ onBack }) {
                   placeholder="مثال: 5000"
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
               </div>
-
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>تاريخ الدفع</label>
                 <input type="date" value={form.payment_date} onChange={e => setForm({ ...form, payment_date: e.target.value })}
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
               </div>
-
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>طريقة الدفع</label>
                 <select value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })}
@@ -252,7 +243,6 @@ export default function Payments({ onBack }) {
                   {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
                 </select>
               </div>
-
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>الحالة</label>
                 <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}
@@ -260,14 +250,12 @@ export default function Payments({ onBack }) {
                   {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
-
               <div style={{ gridColumn: "span 2" }}>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>ملاحظات (اختياري)</label>
                 <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2}
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
               </div>
             </div>
-
             <div style={{ display: "flex", gap: 8, marginTop: "1rem", justifyContent: "flex-end" }}>
               <button onClick={() => setShowForm(false)} disabled={saving}
                 style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" }}>
