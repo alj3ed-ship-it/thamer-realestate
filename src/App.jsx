@@ -19,9 +19,6 @@ const T = {
   defaulters: "\u0627\u0644\u0645\u062A\u0639\u062B\u0631\u0648\u0646",
   units: "\u0627\u0644\u0648\u062D\u062F\u0627\u062A",
   logout: "\u062E\u0631\u0648\u062C",
-  totalDebt: "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0645\u062A\u0639\u062B\u0631",
-  totalRemaining: "\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0628\u0627\u0642\u064A",
-  sar: "\u0631.\u0633",
 };
 
 const NAV_ITEMS = [
@@ -38,7 +35,6 @@ export default function App() {
   const [role, setRole] = useState(null);
   const [activePage, setActivePage] = useState("dashboard");
   const [stats, setStats] = useState({ properties: 0, units: 0, tenants: 0, leases: 0, payments: 0 });
-  const [defaulterStats, setDefaulterStats] = useState({ total: 0, remaining: 0 });
 
   useEffect(() => {
     const savedRole = localStorage.getItem("role");
@@ -47,10 +43,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (role === "admin") {
-      fetchStats();
-      fetchDefaulterStats();
-    }
+    if (role === "admin") fetchStats();
   }, [role, activePage]);
 
   async function fetchStats() {
@@ -70,20 +63,9 @@ export default function App() {
     });
   }
 
-  async function fetchDefaulterStats() {
-    const [d, dp] = await Promise.all([
-      supabase.from("defaulters").select("total_amount"),
-      supabase.from("defaulter_payments").select("amount"),
-    ]);
-    const total = (d.data || []).reduce((s, x) => s + Number(x.total_amount), 0);
-    const collected = (dp.data || []).reduce((s, x) => s + Number(x.amount), 0);
-    setDefaulterStats({ total, remaining: total - collected });
-  }
-
   function goBack() {
     setActivePage("dashboard");
     fetchStats();
-    fetchDefaulterStats();
   }
 
   function handleLogout() {
@@ -110,7 +92,8 @@ export default function App() {
             <button key={item.key} onClick={() => setActivePage(item.key)} style={{
               display: "block", width: "100%", padding: "12px 20px", textAlign: "right",
               background: activePage === item.key ? "#2E6394" : "transparent",
-              color: "#fff", border: "none", fontSize: "15px", cursor: "pointer",
+              color: item.key === "defaulters" ? "#fca5a5" : "#fff",
+              border: "none", fontSize: "15px", cursor: "pointer",
               fontFamily: "Cairo, sans-serif", borderRight: activePage === item.key ? "4px solid #F5D98C" : "4px solid transparent"
             }}>
               {item.icon} {item.label}
@@ -129,8 +112,7 @@ export default function App() {
         {activePage === "dashboard" && (
           <div style={{ padding: "32px" }}>
             <h2 style={{ color: "#1B4D7A", marginBottom: "24px" }}>{T.dashboard}</h2>
-
-            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginBottom: "32px" }}>
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
               {[
                 { label: T.properties, value: stats.properties, icon: "\uD83C\uDFE2\uD83C\uDFE2\uD83C\uDFE2", color: "#2E6394", page: "properties" },
                 { label: T.units, value: stats.units, icon: "\uD83D\uDEAA\uD83D\uDEAA\uD83D\uDEAA", color: "#27ae60", page: null },
@@ -142,25 +124,6 @@ export default function App() {
                   <div style={{ fontSize: "32px" }}>{card.icon}</div>
                   <div style={{ fontSize: "28px", fontWeight: "bold", color: card.color, margin: "8px 0" }}>{card.value}</div>
                   <div style={{ color: "#666", fontSize: "14px" }}>{card.label}</div>
-                </div>
-              ))}
-            </div>
-
-            <h3 style={{ color: "#991b1b", marginBottom: "16px" }}>{"\u26A0\uFE0F"} {T.defaulters}</h3>
-            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-              {[
-                { label: T.totalDebt, value: defaulterStats.total, color: "#991b1b", bg: "#fee2e2" },
-                { label: T.totalRemaining, value: defaulterStats.remaining, color: "#854d0e", bg: "#fef9c3" },
-              ].map(card => (
-                <div key={card.label} onClick={() => setActivePage("defaulters")} style={{
-                  background: card.bg, borderRadius: "12px", padding: "24px 20px",
-                  boxShadow: "0 2px 12px rgba(0,0,0,0.07)", textAlign: "center",
-                  flex: "0 0 200px", cursor: "pointer"
-                }}>
-                  <div style={{ fontSize: "22px", fontWeight: "bold", color: card.color, margin: "8px 0" }}>
-                    {card.value.toLocaleString()} {T.sar}
-                  </div>
-                  <div style={{ color: card.color, fontSize: "14px" }}>{card.label}</div>
                 </div>
               ))}
             </div>
