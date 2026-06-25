@@ -1,97 +1,139 @@
-﻿import { useState, useEffect } from "react";
-import { supabase } from "./supabaseClient";
+﻿import { useState, useEffect } from 'react'
+import { supabase } from './supabaseClient'
 
-export default function Properties({ onBack }) {
-  const [properties, setProperties] = useState([]);
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: "", address: "", total_units: "", owner_note: "" });
+function Properties({ onBack, onSelectProperty }) {
+  const [properties, setProperties] = useState([])
+  const [status, setStatus] = useState('loading')
+  const [errorMsg, setErrorMsg] = useState('')
+  const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [formName, setFormName] = useState('')
+  const [formAddress, setFormAddress] = useState('')
+  const [formUnits, setFormUnits] = useState('')
+  const [formError, setFormError] = useState('')
 
-  useEffect(() => { fetchAll(); }, []);
-
-  async function fetchAll() {
-    const { data } = await supabase.from("properties").select("*").order("created_at");
-    setProperties(data || []);
+  async function fetchProperties() {
+    setStatus('loading')
+    setErrorMsg('')
+    const { data, error } = await supabase
+      .from('properties')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (error) { setErrorMsg(error.message); setStatus('error'); return }
+    setProperties(data)
+    setStatus('success')
   }
 
-  function handleEdit(p) {
-    setForm({ name: p.name, address: p.address, total_units: p.total_units, owner_note: p.owner_note || "" });
-    setEditingId(p.id);
-    setShowForm(true);
+  useEffect(() => { fetchProperties() }, [])
+
+  function openAddForm() {
+    setEditingId(null); setFormName(''); setFormAddress(''); setFormUnits(''); setFormError(''); setShowForm(true)
+  }
+
+  function openEditForm(property) {
+    setEditingId(property.id); setFormName(property.name || ''); setFormAddress(property.address || '')
+    setFormUnits(property.total_units ?? ''); setFormError(''); setShowForm(true)
   }
 
   async function handleSave() {
-    setSaving(true);
-    const payload = { name: form.name, address: form.address, total_units: Number(form.total_units), owner_note: form.owner_note };
-    if (editingId) {
-      await supabase.from("properties").update(payload).eq("id", editingId);
-    } else {
-      await supabase.from("properties").insert([payload]);
-    }
-    setSaving(false);
-    setShowForm(false);
-    setEditingId(null);
-    setForm({ name: "", address: "", total_units: "", owner_note: "" });
-    fetchAll();
+    if (!formName.trim()) { setFormError('اسم العقار مطلوب'); return }
+    setSaving(true); setFormError('')
+    const payload = { name: formName.trim(), address: formAddress.trim() || null, total_units: formUnits ? parseInt(formUnits, 10) : null }
+    let error
+    if (editingId) { const res = await supabase.from('properties').update(payload).eq('id', editingId); error = res.error }
+    else { const res = await supabase.from('properties').insert([payload]); error = res.error }
+    setSaving(false)
+    if (error) { setFormError(error.message); return }
+    setShowForm(false); fetchProperties()
   }
 
-  async function handleDelete(id) {
-    if (!window.confirm("حذف العقار؟")) return;
-    await supabase.from("properties").delete().eq("id", id);
-    fetchAll();
+  async function handleDelete(property) {
+    if (!window.confirm(`هل أنت متأكد من حذف "${property.name}"؟`)) return
+    setDeletingId(property.id)
+    const { error } = await supabase.from('properties').delete().eq('id', property.id)
+    setDeletingId(null)
+    if (error) { alert('فشل الحذف: ' + error.message); return }
+    fetchProperties()
   }
-
-  const inputStyle = { width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #ccd6e0", fontSize: "15px", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box", marginBottom: "12px" };
 
   return (
-    <div style={{ padding: "32px", fontFamily: "Tahoma, Arial, sans-serif", direction: "rtl" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "24px" }}>
-        <h2 style={{ color: "#1B4D7A", margin: 0 }}>العقارات</h2>
-        <button onClick={() => { setShowForm(true); setEditingId(null); setForm({ name: "", address: "", total_units: "", owner_note: "" }); }} style={{ padding: "8px 20px", background: "#27ae60", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif" }}>+ اضافة عقار</button>
+    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '900px', margin: '0 auto' }}>
+      <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer' }}>
+        ← رجوع للوحة التحكم
+      </button>
+      <h1>العقارات</h1>
+      <p style={{ color: '#666' }}>إدارة قائمة العقارات</p>
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+        <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: '6px' }}>
+          + إضافة عقار جديد
+        </button>
+        <button onClick={fetchProperties} style={{ padding: '10px 20px', cursor: 'pointer' }}>تحديث</button>
       </div>
 
+      {status === 'loading' && <p>جاري التحميل...</p>}
+      {status === 'error' && <div style={{ background: '#fee', padding: '15px', borderRadius: '8px', color: '#c00' }}>فشل تحميل العقارات: {errorMsg}</div>}
+      {status === 'success' && properties.length === 0 && <div style={{ background: '#f5f5f5', padding: '20px', borderRadius: '8px', color: '#666' }}>لا توجد عقارات مسجّلة حالياً.</div>}
+
+      {status === 'success' && properties.length > 0 && (
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
+          <thead>
+            <tr style={{ background: '#f5f5f5', textAlign: 'right' }}>
+              <th style={{ padding: '12px', borderBottom: '2px solid #ddd' }}>اسم العقار</th>
+              <th style={{ padding: '12px', borderBottom: '2px solid #ddd' }}>العنوان</th>
+              <th style={{ padding: '12px', borderBottom: '2px solid #ddd' }}>عدد الوحدات</th>
+              <th style={{ padding: '12px', borderBottom: '2px solid #ddd' }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {properties.map((p) => (
+              <tr key={p.id} style={{ borderBottom: '1px solid #eee' }}>
+                <td style={{ padding: '12px' }}>
+                  <span
+                    onClick={() => onSelectProperty && onSelectProperty(p.id)}
+                    style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 'bold', textDecoration: 'underline', textUnderlineOffset: '3px' }}
+                    title="اضغط لعرض الوحدات"
+                  >
+                    {p.name}
+                  </span>
+                </td>
+                <td style={{ padding: '12px' }}>{p.address || '—'}</td>
+                <td style={{ padding: '12px' }}>{p.total_units ?? '—'}</td>
+                <td style={{ padding: '12px', textAlign: 'left' }}>
+                  <button onClick={() => openEditForm(p)} style={{ padding: '6px 12px', cursor: 'pointer', background: '#eef3ff', color: '#1B4D7A', border: '1px solid #c0d0e8', borderRadius: '6px', fontSize: '13px', marginLeft: '8px' }}>تعديل</button>
+                  <button onClick={() => handleDelete(p)} disabled={deletingId === p.id} style={{ padding: '6px 12px', cursor: 'pointer', background: '#fee', color: '#c00', border: '1px solid #fcc', borderRadius: '6px', fontSize: '13px' }}>
+                    {deletingId === p.id ? 'جاري الحذف...' : 'حذف'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
       {showForm && (
-        <div style={{ background: "#fff", padding: "24px", borderRadius: "12px", marginBottom: "24px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)" }}>
-          <h3 style={{ color: "#1B4D7A", marginBottom: "16px" }}>{editingId ? "تعديل عقار" : "عقار جديد"}</h3>
-          <input style={inputStyle} placeholder="اسم العقار" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-          <input style={inputStyle} placeholder="العنوان" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
-          <input style={inputStyle} placeholder="عدد الوحدات" type="number" value={form.total_units} onChange={e => setForm({ ...form, total_units: e.target.value })} />
-          <input style={inputStyle} placeholder="ملاحظات" value={form.owner_note} onChange={e => setForm({ ...form, owner_note: e.target.value })} />
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button onClick={handleSave} disabled={saving} style={{ padding: "10px 24px", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif" }}>{saving ? "جاري الحفظ..." : "حفظ"}</button>
-            <button onClick={() => setShowForm(false)} style={{ padding: "10px 24px", background: "#e0e7ef", color: "#1B4D7A", border: "none", borderRadius: "8px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif" }}>الغاء</button>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', padding: '30px', borderRadius: '10px', width: '400px', maxWidth: '90%' }}>
+            <h2 style={{ marginTop: 0 }}>{editingId ? 'تعديل العقار' : 'إضافة عقار جديد'}</h2>
+            <label style={{ display: 'block', marginBottom: '6px', color: '#444' }}>اسم العقار</label>
+            <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }} placeholder="مثال: عمارة سلمان" />
+            <label style={{ display: 'block', marginBottom: '6px', color: '#444' }}>العنوان</label>
+            <input type="text" value={formAddress} onChange={(e) => setFormAddress(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }} placeholder="اختياري" />
+            <label style={{ display: 'block', marginBottom: '6px', color: '#444' }}>عدد الوحدات</label>
+            <input type="number" value={formUnits} onChange={(e) => setFormUnits(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }} placeholder="اختياري" />
+            {formError && <div style={{ color: '#c00', marginBottom: '15px', fontSize: '14px' }}>{formError}</div>}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowForm(false)} disabled={saving} style={{ padding: '10px 20px', cursor: 'pointer' }}>إلغاء</button>
+              <button onClick={handleSave} disabled={saving} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: '6px' }}>
+                {saving ? 'جاري الحفظ...' : 'حفظ'}
+              </button>
+            </div>
           </div>
         </div>
       )}
-
-      <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
-        <thead style={{ background: "#1B4D7A", color: "#fff" }}>
-          <tr>
-            <th style={{ padding: "12px" }}>اسم العقار</th>
-            <th style={{ padding: "12px" }}>العنوان</th>
-            <th style={{ padding: "12px" }}>عدد الوحدات</th>
-            <th style={{ padding: "12px" }}>ملاحظات</th>
-            <th style={{ padding: "12px" }}>اجراءات</th>
-          </tr>
-        </thead>
-        <tbody>
-          {properties.map(p => (
-            <tr key={p.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
-              <td style={{ padding: "12px" }}>{p.name}</td>
-              <td style={{ padding: "12px" }}>{p.address}</td>
-              <td style={{ padding: "12px" }}>{p.total_units}</td>
-              <td style={{ padding: "12px" }}>{p.owner_note}</td>
-              <td style={{ padding: "12px" }}>
-                <button onClick={() => handleEdit(p)} style={{ marginLeft: "8px", padding: "6px 14px", background: "#e67e22", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif" }}>تعديل</button>
-                <button onClick={() => handleDelete(p.id)} style={{ padding: "6px 14px", background: "#c0392b", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif" }}>حذف</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
-  );
+  )
 }
 
-
+export default Properties

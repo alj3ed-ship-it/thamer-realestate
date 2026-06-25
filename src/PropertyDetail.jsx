@@ -1,193 +1,199 @@
-﻿import { useState, useEffect } from "react";
-import { supabase } from "./supabaseClient";
+﻿import { useState, useEffect } from 'react'
+import { supabase } from './supabaseClient'
 
-export default function PropertyDetail({ id, onBack }) {
-  const [property, setProperty] = useState(null);
-  const [units, setUnits] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editUnit, setEditUnit] = useState(null);
-  const [form, setForm] = useState({
-    unit_number: "", unit_type: "شقة", floor: "",
-    area_sqm: "", monthly_rent: "", status: "شاغرة", notes: ""
-  });
+const UNIT_STATUS = ['مؤجرة', 'شاغرة', 'صيانة']
+const UNIT_TYPES = ['شقة', 'محل', 'مستودع', 'غرفة', 'فيلا', 'أرض']
 
-  useEffect(() => { fetchAll(); }, [id]);
+export default function PropertyDetail({ propertyId, onBack }) {
+  const [property, setProperty] = useState(null)
+  const [units, setUnits] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [form, setForm] = useState({ unit_number: '', unit_type: 'شقة', floor: '', area_sqm: '', monthly_rent: '', status: 'شاغرة', notes: '' })
+  const [formError, setFormError] = useState('')
+
+  useEffect(() => { fetchAll() }, [propertyId])
 
   async function fetchAll() {
-    setLoading(true);
-    const { data: prop } = await supabase.from("properties").select("*").eq("id", id).single();
-    const { data: u } = await supabase.from("units").select("*").eq("property_id", id).order("created_at");
-    setProperty(prop);
-    setUnits(u || []);
-    setLoading(false);
+    setLoading(true)
+    const [prop, unts] = await Promise.all([
+      supabase.from('properties').select('*').eq('id', propertyId).single(),
+      supabase.from('units').select('*').eq('property_id', propertyId).order('unit_number')
+    ])
+    setProperty(prop.data)
+    setUnits(unts.data || [])
+    setLoading(false)
   }
 
-  function openAdd() {
-    setEditUnit(null);
-    setForm({ unit_number: "", unit_type: "شقة", floor: "", area_sqm: "", monthly_rent: "", status: "شاغرة", notes: "" });
-    setShowForm(true);
+  function openAddForm() {
+    setEditingId(null)
+    setForm({ unit_number: '', unit_type: 'شقة', floor: '', area_sqm: '', monthly_rent: '', status: 'شاغرة', notes: '' })
+    setFormError('')
+    setShowForm(true)
   }
 
-  function openEdit(unit) {
-    setEditUnit(unit);
-    setForm({ unit_number: unit.unit_number, unit_type: unit.unit_type, floor: unit.floor || "",
-      area_sqm: unit.area_sqm || "", monthly_rent: unit.monthly_rent || "", status: unit.status, notes: unit.notes || "" });
-    setShowForm(true);
+  function openEditForm(unit) {
+    setEditingId(unit.id)
+    setForm({
+      unit_number: unit.unit_number || '',
+      unit_type: unit.unit_type || 'شقة',
+      floor: unit.floor ?? '',
+      area_sqm: unit.area_sqm ?? '',
+      monthly_rent: unit.monthly_rent ?? '',
+      status: unit.status || 'شاغرة',
+      notes: unit.notes || ''
+    })
+    setFormError('')
+    setShowForm(true)
   }
 
-  async function saveUnit() {
-    const data = { ...form, property_id: id,
-      area_sqm: form.area_sqm ? Number(form.area_sqm) : null,
-      monthly_rent: form.monthly_rent ? Number(form.monthly_rent) : null };
-    if (editUnit) {
-      await supabase.from("units").update(data).eq("id", editUnit.id).select();
-    } else {
-      await supabase.from("units").insert(data);
+  async function handleSave() {
+    if (!form.unit_number.trim()) { setFormError('رقم الوحدة مطلوب'); return }
+    setSaving(true); setFormError('')
+    const payload = {
+      property_id: propertyId,
+      unit_number: form.unit_number.trim(),
+      unit_type: form.unit_type,
+      floor: form.floor !== '' ? parseInt(form.floor) : null,
+      area_sqm: form.area_sqm !== '' ? parseFloat(form.area_sqm) : null,
+      monthly_rent: form.monthly_rent !== '' ? parseFloat(form.monthly_rent) : null,
+      status: form.status,
+      notes: form.notes.trim() || null
     }
-    setShowForm(false);
-    fetchAll();
+    if (editingId) await supabase.from('units').update(payload).eq('id', editingId)
+    else await supabase.from('units').insert([payload])
+    setSaving(false); setShowForm(false); fetchAll()
   }
 
-  async function deleteUnit(uid) {
-    if (!confirm("تأكيد حذف الوحدة؟")) return;
-    await supabase.from("units").delete().eq("id", uid);
-    fetchAll();
+  async function handleDelete(unit) {
+    if (!window.confirm(`حذف الوحدة "${unit.unit_number}"؟`)) return
+    setDeletingId(unit.id)
+    await supabase.from('units').delete().eq('id', unit.id)
+    setDeletingId(null); fetchAll()
   }
 
-  const statusColor = { "مشغولة": "#16a34a", "شاغرة": "#6b7280", "تحت الصيانة": "#d97706" };
-  const statusBg = { "مشغولة": "#dcfce7", "شاغرة": "#f3f4f6", "تحت الصيانة": "#fef3c7" };
+  const statusColor = { 'مؤجرة': { bg: '#dcfce7', color: '#166534' }, 'شاغرة': { bg: '#fef9c3', color: '#854d0e' }, 'صيانة': { bg: '#fee2e2', color: '#991b1b' } }
 
-  const occupied = units.filter(u => u.status === "مشغولة").length;
-  const vacant = units.filter(u => u.status === "شاغرة").length;
-
-  if (loading) return <div style={{ padding: "2rem", textAlign: "center" }}>جاري التحميل...</div>;
-  if (!property) return <div style={{ padding: "2rem" }}>العقار غير موجود</div>;
+  if (loading) return <div style={{ padding: 40, fontFamily: 'Cairo, sans-serif' }}>جاري التحميل...</div>
 
   return (
-    <div style={{ padding: "1.5rem", maxWidth: 900, margin: "0 auto", direction: "rtl" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem" }}>
-        <div>
-          <h2 style={{ margin: 0 }}>{property.name}</h2>
-          <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: 14 }}>{property.address}</p>
-        </div>
-        <button onClick={onBack} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" }}>
-          ← رجوع للعقارات
-        </button>
-      </div>
+    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1000px', margin: '0 auto' }}>
+      <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+        ← رجوع للعقارات
+      </button>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: "1.5rem" }}>
-        {[["إجمالي الوحدات", units.length, "#111"], ["مشغولة", occupied, "#16a34a"], ["شاغرة", vacant, "#6b7280"]].map(([label, val, color]) => (
-          <div key={label} style={{ background: "#f9fafb", borderRadius: 10, padding: "1rem", border: "1px solid #e5e7eb" }}>
-            <p style={{ margin: 0, fontSize: 13, color: "#6b7280" }}>{label}</p>
-            <p style={{ margin: "4px 0 0", fontSize: 26, fontWeight: 600, color }}>{val}</p>
+      <h1 style={{ margin: '0 0 4px', color: '#1B4D7A' }}>{property?.name}</h1>
+      <p style={{ color: '#666', margin: '0 0 8px' }}>{property?.address || ''}</p>
+
+      <div style={{ display: 'flex', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
+        {[
+          { label: 'إجمالي الوحدات', value: units.length, bg: '#eff6ff', color: '#1B4D7A' },
+          { label: 'مؤجرة', value: units.filter(u => u.status === 'مؤجرة').length, bg: '#dcfce7', color: '#166534' },
+          { label: 'شاغرة', value: units.filter(u => u.status === 'شاغرة').length, bg: '#fef9c3', color: '#854d0e' },
+          { label: 'إيجار شهري', value: units.filter(u => u.status === 'مؤجرة').reduce((s, u) => s + (Number(u.monthly_rent) || 0), 0).toLocaleString() + ' ريال', bg: '#f3e8ff', color: '#6b21a8' },
+        ].map(c => (
+          <div key={c.label} style={{ background: c.bg, borderRadius: 10, padding: '14px 20px', minWidth: 140 }}>
+            <div style={{ fontSize: 13, color: c.color, marginBottom: 4 }}>{c.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: c.color }}>{c.value}</div>
           </div>
         ))}
       </div>
 
-      <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "1rem", marginBottom: "1.5rem" }}>
-        <p style={{ margin: "0 0 12px", fontSize: 13, color: "#6b7280" }}>مخطط الوحدات</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }}>
-          {units.map(u => (
-            <div key={u.id} onClick={() => openEdit(u)}
-              style={{ background: statusBg[u.status], border: `1px solid ${statusColor[u.status]}33`, borderRadius: 8, padding: "10px 4px", textAlign: "center", cursor: "pointer" }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: statusColor[u.status] }}>{u.unit_number}</div>
-            </div>
-          ))}
-          {units.length === 0 && <p style={{ color: "#9ca3af", fontSize: 13, gridColumn: "span 6" }}>لا توجد وحدات بعد</p>}
-        </div>
-        <div style={{ display: "flex", gap: 16, marginTop: 12, fontSize: 12, color: "#6b7280" }}>
-          {[["مشغولة", "#16a34a", "#dcfce7"], ["شاغرة", "#6b7280", "#f3f4f6"], ["تحت الصيانة", "#d97706", "#fef3c7"]].map(([l, c, bg]) => (
-            <div key={l} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 10, height: 10, borderRadius: 3, background: bg, border: `1px solid ${c}44`, display: "inline-block" }} />
-              {l}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <h3 style={{ margin: 0 }}>الوحدات</h3>
-        <button onClick={openAdd} style={{ padding: "8px 16px", borderRadius: 8, background: "#2563eb", color: "#fff", border: "none", cursor: "pointer" }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+        <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8 }}>
           + إضافة وحدة
         </button>
+        <button onClick={fetchAll} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
       </div>
 
-      <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+      {units.length === 0 && (
+        <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>لا توجد وحدات مسجّلة لهذا العقار</div>
+      )}
+
+      {units.length > 0 && (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
-              {["الوحدة", "النوع", "الدور", "المساحة", "الإيجار الشهري", "الحالة", ""].map(h => (
-                <th key={h} style={{ padding: "10px 12px", textAlign: "right", fontWeight: 500, color: "#6b7280" }}>{h}</th>
+            <tr style={{ background: '#f9fafb', textAlign: 'right' }}>
+              {['رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الإيجار الشهري', 'الحالة', 'ملاحظات', ''].map(h => (
+                <th key={h} style={{ padding: '12px', borderBottom: '2px solid #e5e7eb', color: '#6b7280', fontWeight: 500 }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {units.map(u => (
-              <tr key={u.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                <td style={{ padding: "10px 12px" }}>{u.unit_number}</td>
-                <td style={{ padding: "10px 12px", color: "#6b7280" }}>{u.unit_type}</td>
-                <td style={{ padding: "10px 12px", color: "#6b7280" }}>{u.floor || "—"}</td>
-                <td style={{ padding: "10px 12px", color: "#6b7280" }}>{u.area_sqm ? `${u.area_sqm} م²` : "—"}</td>
-                <td style={{ padding: "10px 12px" }}>{u.monthly_rent ? `${Number(u.monthly_rent).toLocaleString()} ريال` : "—"}</td>
-                <td style={{ padding: "10px 12px" }}>
-                  <span style={{ background: statusBg[u.status], color: statusColor[u.status], padding: "3px 10px", borderRadius: 6, fontSize: 12 }}>{u.status}</span>
+              <tr key={u.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                <td style={{ padding: '12px', fontWeight: 600, color: '#1B4D7A' }}>{u.unit_number}</td>
+                <td style={{ padding: '12px' }}>{u.unit_type || '—'}</td>
+                <td style={{ padding: '12px' }}>{u.floor ?? '—'}</td>
+                <td style={{ padding: '12px' }}>{u.area_sqm ? u.area_sqm + ' م²' : '—'}</td>
+                <td style={{ padding: '12px', fontWeight: 600 }}>{u.monthly_rent ? Number(u.monthly_rent).toLocaleString() + ' ريال' : '—'}</td>
+                <td style={{ padding: '12px' }}>
+                  <span style={{ ...statusColor[u.status], padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>{u.status || '—'}</span>
                 </td>
-                <td style={{ padding: "10px 12px", display: "flex", gap: 8 }}>
-                  <button onClick={() => openEdit(u)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" }}>تعديل</button>
-                  <button onClick={() => deleteUnit(u.id)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fee2e2", background: "#fff", color: "#dc2626", cursor: "pointer" }}>حذف</button>
+                <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{u.notes || '—'}</td>
+                <td style={{ padding: '12px' }}>
+                  <button onClick={() => openEditForm(u)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
+                  <button onClick={() => handleDelete(u)} disabled={deletingId === u.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
+                    {deletingId === u.id ? '...' : 'حذف'}
+                  </button>
                 </td>
               </tr>
             ))}
-            {units.length === 0 && (
-              <tr><td colSpan={7} style={{ padding: "2rem", textAlign: "center", color: "#9ca3af" }}>لا توجد وحدات — اضغط "إضافة وحدة" للبدء</td></tr>
-            )}
           </tbody>
         </table>
-      </div>
+      )}
 
       {showForm && (
-        <div style={{ position: "fixed", inset: 0, background: "#0006", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
-          <div style={{ background: "#fff", borderRadius: 12, padding: "1.5rem", width: 480, direction: "rtl" }}>
-            <h3 style={{ margin: "0 0 1rem" }}>{editUnit ? "تعديل الوحدة" : "إضافة وحدة جديدة"}</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {[["unit_number", "رقم/اسم الوحدة"], ["floor", "الدور"], ["area_sqm", "المساحة (م²)"], ["monthly_rent", "الإيجار الشهري (ريال)"]].map(([key, label]) => (
-                <div key={key}>
-                  <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>{label}</label>
-                  <input value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })}
-                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
-                </div>
-              ))}
+        <div style={{ position: 'fixed', inset: 0, background: '#0006', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: '1.5rem', width: 480, maxWidth: '95%', direction: 'rtl', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ margin: '0 0 1rem' }}>{editingId ? 'تعديل الوحدة' : 'إضافة وحدة جديدة'}</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>النوع</label>
-                <select value={form.unit_type} onChange={e => setForm({ ...form, unit_type: e.target.value })}
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14 }}>
-                  {["شقة", "محل", "مكتب", "استوديو", "أخرى"].map(t => <option key={t}>{t}</option>)}
+                <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>رقم الوحدة</label>
+                <input value={form.unit_number} onChange={e => setForm({ ...form, unit_number: e.target.value })} placeholder="مثال: 101" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>النوع</label>
+                <select value={form.unit_type} onChange={e => setForm({ ...form, unit_type: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                  {UNIT_TYPES.map(t => <option key={t}>{t}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>الحالة</label>
-                <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14 }}>
-                  {["شاغرة", "مشغولة", "تحت الصيانة"].map(s => <option key={s}>{s}</option>)}
+                <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>الدور</label>
+                <input type="number" value={form.floor} onChange={e => setForm({ ...form, floor: e.target.value })} placeholder="اختياري" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>المساحة (م²)</label>
+                <input type="number" value={form.area_sqm} onChange={e => setForm({ ...form, area_sqm: e.target.value })} placeholder="اختياري" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>الإيجار الشهري (ريال)</label>
+                <input type="number" value={form.monthly_rent} onChange={e => setForm({ ...form, monthly_rent: e.target.value })} placeholder="اختياري" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>الحالة</label>
+                <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                  {UNIT_STATUS.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
+              <div style={{ gridColumn: 'span 2' }}>
+                <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>ملاحظات</label>
+                <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
+              </div>
             </div>
-            <div style={{ marginTop: 12 }}>
-              <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>ملاحظات</label>
-              <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2}
-                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
-            </div>
-            <div style={{ display: "flex", gap: 8, marginTop: "1rem", justifyContent: "flex-end" }}>
-              <button onClick={() => setShowForm(false)} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" }}>إلغاء</button>
-              <button onClick={saveUnit} style={{ padding: "8px 20px", borderRadius: 8, background: "#2563eb", color: "#fff", border: "none", cursor: "pointer" }}>
-                {editUnit ? "حفظ التعديل" : "إضافة"}
+            {formError && <div style={{ color: '#c00', fontSize: 13, marginTop: 8 }}>{formError}</div>}
+            <div style={{ display: 'flex', gap: 8, marginTop: '1rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowForm(false)} disabled={saving} style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>إلغاء</button>
+              <button onClick={handleSave} disabled={saving} style={{ padding: '8px 20px', borderRadius: 8, background: '#1B4D7A', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                {saving ? 'جاري الحفظ...' : editingId ? 'حفظ التعديل' : 'إضافة'}
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
-  );
+  )
 }
-
