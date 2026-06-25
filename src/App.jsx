@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import Properties from "./Properties";
 import Tenants from "./Tenants";
@@ -9,12 +9,12 @@ import Login from "./Login";
 import ViewerLayout from "./ViewerLayout";
 
 const NAV_ITEMS = [
-  { key: "dashboard", label: "???? ??????", icon: "??" },
-  { key: "properties", label: "????????", icon: "??" },
-  { key: "tenants", label: "??????????", icon: "??" },
-  { key: "leases", label: "??????", icon: "??" },
-  { key: "payments", label: "???????", icon: "??" },
-  { key: "reports", label: "????????", icon: "??" },
+  { key: "dashboard", label: "لوحة التحكم", icon: "🏠" },
+  { key: "properties", label: "العقارات", icon: "🏢" },
+  { key: "tenants", label: "المستأجرون", icon: "👤" },
+  { key: "leases", label: "العقود", icon: "📄" },
+  { key: "payments", label: "الدفعات", icon: "💰" },
+  { key: "reports", label: "التقارير", icon: "📊" },
 ];
 
 export default function App() {
@@ -63,10 +63,10 @@ export default function App() {
   };
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "Tahoma, Arial, sans-serif", direction: "rtl" }}>
+    <div style={{ display: "flex", minHeight: "100vh", fontFamily: "Cairo, sans-serif", direction: "rtl" }}>
       <div style={{ width: "220px", background: "#1B4D7A", display: "flex", flexDirection: "column", padding: "24px 0" }}>
         <div style={{ padding: "0 20px 24px", borderBottom: "1px solid #2E6394" }}>
-          <img src="/logo_v6_wide.svg" alt="????" style={{ width: "100%" }} />
+          <img src="/logo_v6_wide.svg" alt="شعار" style={{ width: "100%" }} />
         </div>
         <nav style={{ flex: 1, padding: "16px 0" }}>
           {NAV_ITEMS.map(item => (
@@ -74,7 +74,7 @@ export default function App() {
               display: "block", width: "100%", padding: "12px 20px", textAlign: "right",
               background: activePage === item.key ? "#2E6394" : "transparent",
               color: "#fff", border: "none", fontSize: "15px", cursor: "pointer",
-              fontFamily: "Tahoma, Arial, sans-serif", borderRight: activePage === item.key ? "4px solid #F5D98C" : "4px solid transparent"
+              fontFamily: "Cairo, sans-serif", borderRight: activePage === item.key ? "4px solid #F5D98C" : "4px solid transparent"
             }}>
               {item.icon} {item.label}
             </button>
@@ -83,21 +83,22 @@ export default function App() {
         <div style={{ padding: "16px 20px", borderTop: "1px solid #2E6394" }}>
           <button onClick={handleLogout} style={{
             width: "100%", padding: "10px", background: "#c0392b", color: "#fff",
-            border: "none", borderRadius: "8px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif", fontSize: "14px"
-          }}>???? ??</button>
+            border: "none", borderRadius: "8px", cursor: "pointer", fontFamily: "Cairo, sans-serif", fontSize: "14px"
+          }}>خروج 🚪</button>
         </div>
       </div>
+
       <div style={{ flex: 1, background: "#f0f4f8", overflow: "auto" }}>
         {activePage === "dashboard" && (
           <div style={{ padding: "32px" }}>
-            <h2 style={{ color: "#1B4D7A", marginBottom: "24px" }}>???? ??????</h2>
+            <h2 style={{ color: "#1B4D7A", marginBottom: "24px" }}>لوحة التحكم</h2>
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
               {[
-                { label: "????????", value: stats.properties, icon: "??", color: "#2E6394" },
-                { label: "???????", value: stats.units, icon: "??", color: "#27ae60" },
-                { label: "??????????", value: stats.tenants, icon: "??", color: "#8e44ad" },
-                { label: "??????", value: stats.leases, icon: "??", color: "#e67e22" },
-                { label: "???????", value: stats.payments, icon: "??", color: "#c0392b" },
+                { label: "العقارات", value: stats.properties, icon: "🏢", color: "#2E6394" },
+                { label: "الوحدات", value: stats.units, icon: "🚪", color: "#27ae60" },
+                { label: "المستأجرون", value: stats.tenants, icon: "👤", color: "#8e44ad" },
+                { label: "العقود", value: stats.leases, icon: "📄", color: "#e67e22" },
+                { label: "الدفعات", value: stats.payments, icon: "💰", color: "#c0392b" },
               ].map(card => (
                 <div key={card.label} style={cardStyle}>
                   <div style={{ fontSize: "32px" }}>{card.icon}</div>
@@ -117,5 +118,3 @@ export default function App() {
     </div>
   );
 }
-
-
