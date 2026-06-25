@@ -60,6 +60,11 @@ export default function App() {
     });
   }
 
+  function goBack() {
+    setActivePage("dashboard");
+    fetchStats();
+  }
+
   function handleLogout() {
     localStorage.removeItem("role");
     setRole(null);
@@ -120,11 +125,11 @@ export default function App() {
             </div>
           </div>
         )}
-        {activePage === "properties" && <Properties onBack={() => setActivePage("dashboard")} />}
-        {activePage === "tenants" && <Tenants onBack={() => setActivePage("dashboard")} />}
-        {activePage === "leases" && <Leases onBack={() => setActivePage("dashboard")} />}
-        {activePage === "payments" && <Payments onBack={() => setActivePage("dashboard")} />}
-        {activePage === "reports" && <Reports onBack={() => setActivePage("dashboard")} />}
+        {activePage === "properties" && <Properties onBack={goBack} />}
+        {activePage === "tenants" && <Tenants onBack={goBack} />}
+        {activePage === "leases" && <Leases onBack={goBack} />}
+        {activePage === "payments" && <Payments onBack={goBack} />}
+        {activePage === "reports" && <Reports onBack={goBack} />}
       </div>
     </div>
   );
