@@ -213,7 +213,7 @@ export default function Leases({ onBack }) {
                   <option value="">اختر الوحدة</option>
                   {filteredUnits.map(u => (
                     <option key={u.id} value={u.id}>
-                      {u.unit_number} {u.status === "شاغرة" ? "(شاغرة)" : u.status === "صيانة" ? "(صيانة)" : ""}
+    {u.unit_number} - {u.unit_type} {u.status === "شاغرة" ? "(شاغرة)" : u.status === "صيانة" ? "(صيانة)" : ""}
                     </option>
                   ))}
                 </select>
