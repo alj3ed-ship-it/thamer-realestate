@@ -136,10 +136,18 @@ export default function Payments({ onBack }) {
   async function handleSave() {
     if (!form.lease_id || !form.amount || !form.payment_date) return;
     setSaving(true);
+    const lease = leases.find(l => l.id === form.lease_id);
+    const freq = FREQUENCY_MAP[lease?.payment_type] || 1;
+    const installment = Math.round(Number(lease?.rent_amount || 0) / freq);
+    const paid = Number(form.amount);
+    let autoStatus = "مدفوع";
+    if (paid <= 0) autoStatus = "متأخر";
+    else if (paid < installment) autoStatus = "جزئي";
+    else autoStatus = "مدفوع";
     const payload = {
-      lease_id: form.lease_id, amount: Number(form.amount),
+      lease_id: form.lease_id, amount: paid,
       payment_date: form.payment_date, payment_method: form.payment_method,
-      status: form.status, notes: form.notes || null,
+      status: autoStatus, notes: form.notes || null,
     };
     if (editingId) await supabase.from("payments").update(payload).eq("id", editingId);
     else await supabase.from("payments").insert([payload]);
