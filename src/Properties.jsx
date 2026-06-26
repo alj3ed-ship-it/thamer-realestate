@@ -1,8 +1,9 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 
 function Properties({ onBack, onSelectProperty }) {
   const [properties, setProperties] = useState([])
+  const [unitCounts, setUnitCounts] = useState({})
   const [status, setStatus] = useState('loading')
   const [errorMsg, setErrorMsg] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -11,36 +12,39 @@ function Properties({ onBack, onSelectProperty }) {
   const [editingId, setEditingId] = useState(null)
   const [formName, setFormName] = useState('')
   const [formAddress, setFormAddress] = useState('')
-  const [formUnits, setFormUnits] = useState('')
   const [formError, setFormError] = useState('')
 
   async function fetchProperties() {
     setStatus('loading')
     setErrorMsg('')
-    const { data, error } = await supabase
-      .from('properties')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (error) { setErrorMsg(error.message); setStatus('error'); return }
-    setProperties(data)
+    const [propsRes, unitsRes] = await Promise.all([
+      supabase.from('properties').select('*').order('created_at', { ascending: false }),
+      supabase.from('units').select('property_id')
+    ])
+    if (propsRes.error) { setErrorMsg(propsRes.error.message); setStatus('error'); return }
+    setProperties(propsRes.data)
+    const counts = {}
+    for (const u of (unitsRes.data || [])) {
+      counts[u.property_id] = (counts[u.property_id] || 0) + 1
+    }
+    setUnitCounts(counts)
     setStatus('success')
   }
 
   useEffect(() => { fetchProperties() }, [])
 
   function openAddForm() {
-    setEditingId(null); setFormName(''); setFormAddress(''); setFormUnits(''); setFormError(''); setShowForm(true)
+    setEditingId(null); setFormName(''); setFormAddress(''); setFormError(''); setShowForm(true)
   }
 
   function openEditForm(property) {
-    setEditingId(property.id); setFormName(property.name || ''); setFormAddress(property.address || '')
-    setFormUnits(property.total_units ?? ''); setFormError(''); setShowForm(true)
+    setEditingId(property.id); setFormName(property.name || ''); setFormAddress(property.address || ''); setFormError(''); setShowForm(true)
   }
 
   async function handleSave() {
     if (!formName.trim()) { setFormError('اسم العقار مطلوب'); return }
     setSaving(true); setFormError('')
-    const payload = { name: formName.trim(), address: formAddress.trim() || null, total_units: formUnits ? parseInt(formUnits, 10) : null }
+    const payload = { name: formName.trim(), address: formAddress.trim() || null }
     let error
     if (editingId) { const res = await supabase.from('properties').update(payload).eq('id', editingId); error = res.error }
     else { const res = await supabase.from('properties').insert([payload]); error = res.error }
@@ -90,16 +94,13 @@ function Properties({ onBack, onSelectProperty }) {
             {properties.map((p) => (
               <tr key={p.id} style={{ borderBottom: '1px solid #eee' }}>
                 <td style={{ padding: '12px' }}>
-                  <span
-                    onClick={() => onSelectProperty && onSelectProperty(p.id)}
-                    style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 'bold', textDecoration: 'underline', textUnderlineOffset: '3px' }}
-                    title="اضغط لعرض الوحدات"
-                  >
+                  <span onClick={() => onSelectProperty && onSelectProperty(p.id)}
+                    style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 'bold', textDecoration: 'underline', textUnderlineOffset: '3px' }}>
                     {p.name}
                   </span>
                 </td>
                 <td style={{ padding: '12px' }}>{p.address || '—'}</td>
-                <td style={{ padding: '12px' }}>{p.total_units ?? '—'}</td>
+                <td style={{ padding: '12px', fontWeight: 600, color: '#1B4D7A' }}>{unitCounts[p.id] || 0}</td>
                 <td style={{ padding: '12px', textAlign: 'left' }}>
                   <button onClick={() => openEditForm(p)} style={{ padding: '6px 12px', cursor: 'pointer', background: '#eef3ff', color: '#1B4D7A', border: '1px solid #c0d0e8', borderRadius: '6px', fontSize: '13px', marginLeft: '8px' }}>تعديل</button>
                   <button onClick={() => handleDelete(p)} disabled={deletingId === p.id} style={{ padding: '6px 12px', cursor: 'pointer', background: '#fee', color: '#c00', border: '1px solid #fcc', borderRadius: '6px', fontSize: '13px' }}>
@@ -120,8 +121,6 @@ function Properties({ onBack, onSelectProperty }) {
             <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }} placeholder="مثال: عمارة سلمان" />
             <label style={{ display: 'block', marginBottom: '6px', color: '#444' }}>العنوان</label>
             <input type="text" value={formAddress} onChange={(e) => setFormAddress(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }} placeholder="اختياري" />
-            <label style={{ display: 'block', marginBottom: '6px', color: '#444' }}>عدد الوحدات</label>
-            <input type="number" value={formUnits} onChange={(e) => setFormUnits(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }} placeholder="اختياري" />
             {formError && <div style={{ color: '#c00', marginBottom: '15px', fontSize: '14px' }}>{formError}</div>}
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button onClick={() => setShowForm(false)} disabled={saving} style={{ padding: '10px 20px', cursor: 'pointer' }}>إلغاء</button>
