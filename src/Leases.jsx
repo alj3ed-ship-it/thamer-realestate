@@ -79,7 +79,7 @@ export default function Leases({ onBack }) {
       units.filter(u =>
         u.property_id === lease.property_id &&
         (u.status === "شاغرة" || currentUnitIds.includes(u.id))
-      )
+      ).sort((a, b) => Number(a.unit_number) - Number(b.unit_number))
     );
     setShowForm(true);
   }
@@ -88,9 +88,8 @@ export default function Leases({ onBack }) {
     setForm(prev => ({ ...prev, property_id: propertyId, selected_unit_ids: [] }));
     setFilteredUnits(
       units.filter(u =>
-        u.property_id === propertyId &&
-        (u.status === "شاغرة")
-      )
+        u.property_id === propertyId && u.status === "شاغرة"
+      ).sort((a, b) => Number(a.unit_number) - Number(b.unit_number))
     );
   }
 
