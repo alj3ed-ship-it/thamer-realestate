@@ -8,6 +8,50 @@ const PAYMENT_TYPES = [
   { label: "سنوي", multiplier: 1 },
 ];
 
+// تحويل هجري إلى ميلادي (خوارزمية كويتية)
+function hijriToGregorian(hy, hm, hd) {
+  try {
+    const jd = Math.floor((11 * hy + 3) / 30) + 354 * hy + 30 * hm -
+      Math.floor((hm - 1) / 2) + hd + 1948440 - 385;
+    let l = jd + 68569;
+    const n = Math.floor((4 * l) / 146097);
+    l = l - Math.floor((146097 * n + 3) / 4);
+    const i = Math.floor((4000 * (l + 1)) / 1461001);
+    l = l - Math.floor((1461 * i) / 4) + 31;
+    const j = Math.floor((80 * l) / 2447);
+    const day = l - Math.floor((2447 * j) / 80);
+    l = Math.floor(j / 11);
+    const month = j + 2 - 12 * l;
+    const year = 100 * (n - 49) + i + l;
+    return { year, month, day };
+  } catch {
+    return null;
+  }
+}
+
+function hijriInputToGregorian(hijriStr) {
+  // يقبل: 1448/1/1 أو 1448-1-1
+  const parts = hijriStr.replace(/-/g, "/").split("/");
+  if (parts.length !== 3) return null;
+  const hy = parseInt(parts[0]);
+  const hm = parseInt(parts[1]);
+  const hd = parseInt(parts[2]);
+  if (isNaN(hy) || isNaN(hm) || isNaN(hd)) return null;
+  if (hy < 1400 || hy > 1500 || hm < 1 || hm > 12 || hd < 1 || hd > 30) return null;
+  const g = hijriToGregorian(hy, hm, hd);
+  if (!g) return null;
+  const mm = String(g.month).padStart(2, "0");
+  const dd = String(g.day).padStart(2, "0");
+  return `${g.year}-${mm}-${dd}`;
+}
+
+function gregorianToDisplay(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d)) return dateStr;
+  return d.toLocaleDateString("ar-SA-u-ca-islamic", { year: "numeric", month: "numeric", day: "numeric" });
+}
+
 export default function Leases({ onBack }) {
   const [leases, setLeases] = useState([]);
   const [leaseUnits, setLeaseUnits] = useState([]);
@@ -22,8 +66,9 @@ export default function Leases({ onBack }) {
   const [deletingId, setDeletingId] = useState(null);
   const [form, setForm] = useState({
     property_id: "", selected_unit_ids: [], tenant_id: "",
-    start_date: "", end_date: "", rent_amount: "",
-    payment_type: "سنوي", notes: "",
+    start_hijri: "", end_hijri: "",
+    start_date: "", end_date: "",
+    rent_amount: "", payment_type: "سنوي", notes: "",
   });
 
   useEffect(() => { fetchAll(); }, []);
@@ -57,7 +102,7 @@ export default function Leases({ onBack }) {
 
   function openAddForm() {
     setEditingId(null);
-    setForm({ property_id: "", selected_unit_ids: [], tenant_id: "", start_date: "", end_date: "", rent_amount: "", payment_type: "سنوي", notes: "" });
+    setForm({ property_id: "", selected_unit_ids: [], tenant_id: "", start_hijri: "", end_hijri: "", start_date: "", end_date: "", rent_amount: "", payment_type: "سنوي", notes: "" });
     setFilteredUnits([]);
     setShowForm(true);
   }
@@ -69,6 +114,7 @@ export default function Leases({ onBack }) {
       property_id: lease.property_id || "",
       selected_unit_ids: currentUnitIds,
       tenant_id: lease.tenant_id || "",
+      start_hijri: "", end_hijri: "",
       start_date: lease.start_date || "",
       end_date: lease.end_date || "",
       rent_amount: lease.rent_amount || "",
@@ -91,6 +137,15 @@ export default function Leases({ onBack }) {
         u.property_id === propertyId && u.status === "شاغرة"
       ).sort((a, b) => Number(a.unit_number) - Number(b.unit_number))
     );
+  }
+
+  function handleHijriChange(field, value) {
+    const gregorian = hijriInputToGregorian(value);
+    if (field === "start") {
+      setForm(prev => ({ ...prev, start_hijri: value, start_date: gregorian || "" }));
+    } else {
+      setForm(prev => ({ ...prev, end_hijri: value, end_date: gregorian || "" }));
+    }
   }
 
   function toggleUnit(unitId) {
@@ -130,7 +185,6 @@ export default function Leases({ onBack }) {
     let leaseId = editingId;
 
     if (editingId) {
-      // جيب الوحدات من Supabase مباشرة
       const { data: oldLU } = await supabase.from("lease_units").select("unit_id").eq("lease_id", editingId);
       const oldUnitIds = (oldLU || []).map(r => r.unit_id);
       for (const uid of oldUnitIds) {
@@ -160,11 +214,8 @@ export default function Leases({ onBack }) {
   async function handleDelete(lease) {
     if (!window.confirm("حذف العقد؟")) return;
     setDeletingId(lease.id);
-
-    // جيب الوحدات من Supabase مباشرة — مو من الـ state
     const { data: luData } = await supabase.from("lease_units").select("unit_id").eq("lease_id", lease.id);
     const unitIds = (luData || []).map(r => r.unit_id);
-
     for (const uid of unitIds) {
       await supabase.from("units").update({ status: "شاغرة" }).eq("id", uid);
     }
@@ -175,6 +226,8 @@ export default function Leases({ onBack }) {
   }
 
   const total = getTotal();
+  const startGregorian = form.start_hijri ? hijriInputToGregorian(form.start_hijri) : null;
+  const endGregorian = form.end_hijri ? hijriInputToGregorian(form.end_hijri) : null;
 
   return (
     <div dir="rtl" style={{ fontFamily: "Cairo, sans-serif", padding: "40px", maxWidth: "1100px", margin: "0 auto" }}>
@@ -226,8 +279,22 @@ export default function Leases({ onBack }) {
                     </span>
                   </td>
                   <td style={{ padding: "12px" }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</td>
-                  <td style={{ padding: "12px", color: "#6b7280" }}>{l.start_date || "—"}</td>
-                  <td style={{ padding: "12px", color: "#6b7280" }}>{l.end_date || "—"}</td>
+                  <td style={{ padding: "12px", color: "#6b7280", fontSize: 12 }}>
+                    {l.start_date ? (
+                      <div>
+                        <div>{gregorianToDisplay(l.start_date)}</div>
+                        <div style={{ color: "#9ca3af", fontSize: 11 }}>{l.start_date}</div>
+                      </div>
+                    ) : "—"}
+                  </td>
+                  <td style={{ padding: "12px", color: "#6b7280", fontSize: 12 }}>
+                    {l.end_date ? (
+                      <div>
+                        <div>{gregorianToDisplay(l.end_date)}</div>
+                        <div style={{ color: "#9ca3af", fontSize: 11 }}>{l.end_date}</div>
+                      </div>
+                    ) : "—"}
+                  </td>
                   <td style={{ padding: "12px", color: "#6b7280", maxWidth: "180px", whiteSpace: "normal", wordBreak: "break-word" }}>{l.notes || "—"}</td>
                   <td style={{ padding: "12px" }}>
                     <button onClick={() => openEditForm(l)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer", marginLeft: 6 }}>تعديل</button>
@@ -244,7 +311,7 @@ export default function Leases({ onBack }) {
 
       {showForm && (
         <div style={{ position: "fixed", inset: 0, background: "#0006", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
-          <div style={{ background: "#fff", borderRadius: 12, padding: "1.5rem", width: 540, maxWidth: "95%", direction: "rtl", maxHeight: "90vh", overflowY: "auto" }}>
+          <div style={{ background: "#fff", borderRadius: 12, padding: "1.5rem", width: 560, maxWidth: "95%", direction: "rtl", maxHeight: "90vh", overflowY: "auto" }}>
             <h3 style={{ margin: "0 0 1rem" }}>{editingId ? "تعديل العقد" : "إضافة عقد جديد"}</h3>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -277,7 +344,6 @@ export default function Leases({ onBack }) {
                             fontFamily: "Cairo, sans-serif", fontWeight: selected ? 700 : 400
                           }}>
                             {u.unit_number} - {u.unit_type}
-                            {u.status === "صيانة" ? " (صيانة)" : ""}
                           </button>
                         );
                       })}
@@ -301,15 +367,31 @@ export default function Leases({ onBack }) {
               </div>
 
               <div>
-                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>تاريخ البداية</label>
-                <input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })}
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
+                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>تاريخ البداية (هجري)</label>
+                <input type="text" value={form.start_hijri}
+                  onChange={e => handleHijriChange("start", e.target.value)}
+                  placeholder="مثال: 1448/1/1"
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${form.start_hijri && !startGregorian ? "#f87171" : "#e5e7eb"}`, fontSize: 14, boxSizing: "border-box" }} />
+                {startGregorian && (
+                  <div style={{ fontSize: 11, color: "#059669", marginTop: 3 }}>← {startGregorian}</div>
+                )}
+                {form.start_hijri && !startGregorian && (
+                  <div style={{ fontSize: 11, color: "#ef4444", marginTop: 3 }}>تاريخ غير صحيح</div>
+                )}
               </div>
 
               <div>
-                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>تاريخ النهاية</label>
-                <input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })}
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
+                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>تاريخ النهاية (هجري)</label>
+                <input type="text" value={form.end_hijri}
+                  onChange={e => handleHijriChange("end", e.target.value)}
+                  placeholder="مثال: 1449/1/1"
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${form.end_hijri && !endGregorian ? "#f87171" : "#e5e7eb"}`, fontSize: 14, boxSizing: "border-box" }} />
+                {endGregorian && (
+                  <div style={{ fontSize: 11, color: "#059669", marginTop: 3 }}>← {endGregorian}</div>
+                )}
+                {form.end_hijri && !endGregorian && (
+                  <div style={{ fontSize: 11, color: "#ef4444", marginTop: 3 }}>تاريخ غير صحيح</div>
+                )}
               </div>
 
               <div>
@@ -331,7 +413,7 @@ export default function Leases({ onBack }) {
             {total && (
               <div style={{ margin: "12px 0", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 16px", display: "flex", justifyContent: "space-between" }}>
                 <div><span style={{ color: "#6b7280", fontSize: 13 }}>الإيجار السنوي: </span><span style={{ fontWeight: 700, fontSize: 16, color: "#1d4ed8" }}>{total.annual.toLocaleString()} ريال</span></div>
-                <div><span style={{ color: "#6b7280", fontSize: 13 }}>كل دفعة: </span><span style={{ fontWeight: 700, fontSize: 16, color: "#059669" }}>{total.installment.toLocaleString()} ريال � {total.count}</span></div>
+                <div><span style={{ color: "#6b7280", fontSize: 13 }}>كل دفعة: </span><span style={{ fontWeight: 700, fontSize: 16, color: "#059669" }}>{total.installment.toLocaleString()} ريال × {total.count}</span></div>
               </div>
             )}
 
