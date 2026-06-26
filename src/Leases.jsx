@@ -97,7 +97,7 @@ export default function Leases({ onBack }) {
   function getLeaseUnitsDisplay(leaseId) {
     const ids = getLeaseUnitIds(leaseId);
     return ids.map(id => units.find(u => u.id === id)).filter(Boolean)
-      .map(u => u.unit_number).join(" + ") || "—";
+      .map(u => u.unit_number + " " + u.unit_type).join(" + ") || "—";
   }
 
   function openAddForm() {
