@@ -88,12 +88,10 @@ export default function Leases({ onBack }) {
     const sorted = leasesData.sort((a, b) => {
       const aUnitObjs = luData.filter(x => x.lease_id === a.id).map(x => unitsData.find(u => u.id === x.unit_id)).filter(Boolean);
       const bUnitObjs = luData.filter(x => x.lease_id === b.id).map(x => unitsData.find(u => u.id === x.unit_id)).filter(Boolean);
-      const aIsShop = aUnitObjs.some(u => u.unit_type === "0645062d0644");
-      const bIsShop = bUnitObjs.some(u => u.unit_type === "0645062d0644");
-      if (aIsShop && !bIsShop) return -1;
-      if (!aIsShop && bIsShop) return 1;
-      const aMin = aUnitObjs.length ? Math.min(...aUnitObjs.map(u => Number(u.unit_number))) : 999;
-      const bMin = bUnitObjs.length ? Math.min(...bUnitObjs.map(u => Number(u.unit_number))) : 999;
+      const SHOP_TYPES = ["u0645u062du0644", "shop", "Store"];
+      const aIsShop = aUnitObjs.some(u => SHOP_TYPES.includes(u.unit_type) || (!["\u0634\u0642\u0629","\u0648\u0631\u0634\u0629"].includes(u.unit_type)));
+      const aMin = aUnitObjs.length ? Math.min(...aUnitObjs.map(u => Number(u.unit_number) + (["\u0634\u0642\u0629","\u0648\u0631\u0634\u0629"].includes(u.unit_type) ? 1000 : 0))) : 9999;
+      const bMin = bUnitObjs.length ? Math.min(...bUnitObjs.map(u => Number(u.unit_number) + (["\u0634\u0642\u0629","\u0648\u0631\u0634\u0629"].includes(u.unit_type) ? 1000 : 0))) : 9999;
       return aMin - bMin;
     });
     setLeases(sorted);
