@@ -78,7 +78,7 @@ export default function Leases({ onBack }) {
     setFilteredUnits(
       units.filter(u =>
         u.property_id === lease.property_id &&
-    (u.status === "شاغرة" || currentUnitIds.includes(u.id))
+        (u.status === "شاغرة" || currentUnitIds.includes(u.id))
       )
     );
     setShowForm(true);
@@ -89,7 +89,7 @@ export default function Leases({ onBack }) {
     setFilteredUnits(
       units.filter(u =>
         u.property_id === propertyId &&
-      (u.status === "شاغرة")
+        (u.status === "شاغرة")
       )
     );
   }
@@ -130,7 +130,9 @@ export default function Leases({ onBack }) {
     let leaseId = editingId;
 
     if (editingId) {
-      const oldUnitIds = getLeaseUnitIds(editingId);
+      // جيب الوحدات من Supabase مباشرة
+      const { data: oldLU } = await supabase.from("lease_units").select("unit_id").eq("lease_id", editingId);
+      const oldUnitIds = (oldLU || []).map(r => r.unit_id);
       for (const uid of oldUnitIds) {
         await supabase.from("units").update({ status: "شاغرة" }).eq("id", uid);
       }
@@ -158,7 +160,11 @@ export default function Leases({ onBack }) {
   async function handleDelete(lease) {
     if (!window.confirm("حذف العقد؟")) return;
     setDeletingId(lease.id);
-    const unitIds = getLeaseUnitIds(lease.id);
+
+    // جيب الوحدات من Supabase مباشرة — مو من الـ state
+    const { data: luData } = await supabase.from("lease_units").select("unit_id").eq("lease_id", lease.id);
+    const unitIds = (luData || []).map(r => r.unit_id);
+
     for (const uid of unitIds) {
       await supabase.from("units").update({ status: "شاغرة" }).eq("id", uid);
     }
