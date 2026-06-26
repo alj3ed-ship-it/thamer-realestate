@@ -86,10 +86,14 @@ export default function Leases({ onBack }) {
     const luData = lu.data || [];
     const unitsData = u.data || [];
     const sorted = leasesData.sort((a, b) => {
-      const aUnits = luData.filter(x => x.lease_id === a.id).map(x => unitsData.find(u => u.id === x.unit_id)?.unit_number).filter(Boolean);
-      const bUnits = luData.filter(x => x.lease_id === b.id).map(x => unitsData.find(u => u.id === x.unit_id)?.unit_number).filter(Boolean);
-      const aMin = aUnits.length ? Math.min(...aUnits.map(Number)) : 999;
-      const bMin = bUnits.length ? Math.min(...bUnits.map(Number)) : 999;
+      const aUnitObjs = luData.filter(x => x.lease_id === a.id).map(x => unitsData.find(u => u.id === x.unit_id)).filter(Boolean);
+      const bUnitObjs = luData.filter(x => x.lease_id === b.id).map(x => unitsData.find(u => u.id === x.unit_id)).filter(Boolean);
+      const aIsShop = aUnitObjs.some(u => u.unit_type === "u0645u062du0644");
+      const bIsShop = bUnitObjs.some(u => u.unit_type === "u0645u062du0644");
+      if (aIsShop && !bIsShop) return -1;
+      if (!aIsShop && bIsShop) return 1;
+      const aMin = aUnitObjs.length ? Math.min(...aUnitObjs.map(u => Number(u.unit_number))) : 999;
+      const bMin = bUnitObjs.length ? Math.min(...bUnitObjs.map(u => Number(u.unit_number))) : 999;
       return aMin - bMin;
     });
     setLeases(sorted);
