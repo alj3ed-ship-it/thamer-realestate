@@ -9,6 +9,7 @@ import Defaulters from "./Defaulters";
 import Login from "./Login";
 import ViewerLayout from "./ViewerLayout";
 import PropertyDetail from "./PropertyDetail";
+import Units from "./Units";
 
 const T = {
   dashboard: "\u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645",
@@ -25,6 +26,7 @@ const T = {
 const NAV_ITEMS = [
   { key: "dashboard", label: T.dashboard, icon: "\uD83C\uDFE0" },
   { key: "properties", label: T.properties, icon: "\uD83C\uDFE2\uD83C\uDFE2\uD83C\uDFE2" },
+  { key: "units", label: T.units, icon: "\uD83D\uDEAA" },
   { key: "tenants", label: T.tenants, icon: "\uD83D\uDC64" },
   { key: "leases", label: T.leases, icon: "\uD83D\uDCC4" },
   { key: "payments", label: T.payments, icon: "\uD83D\uDCB0" },
@@ -118,7 +120,7 @@ export default function App() {
             <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
               {[
                 { label: T.properties, value: stats.properties, icon: "\uD83C\uDFE2\uD83C\uDFE2\uD83C\uDFE2", color: "#2E6394", page: "properties" },
-                { label: T.units, value: stats.units, icon: "\uD83D\uDEAA\uD83D\uDEAA\uD83D\uDEAA", color: "#27ae60", page: null },
+                { label: T.units, value: stats.units, icon: "\uD83D\uDEAA\uD83D\uDEAA\uD83D\uDEAA", color: "#27ae60", page: "units" },
                 { label: T.tenants, value: stats.tenants, icon: "\uD83D\uDC64", color: "#8e44ad", page: "tenants" },
                 { label: T.leases, value: stats.leases, icon: "\uD83D\uDCC4", color: "#e67e22", page: "leases" },
                 { label: T.payments, value: stats.payments, icon: "\uD83D\uDCB0", color: "#c0392b", page: "payments" },
@@ -144,6 +146,7 @@ export default function App() {
             onBack={() => setSelectedPropertyId(null)}
           />
         )}
+        {activePage === "units" && <Units onBack={goBack} />}
         {activePage === "tenants" && <Tenants onBack={goBack} />}
         {activePage === "leases" && <Leases onBack={goBack} />}
         {activePage === "payments" && <Payments onBack={goBack} />}
