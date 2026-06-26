@@ -109,7 +109,8 @@ export default function Leases({ onBack }) {
     const amount = Number(form.rent_amount);
     if (!amount) return null;
     const type = PAYMENT_TYPES.find(p => p.label === form.payment_type);
-    return amount * (type?.multiplier || 1);
+    const installment = Math.round(amount / (type?.multiplier || 1));
+    return { annual: amount, installment, count: type?.multiplier || 1 };
   }
 
   async function handleSave() {
@@ -329,9 +330,9 @@ export default function Leases({ onBack }) {
             </div>
 
             {total && (
-              <div style={{ margin: "12px 0", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 16px" }}>
-                <span style={{ color: "#6b7280", fontSize: 13 }}>الإجمالي السنوي: </span>
-                <span style={{ fontWeight: 700, fontSize: 18, color: "#1d4ed8" }}>{total.toLocaleString()} ريال</span>
+              <div style={{ margin: "12px 0", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 16px", display: "flex", justifyContent: "space-between" }}>
+                <div><span style={{ color: "#6b7280", fontSize: 13 }}>الإيجار السنوي: </span><span style={{ fontWeight: 700, fontSize: 16, color: "#1d4ed8" }}>{total.annual.toLocaleString()} ريال</span></div>
+                <div><span style={{ color: "#6b7280", fontSize: 13 }}>كل دفعة: </span><span style={{ fontWeight: 700, fontSize: 16, color: "#059669" }}>{total.installment.toLocaleString()} ريال � {total.count}</span></div>
               </div>
             )}
 
