@@ -127,7 +127,7 @@ export default function Payments({ onBack }) {
     setForm(prev => ({
       ...prev,
       lease_id: leaseId,
-      amount: String(installment),
+      amount: "",
       payment_date: new Date().toISOString().split("T")[0],
       status: autoStatus,
     }));
@@ -378,13 +378,6 @@ export default function Payments({ onBack }) {
                 <select value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })}
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14 }}>
                   {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>الحالة</label>
-                <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14 }}>
-                  {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div style={{ gridColumn: "span 2" }}>
