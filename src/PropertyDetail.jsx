@@ -12,7 +12,7 @@ export default function PropertyDetail({ propertyId, onBack }) {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({ unit_number: '', unit_type: 'شقة', floor: '', area_sqm: '', monthly_rent: '', status: 'شاغرة', notes: '' })
+  const [form, setForm] = useState({ unit_number: '', unit_type: 'شقة', floor: '', area_sqm: '', status: 'شاغرة', notes: '' })
   const [formError, setFormError] = useState('')
 
   useEffect(() => { fetchAll() }, [propertyId])
@@ -30,7 +30,7 @@ export default function PropertyDetail({ propertyId, onBack }) {
 
   function openAddForm() {
     setEditingId(null)
-    setForm({ unit_number: '', unit_type: 'شقة', floor: '', area_sqm: '', monthly_rent: '', status: 'شاغرة', notes: '' })
+    setForm({ unit_number: '', unit_type: 'شقة', floor: '', area_sqm: '', status: 'شاغرة', notes: '' })
     setFormError('')
     setShowForm(true)
   }
@@ -42,7 +42,6 @@ export default function PropertyDetail({ propertyId, onBack }) {
       unit_type: unit.unit_type || 'شقة',
       floor: unit.floor ?? '',
       area_sqm: unit.area_sqm ?? '',
-      monthly_rent: unit.monthly_rent ?? '',
       status: unit.status || 'شاغرة',
       notes: unit.notes || ''
     })
@@ -57,12 +56,12 @@ export default function PropertyDetail({ propertyId, onBack }) {
       property_id: propertyId,
       unit_number: form.unit_number.trim(),
       unit_type: form.unit_type,
-      floor: form.floor !== '' && form.floor !== null ? parseInt(form.floor) : null,
-      area_sqm: form.area_sqm !== '' && form.area_sqm !== null ? parseFloat(form.area_sqm) : null,
-      monthly_rent: form.monthly_rent !== '' && form.monthly_rent !== null ? parseFloat(String(form.monthly_rent).replace(/,/g, '')) : null,
       status: form.status,
       notes: form.notes.trim() || null
     }
+    if (form.floor !== '' && form.floor !== null) payload.floor = parseInt(form.floor)
+    if (form.area_sqm !== '' && form.area_sqm !== null) payload.area_sqm = parseFloat(form.area_sqm)
+
     let error
     if (editingId) {
       const res = await supabase.from('units').update(payload).eq('id', editingId)
@@ -89,8 +88,6 @@ export default function PropertyDetail({ propertyId, onBack }) {
     'صيانة': { background: '#fee2e2', color: '#991b1b' }
   }
 
-  const totalAnnual = units.filter(u => u.status === 'مؤجرة').reduce((s, u) => s + (Number(u.monthly_rent) || 0), 0)
-
   if (loading) return <div style={{ padding: 40, fontFamily: 'Cairo, sans-serif' }}>جاري التحميل...</div>
 
   return (
@@ -107,7 +104,7 @@ export default function PropertyDetail({ propertyId, onBack }) {
           { label: 'إجمالي الوحدات', value: units.length, bg: '#eff6ff', color: '#1B4D7A' },
           { label: 'مؤجرة', value: units.filter(u => u.status === 'مؤجرة').length, bg: '#dcfce7', color: '#166534' },
           { label: 'شاغرة', value: units.filter(u => u.status === 'شاغرة').length, bg: '#fef9c3', color: '#854d0e' },
-          { label: 'إيجار سنوي', value: totalAnnual.toLocaleString() + ' ريال', bg: '#f3e8ff', color: '#6b21a8' },
+          { label: 'صيانة', value: units.filter(u => u.status === 'صيانة').length, bg: '#fee2e2', color: '#991b1b' },
         ].map(c => (
           <div key={c.label} style={{ background: c.bg, borderRadius: 10, padding: '14px 20px', minWidth: 140 }}>
             <div style={{ fontSize: 13, color: c.color, marginBottom: 4 }}>{c.label}</div>
@@ -131,7 +128,7 @@ export default function PropertyDetail({ propertyId, onBack }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ background: '#f9fafb', textAlign: 'right' }}>
-              {['رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الإيجار السنوي', 'الحالة', 'ملاحظات', ''].map(h => (
+              {['رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'ملاحظات', ''].map(h => (
                 <th key={h} style={{ padding: '12px', borderBottom: '2px solid #e5e7eb', color: '#6b7280', fontWeight: 500 }}>{h}</th>
               ))}
             </tr>
@@ -143,7 +140,6 @@ export default function PropertyDetail({ propertyId, onBack }) {
                 <td style={{ padding: '12px' }}>{u.unit_type || '—'}</td>
                 <td style={{ padding: '12px' }}>{u.floor ?? '—'}</td>
                 <td style={{ padding: '12px' }}>{u.area_sqm ? u.area_sqm + ' م²' : '—'}</td>
-                <td style={{ padding: '12px', fontWeight: 600 }}>{u.monthly_rent ? Number(u.monthly_rent).toLocaleString() + ' ريال' : '—'}</td>
                 <td style={{ padding: '12px' }}>
                   <span style={{ ...statusColor[u.status], padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>{u.status || '—'}</span>
                 </td>
@@ -167,12 +163,7 @@ export default function PropertyDetail({ propertyId, onBack }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>رقم الوحدة</label>
-                <input
-                  value={form.unit_number}
-                  onChange={e => setForm({ ...form, unit_number: e.target.value })}
-                  placeholder="مثال: 1+2+3"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }}
-                />
+                <input value={form.unit_number} onChange={e => setForm({ ...form, unit_number: e.target.value })} placeholder="مثال: 1+2+3" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
               </div>
               <div>
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>النوع</label>
@@ -182,32 +173,13 @@ export default function PropertyDetail({ propertyId, onBack }) {
               </div>
               <div>
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>الدور</label>
-                <input
-                  value={form.floor}
-                  onChange={e => setForm({ ...form, floor: e.target.value })}
-                  placeholder="اختياري"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }}
-                />
+                <input value={form.floor} onChange={e => setForm({ ...form, floor: e.target.value })} placeholder="اختياري" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
               </div>
               <div>
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>المساحة (م²)</label>
-                <input
-                  value={form.area_sqm}
-                  onChange={e => setForm({ ...form, area_sqm: e.target.value })}
-                  placeholder="اختياري"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }}
-                />
+                <input value={form.area_sqm} onChange={e => setForm({ ...form, area_sqm: e.target.value })} placeholder="اختياري" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
               </div>
-              <div>
-                <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>الإيجار السنوي (ريال)</label>
-                <input
-                  value={form.monthly_rent}
-                  onChange={e => setForm({ ...form, monthly_rent: e.target.value })}
-                  placeholder="مثال: 69000"
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }}
-                />
-              </div>
-              <div>
+              <div style={{ gridColumn: 'span 2' }}>
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>الحالة</label>
                 <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }}>
                   {UNIT_STATUS.map(s => <option key={s}>{s}</option>)}
