@@ -82,10 +82,20 @@ export default function Leases({ onBack }) {
       supabase.from("units").select("id, unit_number, unit_type, property_id, status"),
       supabase.from("tenants").select("id, name"),
     ]);
-    setLeases(l.data || []);
-    setLeaseUnits(lu.data || []);
+    const leasesData = l.data || [];
+    const luData = lu.data || [];
+    const unitsData = u.data || [];
+    const sorted = leasesData.sort((a, b) => {
+      const aUnits = luData.filter(x => x.lease_id === a.id).map(x => unitsData.find(u => u.id === x.unit_id)?.unit_number).filter(Boolean);
+      const bUnits = luData.filter(x => x.lease_id === b.id).map(x => unitsData.find(u => u.id === x.unit_id)?.unit_number).filter(Boolean);
+      const aMin = aUnits.length ? Math.min(...aUnits.map(Number)) : 999;
+      const bMin = bUnits.length ? Math.min(...bUnits.map(Number)) : 999;
+      return aMin - bMin;
+    });
+    setLeases(sorted);
+    setLeaseUnits(luData);
     setProperties(p.data || []);
-    setUnits(u.data || []);
+    setUnits(unitsData);
     setTenants(t.data || []);
     setLoading(false);
   }
