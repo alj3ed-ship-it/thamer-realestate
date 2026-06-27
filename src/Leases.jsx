@@ -60,6 +60,7 @@ export default function Leases({ onBack }) {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [filterProperty, setFilterProperty] = useState("الكل");
   const [form, setForm] = useState({
     property_id: "", selected_unit_ids: [], tenant_id: "",
     start_hijri: "", end_hijri: "",
@@ -214,6 +215,10 @@ export default function Leases({ onBack }) {
     fetchAll();
   }
 
+  const filteredLeases = filterProperty === "الكل"
+    ? leases
+    : leases.filter(l => l.property_id === filterProperty);
+
   const total = getTotal();
   const startGregorian = form.start_hijri ? hijriInputToGregorian(form.start_hijri) : null;
   const endGregorian = form.end_hijri ? hijriInputToGregorian(form.end_hijri) : null;
@@ -226,24 +231,29 @@ export default function Leases({ onBack }) {
       <h1 style={{ margin: "0 0 4px" }}>العقود</h1>
       <p style={{ color: "#6b7280", margin: "0 0 24px" }}>إدارة عقود الإيجار</p>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
         <button onClick={openAddForm} style={{ padding: "10px 20px", cursor: "pointer", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: 8 }}>
           + إضافة عقد جديد
         </button>
         <button onClick={fetchAll} style={{ padding: "10px 20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
           تحديث
         </button>
+        <select value={filterProperty} onChange={e => setFilterProperty(e.target.value)}
+          style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, fontFamily: "Cairo, sans-serif", marginRight: "auto" }}>
+          <option value="الكل">كل العقارات</option>
+          {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
       </div>
 
       {loading && <p>جاري التحميل...</p>}
 
-      {!loading && leases.length === 0 && (
+      {!loading && filteredLeases.length === 0 && (
         <div style={{ background: "#f9fafb", padding: 20, borderRadius: 10, color: "#6b7280", textAlign: "center" }}>
-          لا توجد عقود مسجّلة حالياً
+          لا توجد عقود
         </div>
       )}
 
-      {!loading && leases.length > 0 && (
+      {!loading && filteredLeases.length > 0 && (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
             <thead>
@@ -254,7 +264,7 @@ export default function Leases({ onBack }) {
               </tr>
             </thead>
             <tbody>
-              {leases.map((l, idx) => {
+              {filteredLeases.map((l, idx) => {
                 const tenant = tenants.find(t => t.id === l.tenant_id);
                 const property = properties.find(p => p.id === l.property_id);
                 return (
