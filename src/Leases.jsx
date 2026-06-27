@@ -8,7 +8,6 @@ const PAYMENT_TYPES = [
   { label: "سنوي", multiplier: 1 },
 ];
 
-// تحويل هجري إلى ميلادي (خوارزمية كويتية)
 function hijriToGregorian(hy, hm, hd) {
   try {
     const jd = Math.floor((11 * hy + 3) / 30) + 354 * hy + 30 * hm -
@@ -24,13 +23,10 @@ function hijriToGregorian(hy, hm, hd) {
     const month = j + 2 - 12 * l;
     const year = 100 * (n - 49) + i + l;
     return { year, month, day };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 function hijriInputToGregorian(hijriStr) {
-  // يقبل: 1448/1/1 أو 1448-1-1
   const parts = hijriStr.replace(/-/g, "/").split("/");
   if (parts.length !== 3) return null;
   const hy = parseInt(parts[0]);
@@ -88,8 +84,6 @@ export default function Leases({ onBack }) {
     const sorted = leasesData.sort((a, b) => {
       const aUnitObjs = luData.filter(x => x.lease_id === a.id).map(x => unitsData.find(u => u.id === x.unit_id)).filter(Boolean);
       const bUnitObjs = luData.filter(x => x.lease_id === b.id).map(x => unitsData.find(u => u.id === x.unit_id)).filter(Boolean);
-      const SHOP_TYPES = ["u0645u062du0644", "shop", "Store"];
-      const aIsShop = aUnitObjs.some(u => SHOP_TYPES.includes(u.unit_type) || (!["\u0634\u0642\u0629","\u0648\u0631\u0634\u0629"].includes(u.unit_type)));
       const aMin = aUnitObjs.length ? Math.min(...aUnitObjs.map(u => Number(u.unit_number) + (["\u0634\u0642\u0629","\u0648\u0631\u0634\u0629"].includes(u.unit_type) ? 1000 : 0))) : 9999;
       const bMin = bUnitObjs.length ? Math.min(...bUnitObjs.map(u => Number(u.unit_number) + (["\u0634\u0642\u0629","\u0648\u0631\u0634\u0629"].includes(u.unit_type) ? 1000 : 0))) : 9999;
       return aMin - bMin;
@@ -134,10 +128,8 @@ export default function Leases({ onBack }) {
       notes: lease.notes || "",
     });
     setFilteredUnits(
-      units.filter(u =>
-        u.property_id === lease.property_id &&
-        (u.status === "شاغرة" || currentUnitIds.includes(u.id))
-      ).sort((a, b) => Number(a.unit_number) - Number(b.unit_number))
+      units.filter(u => u.property_id === lease.property_id && (u.status === "شاغرة" || currentUnitIds.includes(u.id)))
+        .sort((a, b) => Number(a.unit_number) - Number(b.unit_number))
     );
     setShowForm(true);
   }
@@ -145,9 +137,8 @@ export default function Leases({ onBack }) {
   function handlePropertyChange(propertyId) {
     setForm(prev => ({ ...prev, property_id: propertyId, selected_unit_ids: [] }));
     setFilteredUnits(
-      units.filter(u =>
-        u.property_id === propertyId && u.status === "شاغرة"
-      ).sort((a, b) => Number(a.unit_number) - Number(b.unit_number))
+      units.filter(u => u.property_id === propertyId && u.status === "شاغرة")
+        .sort((a, b) => Number(a.unit_number) - Number(b.unit_number))
     );
   }
 
@@ -163,11 +154,9 @@ export default function Leases({ onBack }) {
   function toggleUnit(unitId) {
     setForm(prev => {
       const ids = prev.selected_unit_ids;
-      if (ids.includes(unitId)) {
-        return { ...prev, selected_unit_ids: ids.filter(id => id !== unitId) };
-      } else {
-        return { ...prev, selected_unit_ids: [...ids, unitId] };
-      }
+      return ids.includes(unitId)
+        ? { ...prev, selected_unit_ids: ids.filter(id => id !== unitId) }
+        : { ...prev, selected_unit_ids: [...ids, unitId] };
     });
   }
 
@@ -182,7 +171,6 @@ export default function Leases({ onBack }) {
   async function handleSave() {
     if (!form.tenant_id || !form.rent_amount || form.selected_unit_ids.length === 0) return;
     setSaving(true);
-
     const payload = {
       property_id: form.property_id || null,
       unit_id: form.selected_unit_ids[0] || null,
@@ -193,31 +181,22 @@ export default function Leases({ onBack }) {
       payment_type: form.payment_type,
       notes: form.notes || null,
     };
-
     let leaseId = editingId;
-
     if (editingId) {
       const { data: oldLU } = await supabase.from("lease_units").select("unit_id").eq("lease_id", editingId);
       const oldUnitIds = (oldLU || []).map(r => r.unit_id);
-      for (const uid of oldUnitIds) {
-        await supabase.from("units").update({ status: "شاغرة" }).eq("id", uid);
-      }
+      for (const uid of oldUnitIds) await supabase.from("units").update({ status: "شاغرة" }).eq("id", uid);
       await supabase.from("lease_units").delete().eq("lease_id", editingId);
       await supabase.from("leases").update(payload).eq("id", editingId);
     } else {
       const { data } = await supabase.from("leases").insert([payload]).select("id");
       leaseId = data?.[0]?.id;
     }
-
     if (leaseId) {
       const luRows = form.selected_unit_ids.map(uid => ({ lease_id: leaseId, unit_id: uid }));
       await supabase.from("lease_units").insert(luRows);
     }
-
-    for (const uid of form.selected_unit_ids) {
-      await supabase.from("units").update({ status: "مؤجرة" }).eq("id", uid);
-    }
-
+    for (const uid of form.selected_unit_ids) await supabase.from("units").update({ status: "مؤجرة" }).eq("id", uid);
     setSaving(false);
     setShowForm(false);
     fetchAll();
@@ -228,9 +207,7 @@ export default function Leases({ onBack }) {
     setDeletingId(lease.id);
     const { data: luData } = await supabase.from("lease_units").select("unit_id").eq("lease_id", lease.id);
     const unitIds = (luData || []).map(r => r.unit_id);
-    for (const uid of unitIds) {
-      await supabase.from("units").update({ status: "شاغرة" }).eq("id", uid);
-    }
+    for (const uid of unitIds) await supabase.from("units").update({ status: "شاغرة" }).eq("id", uid);
     await supabase.from("lease_units").delete().eq("lease_id", lease.id);
     await supabase.from("leases").delete().eq("id", lease.id);
     setDeletingId(null);
@@ -242,11 +219,10 @@ export default function Leases({ onBack }) {
   const endGregorian = form.end_hijri ? hijriInputToGregorian(form.end_hijri) : null;
 
   return (
-    <div dir="rtl" style={{ fontFamily: "Cairo, sans-serif", padding: "40px", maxWidth: "1100px", margin: "0 auto" }}>
+    <div dir="rtl" style={{ fontFamily: "Cairo, sans-serif", padding: "40px", maxWidth: "1200px", margin: "0 auto" }}>
       <button onClick={onBack} style={{ padding: "8px 16px", marginBottom: "20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
         ← رجوع للوحة التحكم
       </button>
-
       <h1 style={{ margin: "0 0 4px" }}>العقود</h1>
       <p style={{ color: "#6b7280", margin: "0 0 24px" }}>إدارة عقود الإيجار</p>
 
@@ -268,64 +244,55 @@ export default function Leases({ onBack }) {
       )}
 
       {!loading && leases.length > 0 && (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-          <thead>
-            <tr style={{ background: "#f9fafb", textAlign: "right" }}>
-              {["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "البداية", "النهاية", "الملاحظات", ""].map(h => (
-                <th key={h} style={{ padding: "12px", borderBottom: "2px solid #e5e7eb", color: "#6b7280", fontWeight: 500 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {leases.map(l => {
-              const tenant = tenants.find(t => t.id === l.tenant_id);
-              const property = properties.find(p => p.id === l.property_id);
-              return (
-                <tr key={l.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <td style={{ padding: "12px", fontWeight: 600, color: "#1B4D7A" }}>{tenant?.name || "—"}</td>
-                  <td style={{ padding: "12px", color: "#6b7280" }}>{property?.name || "—"}</td>
-                  <td style={{ padding: "12px", color: "#6b7280" }}>{getLeaseUnitsDisplay(l.id)}</td>
-                  <td style={{ padding: "12px" }}>
-                    <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "3px 10px", borderRadius: 6, fontSize: 12 }}>
-                      {l.payment_type || "—"}
-                    </span>
-                  </td>
-                  <td style={{ padding: "12px" }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</td>
-                  <td style={{ padding: "12px", color: "#6b7280", fontSize: 12 }}>
-                    {l.start_date ? (
-                      <div>
-                        <div>{gregorianToDisplay(l.start_date)}</div>
-                        <div style={{ color: "#9ca3af", fontSize: 11 }}>{l.start_date}</div>
-                      </div>
-                    ) : "—"}
-                  </td>
-                  <td style={{ padding: "12px", color: "#6b7280", fontSize: 12 }}>
-                    {l.end_date ? (
-                      <div>
-                        <div>{gregorianToDisplay(l.end_date)}</div>
-                        <div style={{ color: "#9ca3af", fontSize: 11 }}>{l.end_date}</div>
-                      </div>
-                    ) : "—"}
-                  </td>
-                  <td style={{ padding: "12px", color: "#6b7280", maxWidth: "180px", whiteSpace: "normal", wordBreak: "break-word" }}>{l.notes || "—"}</td>
-                  <td style={{ padding: "12px" }}>
-                    <button onClick={() => openEditForm(l)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer", marginLeft: 6 }}>تعديل</button>
-                    <button onClick={() => handleDelete(l)} disabled={deletingId === l.id} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>
-                      {deletingId === l.id ? "..." : "حذف"}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <thead>
+              <tr style={{ background: "#1B4D7A", textAlign: "right" }}>
+                {["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "البداية", "النهاية", "الملاحظات", ""].map(h => (
+                  <th key={h} style={{ padding: "12px", color: "#fff", fontWeight: 600, fontSize: 13 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {leases.map((l, idx) => {
+                const tenant = tenants.find(t => t.id === l.tenant_id);
+                const property = properties.find(p => p.id === l.property_id);
+                return (
+                  <tr key={l.id} style={{ background: idx % 2 === 0 ? "#fff" : "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                    <td style={{ padding: "12px", fontWeight: 600, color: "#1B4D7A" }}>{tenant?.name || "—"}</td>
+                    <td style={{ padding: "12px", color: "#6b7280" }}>{property?.name || "—"}</td>
+                    <td style={{ padding: "12px", color: "#6b7280" }}>{getLeaseUnitsDisplay(l.id)}</td>
+                    <td style={{ padding: "12px" }}>
+                      <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "3px 10px", borderRadius: 6, fontSize: 12 }}>
+                        {l.payment_type || "—"}
+                      </span>
+                    </td>
+                    <td style={{ padding: "12px", fontWeight: 600 }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</td>
+                    <td style={{ padding: "12px", color: "#6b7280", fontSize: 12 }}>
+                      {l.start_date ? <div><div>{gregorianToDisplay(l.start_date)}</div><div style={{ color: "#9ca3af", fontSize: 11 }}>{l.start_date}</div></div> : "—"}
+                    </td>
+                    <td style={{ padding: "12px", color: "#6b7280", fontSize: 12 }}>
+                      {l.end_date ? <div><div>{gregorianToDisplay(l.end_date)}</div><div style={{ color: "#9ca3af", fontSize: 11 }}>{l.end_date}</div></div> : "—"}
+                    </td>
+                    <td style={{ padding: "12px", color: "#6b7280", maxWidth: "160px", whiteSpace: "normal", wordBreak: "break-word" }}>{l.notes || "—"}</td>
+                    <td style={{ padding: "12px" }}>
+                      <button onClick={() => openEditForm(l)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer", marginLeft: 6 }}>تعديل</button>
+                      <button onClick={() => handleDelete(l)} disabled={deletingId === l.id} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>
+                        {deletingId === l.id ? "..." : "حذف"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {showForm && (
         <div style={{ position: "fixed", inset: 0, background: "#0006", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
           <div style={{ background: "#fff", borderRadius: 12, padding: "1.5rem", width: 560, maxWidth: "95%", direction: "rtl", maxHeight: "90vh", overflowY: "auto" }}>
             <h3 style={{ margin: "0 0 1rem" }}>{editingId ? "تعديل العقد" : "إضافة عقد جديد"}</h3>
-
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div style={{ gridColumn: "span 2" }}>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>العقار</label>
@@ -335,12 +302,9 @@ export default function Leases({ onBack }) {
                   {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
-
               {form.property_id && (
                 <div style={{ gridColumn: "span 2" }}>
-                  <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 8 }}>
-                    الوحدات (اختر واحدة أو أكثر)
-                  </label>
+                  <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 8 }}>الوحدات (اختر واحدة أو أكثر)</label>
                   {filteredUnits.length === 0 ? (
                     <div style={{ color: "#9ca3af", fontSize: 13 }}>لا توجد وحدات شاغرة</div>
                   ) : (
@@ -368,7 +332,6 @@ export default function Leases({ onBack }) {
                   )}
                 </div>
               )}
-
               <div style={{ gridColumn: "span 2" }}>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>المستأجر</label>
                 <select value={form.tenant_id} onChange={e => setForm({ ...form, tenant_id: e.target.value })}
@@ -377,35 +340,22 @@ export default function Leases({ onBack }) {
                   {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </div>
-
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>تاريخ البداية (هجري)</label>
-                <input type="text" value={form.start_hijri}
-                  onChange={e => handleHijriChange("start", e.target.value)}
+                <input type="text" value={form.start_hijri} onChange={e => handleHijriChange("start", e.target.value)}
                   placeholder="مثال: 1448/1/1"
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${form.start_hijri && !startGregorian ? "#f87171" : "#e5e7eb"}`, fontSize: 14, boxSizing: "border-box" }} />
-                {startGregorian && (
-                  <div style={{ fontSize: 11, color: "#059669", marginTop: 3 }}>← {startGregorian}</div>
-                )}
-                {form.start_hijri && !startGregorian && (
-                  <div style={{ fontSize: 11, color: "#ef4444", marginTop: 3 }}>تاريخ غير صحيح</div>
-                )}
+                {startGregorian && <div style={{ fontSize: 11, color: "#059669", marginTop: 3 }}>← {startGregorian}</div>}
+                {form.start_hijri && !startGregorian && <div style={{ fontSize: 11, color: "#ef4444", marginTop: 3 }}>تاريخ غير صحيح</div>}
               </div>
-
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>تاريخ النهاية (هجري)</label>
-                <input type="text" value={form.end_hijri}
-                  onChange={e => handleHijriChange("end", e.target.value)}
+                <input type="text" value={form.end_hijri} onChange={e => handleHijriChange("end", e.target.value)}
                   placeholder="مثال: 1449/1/1"
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${form.end_hijri && !endGregorian ? "#f87171" : "#e5e7eb"}`, fontSize: 14, boxSizing: "border-box" }} />
-                {endGregorian && (
-                  <div style={{ fontSize: 11, color: "#059669", marginTop: 3 }}>← {endGregorian}</div>
-                )}
-                {form.end_hijri && !endGregorian && (
-                  <div style={{ fontSize: 11, color: "#ef4444", marginTop: 3 }}>تاريخ غير صحيح</div>
-                )}
+                {endGregorian && <div style={{ fontSize: 11, color: "#059669", marginTop: 3 }}>← {endGregorian}</div>}
+                {form.end_hijri && !endGregorian && <div style={{ fontSize: 11, color: "#ef4444", marginTop: 3 }}>تاريخ غير صحيح</div>}
               </div>
-
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>نوع الدفع</label>
                 <select value={form.payment_type} onChange={e => setForm({ ...form, payment_type: e.target.value })}
@@ -413,7 +363,6 @@ export default function Leases({ onBack }) {
                   {PAYMENT_TYPES.map(p => <option key={p.label}>{p.label}</option>)}
                 </select>
               </div>
-
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>المبلغ (ريال)</label>
                 <input type="text" value={form.rent_amount} onChange={e => setForm({ ...form, rent_amount: e.target.value })}
@@ -421,20 +370,17 @@ export default function Leases({ onBack }) {
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
               </div>
             </div>
-
             {total && (
               <div style={{ margin: "12px 0", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 16px", display: "flex", justifyContent: "space-between" }}>
                 <div><span style={{ color: "#6b7280", fontSize: 13 }}>الإيجار السنوي: </span><span style={{ fontWeight: 700, fontSize: 16, color: "#1d4ed8" }}>{total.annual.toLocaleString()} ريال</span></div>
                 <div><span style={{ color: "#6b7280", fontSize: 13 }}>كل دفعة: </span><span style={{ fontWeight: 700, fontSize: 16, color: "#059669" }}>{total.installment.toLocaleString()} ريال × {total.count}</span></div>
               </div>
             )}
-
             <div style={{ marginTop: 12 }}>
               <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>ملاحظات (اختياري)</label>
               <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2}
                 style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
             </div>
-
             <div style={{ display: "flex", gap: 8, marginTop: "1rem", justifyContent: "flex-end" }}>
               <button onClick={() => setShowForm(false)} disabled={saving} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" }}>إلغاء</button>
               <button onClick={handleSave} disabled={saving || form.selected_unit_ids.length === 0}
