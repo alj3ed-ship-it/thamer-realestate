@@ -86,35 +86,37 @@ export default function Units({ onBack }) {
       )}
 
       {!loading && filtered.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-          <thead>
-            <tr style={{ background: '#f9fafb', textAlign: 'right' }}>
-              {['العقار', 'رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'ملاحظات'].map(h => (
-                <th key={h} style={{ padding: '12px', borderBottom: '2px solid #e5e7eb', color: '#6b7280', fontWeight: 500 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(u => {
-              const prop = properties.find(p => p.id === u.property_id)
-              return (
-                <tr key={u.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td style={{ padding: '12px', color: '#1B4D7A', fontWeight: 600 }}>{prop?.name || '—'}</td>
-                  <td style={{ padding: '12px', fontWeight: 600 }}>{u.unit_number}</td>
-                  <td style={{ padding: '12px' }}>{u.unit_type || '—'}</td>
-                  <td style={{ padding: '12px' }}>{u.floor ?? '—'}</td>
-                  <td style={{ padding: '12px' }}>{u.area_sqm ? u.area_sqm + ' م²' : '—'}</td>
-                  <td style={{ padding: '12px' }}>
-                    <span style={{ ...statusColor[u.status], padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
-                      {u.status || '—'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{u.notes || '—'}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
+                {['العقار', 'رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'ملاحظات'].map(h => (
+                  <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((u, idx) => {
+                const prop = properties.find(p => p.id === u.property_id)
+                return (
+                  <tr key={u.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '12px', color: '#1B4D7A', fontWeight: 600 }}>{prop?.name || '—'}</td>
+                    <td style={{ padding: '12px', fontWeight: 600 }}>{u.unit_number}</td>
+                    <td style={{ padding: '12px' }}>{u.unit_type || '—'}</td>
+                    <td style={{ padding: '12px' }}>{u.floor ?? '—'}</td>
+                    <td style={{ padding: '12px' }}>{u.area_sqm ? u.area_sqm + ' م²' : '—'}</td>
+                    <td style={{ padding: '12px' }}>
+                      <span style={{ ...statusColor[u.status], padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+                        {u.status || '—'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{u.notes || '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
