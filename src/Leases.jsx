@@ -45,11 +45,9 @@ function hijriPartsToGregorian(hy, hm, hd) {
   return `${g.year}-${mm}-${dd}`;
 }
 
-function gregorianToDisplay(dateStr) {
-  if (!dateStr) return "";
-  const d = new Date(dateStr);
-  if (isNaN(d)) return dateStr;
-  return d.toLocaleDateString("ar-SA-u-ca-islamic", { year: "numeric", month: "numeric", day: "numeric" });
+function hijriPartsToText(hy, hm, hd) {
+  if (!hy || !hm || !hd) return null;
+  return `${hy}/${String(hm).padStart(2,'0')}/${String(hd).padStart(2,'0')}`;
 }
 
 function getUnitSortKey(unit) {
@@ -81,7 +79,7 @@ function HijriPicker({ label, value, onChange }) {
       </div>
       {value.year && value.month && value.day && (
         <div style={{ fontSize: 11, color: "#059669", marginTop: 3 }}>
-          ← {hijriPartsToGregorian(value.year, value.month, value.day)}
+          هجري: {hijriPartsToText(value.year, value.month, value.day)} ← ميلادي: {hijriPartsToGregorian(value.year, value.month, value.day)}
         </div>
       )}
     </div>
@@ -106,6 +104,7 @@ export default function Leases({ onBack }) {
     start_hijri: { year: "", month: "", day: "" },
     end_hijri: { year: "", month: "", day: "" },
     start_date: "", end_date: "",
+    start_date_hijri: "", end_date_hijri: "",
     rent_amount: "", payment_type: "سنوي", notes: "",
   });
 
@@ -165,6 +164,7 @@ export default function Leases({ onBack }) {
       start_hijri: { year: "", month: "", day: "" },
       end_hijri: { year: "", month: "", day: "" },
       start_date: "", end_date: "",
+      start_date_hijri: "", end_date_hijri: "",
       rent_amount: "", payment_type: "سنوي", notes: ""
     });
     setFilteredUnits([]);
@@ -182,6 +182,8 @@ export default function Leases({ onBack }) {
       end_hijri: { year: "", month: "", day: "" },
       start_date: lease.start_date || "",
       end_date: lease.end_date || "",
+      start_date_hijri: lease.start_date_hijri || "",
+      end_date_hijri: lease.end_date_hijri || "",
       rent_amount: lease.rent_amount || "",
       payment_type: lease.payment_type || "سنوي",
       notes: lease.notes || "",
@@ -203,12 +205,14 @@ export default function Leases({ onBack }) {
 
   function handleStartHijri(val) {
     const g = hijriPartsToGregorian(val.year, val.month, val.day);
-    setForm(prev => ({ ...prev, start_hijri: val, start_date: g || "" }));
+    const h = hijriPartsToText(val.year, val.month, val.day);
+    setForm(prev => ({ ...prev, start_hijri: val, start_date: g || "", start_date_hijri: h || "" }));
   }
 
   function handleEndHijri(val) {
     const g = hijriPartsToGregorian(val.year, val.month, val.day);
-    setForm(prev => ({ ...prev, end_hijri: val, end_date: g || "" }));
+    const h = hijriPartsToText(val.year, val.month, val.day);
+    setForm(prev => ({ ...prev, end_hijri: val, end_date: g || "", end_date_hijri: h || "" }));
   }
 
   function toggleUnit(unitId) {
@@ -237,6 +241,8 @@ export default function Leases({ onBack }) {
       tenant_id: form.tenant_id || null,
       start_date: form.start_date || null,
       end_date: form.end_date || null,
+      start_date_hijri: form.start_date_hijri || null,
+      end_date_hijri: form.end_date_hijri || null,
       rent_amount: Number(form.rent_amount),
       payment_type: form.payment_type,
       notes: form.notes || null,
@@ -336,10 +342,12 @@ export default function Leases({ onBack }) {
                     </td>
                     <td style={{ padding: "12px", fontWeight: 600 }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</td>
                     <td style={{ padding: "12px", color: "#6b7280", fontSize: 12 }}>
-                      {l.start_date ? <div><div>{gregorianToDisplay(l.start_date)}</div><div style={{ color: "#9ca3af", fontSize: 11 }}>{l.start_date}</div></div> : "—"}
+                      <div style={{ fontWeight: 600 }}>{l.start_date_hijri ? l.start_date_hijri + ' هـ' : '—'}</div>
+                      <div style={{ color: "#9ca3af", fontSize: 11 }}>{l.start_date || ''}</div>
                     </td>
                     <td style={{ padding: "12px", color: "#6b7280", fontSize: 12 }}>
-                      {l.end_date ? <div><div>{gregorianToDisplay(l.end_date)}</div><div style={{ color: "#9ca3af", fontSize: 11 }}>{l.end_date}</div></div> : "—"}
+                      <div style={{ fontWeight: 600 }}>{l.end_date_hijri ? l.end_date_hijri + ' هـ' : '—'}</div>
+                      <div style={{ color: "#9ca3af", fontSize: 11 }}>{l.end_date || ''}</div>
                     </td>
                     <td style={{ padding: "12px", color: "#6b7280", maxWidth: "160px", whiteSpace: "normal", wordBreak: "break-word" }}>{l.notes || "—"}</td>
                     <td style={{ padding: "12px" }}>
