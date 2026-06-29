@@ -71,6 +71,9 @@ function TenantDetail({ tenant, onBack }) {
 function Tenants({ onBack }) {
   const [tenants, setTenants] = useState([])
   const [properties, setProperties] = useState([])
+  const [leases, setLeases] = useState([])
+  const [units, setUnits] = useState([])
+  const [leaseUnits, setLeaseUnits] = useState([])
   const [status, setStatus] = useState('loading')
   const [errorMsg, setErrorMsg] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -88,13 +91,19 @@ function Tenants({ onBack }) {
   async function fetchAll() {
     setStatus('loading')
     setErrorMsg('')
-    const [ten, pro] = await Promise.all([
-      supabase.from('tenants').select('*').order('created_at', { ascending: false }),
+    const [ten, pro, lea, uni, lu] = await Promise.all([
+      supabase.from('tenants').select('*'),
       supabase.from('properties').select('id, name').order('name'),
+      supabase.from('leases').select('id, tenant_id, unit_id, property_id'),
+      supabase.from('units').select('id, unit_number'),
+      supabase.from('lease_units').select('lease_id, unit_id'),
     ])
     if (ten.error) { setErrorMsg(ten.error.message); setStatus('error'); return }
     setTenants(ten.data || [])
     setProperties(pro.data || [])
+    setLeases(lea.data || [])
+    setUnits(uni.data || [])
+    setLeaseUnits(lu.data || [])
     setStatus('success')
   }
 
@@ -132,9 +141,28 @@ function Tenants({ onBack }) {
     fetchAll()
   }
 
-  const filtered = filterProperty === 'الكل'
+  function getAllUnitNumbers(tenantId) {
+    const tenantLeases = leases.filter(l => l.tenant_id === tenantId)
+    if (!tenantLeases.length) return { min: 9999, display: '—' }
+    const leaseIds = tenantLeases.map(l => l.id)
+    const unitIds = leaseUnits
+      .filter(lu => leaseIds.includes(lu.lease_id))
+      .map(lu => lu.unit_id)
+    // أضف unit_id المباشر من leases أيضاً
+    tenantLeases.forEach(l => { if (l.unit_id && !unitIds.includes(l.unit_id)) unitIds.push(l.unit_id) })
+    const nums = unitIds.map(uid => {
+      const unit = units.find(u => u.id === uid)
+      return unit?.unit_number || null
+    }).filter(Boolean)
+    if (!nums.length) return { min: 9999, display: '—' }
+    const sorted = nums.sort((a, b) => Number(a) - Number(b))
+    return { min: Number(sorted[0]) || 9999, display: sorted.join('، ') }
+  }
+
+  const filtered = (filterProperty === 'الكل'
     ? tenants
     : tenants.filter(t => t.property_id === filterProperty)
+  ).slice().sort((a, b) => getAllUnitNumbers(a.id).min - getAllUnitNumbers(b.id).min)
 
   return (
     <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1000px', margin: '0 auto' }}>
@@ -167,7 +195,7 @@ function Tenants({ onBack }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                {['الاسم', 'الجوال', 'العقار', 'ملاحظات', ''].map(h => (
+                {['الاسم', 'العقار', 'رقم المحل', 'الجوال', 'ملاحظات', ''].map(h => (
                   <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
                 ))}
               </tr>
@@ -181,8 +209,9 @@ function Tenants({ onBack }) {
                       {t.name}
                     </span>
                   </td>
-                  <td style={{ padding: '12px', color: '#6b7280' }}>{t.phone || '—'}</td>
                   <td style={{ padding: '12px', color: '#6b7280' }}>{properties.find(p => p.id === t.property_id)?.name || '—'}</td>
+                  <td style={{ padding: '12px', color: '#1B4D7A', fontWeight: 700, fontSize: 13 }}>{getAllUnitNumbers(t.id).display}</td>
+                  <td style={{ padding: '12px', color: '#6b7280' }}>{t.phone || '—'}</td>
                   <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{t.note || '—'}</td>
                   <td style={{ padding: '12px' }}>
                     <button onClick={() => openEditForm(t)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>

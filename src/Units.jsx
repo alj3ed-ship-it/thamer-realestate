@@ -19,7 +19,7 @@ export default function Units({ onBack }) {
   async function fetchAll() {
     setLoading(true)
     const [u, p] = await Promise.all([
-      supabase.from('units').select('*').order('created_at'),
+      supabase.from('units').select('*').order('unit_number'),
       supabase.from('properties').select('id, name').order('name'),
     ])
     setUnits(u.data || [])
