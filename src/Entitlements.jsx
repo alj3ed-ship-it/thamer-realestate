@@ -66,29 +66,53 @@ export default function Entitlements() {
     setLoading(true);
     const { data: propsData } = await supabase.from("properties").select("id, name, priority").order("priority");
     const { data: leasesData } = await supabase.from("leases").select(`
-      id, start_date_hijri, end_date_hijri, contract_value, payment_frequency,
+      id, start_date_hijri, end_date_hijri, contract_value, payment_frequency, unit_id,
       tenants (name),
+      units (unit_number, unit_type, property_id, properties (id, name, priority)),
       lease_units (units (unit_number, unit_type, property_id, properties (id, name, priority)))
     `);
-    const { data: paymentsData } = await supabase.from("payments").select("lease_id, amount_paid, status, payment_date_hijri");
+    const { data: paymentsData } = await supabase.from("payments").select("lease_id, amount, amount_paid, status, payment_date_hijri");
     setProperties(propsData || []);
     setLeases(leasesData || []);
     setPayments(paymentsData || []);
     setLoading(false);
   }
 
-  function getPaymentStatus(leaseId, filterYear, filterMonth) {
+  // إصلاح: مقارنة المبلغ المدفوع بالمستحق لتحديد الحالة بدقة
+  function getPaymentInfo(leaseId, filterYear, filterMonth, expectedAmount) {
     const leasePayments = payments.filter(p => p.lease_id === leaseId);
-    const match = leasePayments.find(p => {
+    
+    // ابحث عن دفعات لهذا الشهر
+    const monthPayments = leasePayments.filter(p => {
       const dateStr = p.payment_date_hijri;
       if (!dateStr) return false;
       const d = parseHijri(dateStr);
       return d && d.year === filterYear && d.month === filterMonth;
     });
-    if (!match) return "unpaid";
-    if (match.status === "مدفوع" || match.status === "paid") return "paid";
-    if (match.status === "جزئي") return "partial";
-    return "unpaid";
+
+    if (monthPayments.length === 0) return { status: "unpaid", paidAmount: 0 };
+
+    // احسب مجموع المدفوع (amount_paid إن وجد، وإلا amount)
+    const totalPaid = monthPayments.reduce((sum, p) => {
+      const val = p.amount_paid != null ? Number(p.amount_paid) : Number(p.amount || 0);
+      return sum + val;
+    }, 0);
+
+    // تحقق من status صريح أولاً
+    const hasExplicitPaid = monthPayments.some(p => p.status === "مدفوع" || p.status === "paid");
+    const hasExplicitPartial = monthPayments.some(p => p.status === "جزئي" || p.status === "partial");
+
+    if (hasExplicitPaid) return { status: "paid", paidAmount: totalPaid };
+    if (hasExplicitPartial) return { status: "partial", paidAmount: totalPaid };
+
+    // إذا ما في status صريح، قارن المبلغ
+    if (expectedAmount && totalPaid > 0) {
+      if (totalPaid >= expectedAmount) return { status: "paid", paidAmount: totalPaid };
+      return { status: "partial", paidAmount: totalPaid };
+    }
+
+    // أي دفعة بدون status = مدفوع كامل
+    return { status: "paid", paidAmount: totalPaid };
   }
 
   function handleSearch() {
@@ -105,16 +129,20 @@ export default function Entitlements() {
       });
       if (!hasPayment) continue;
 
-      const units = lease.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
+      let leaseUnitsList = lease.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
+      // إذا ما في lease_units، استخدم الوحدة المباشرة من العقد
+      if (leaseUnitsList.length === 0 && lease.units) {
+        leaseUnitsList = [lease.units];
+      }
       const intervalMonths = FREQUENCY_MONTHS[lease.payment_frequency] || 1;
       const amountPerPayment = lease.contract_value
         ? Math.round(lease.contract_value / (12 / intervalMonths))
         : null;
 
-      const status = getPaymentStatus(lease.id, filterYear, filterMonth);
+      const { status, paidAmount } = getPaymentInfo(lease.id, filterYear, filterMonth, amountPerPayment);
 
       const addedKeys = new Set();
-      for (const unit of units) {
+      for (const unit of leaseUnitsList) {
         const propertyId = unit.property_id;
         const propertyName = unit.properties?.name || "";
         const propertyPriority = unit.properties?.priority ?? 99;
@@ -130,6 +158,7 @@ export default function Entitlements() {
           propertyPriority: propertyPriority,
           unit: unit.unit_number,
           amount: amountPerPayment,
+          paidAmount: paidAmount,
           frequency: lease.payment_frequency,
           status: status,
         });
@@ -161,6 +190,20 @@ export default function Entitlements() {
     if (status === "paid") return "#27ae60";
     if (status === "partial") return "#f39c12";
     return "#e74c3c";
+  }
+
+  // عرض المبلغ: جزئي يظهر مدفوع/مستحق
+  function amountDisplay(r) {
+    if (!r.amount) return "-";
+    if (r.status === "partial" && r.paidAmount > 0) {
+      return (
+        <span>
+          <span style={{ color: "#f39c12", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
+          <span style={{ color: "#999", fontSize: "12px" }}> / {r.amount.toLocaleString()} ريال</span>
+        </span>
+      );
+    }
+    return <span style={{ color: amountColor(r.status), fontWeight: "bold" }}>{r.amount.toLocaleString()} ريال</span>;
   }
 
   if (loading) return <div style={{ padding: "32px", textAlign: "center" }}>جاري التحميل...</div>;
@@ -243,9 +286,7 @@ export default function Entitlements() {
                     <td style={{ padding: "12px 16px", fontWeight: "500" }}>{r.tenant}</td>
                     <td style={{ padding: "12px 16px", color: "#444" }}>{r.property}</td>
                     <td style={{ padding: "12px 16px", color: "#444" }}>{r.unit}</td>
-                    <td style={{ padding: "12px 16px", fontWeight: "bold", color: amountColor(r.status) }}>
-                      {r.amount ? r.amount.toLocaleString() + " ريال" : "-"}
-                    </td>
+                    <td style={{ padding: "12px 16px" }}>{amountDisplay(r)}</td>
                     <td style={{ padding: "12px 16px", color: "#666" }}>{r.frequency}</td>
                     <td style={{ padding: "12px 16px" }}>{statusBadge(r.status)}</td>
                   </tr>
