@@ -10,6 +10,7 @@ import Login from "./Login";
 import ViewerLayout from "./ViewerLayout";
 import PropertyDetail from "./PropertyDetail";
 import Units from "./Units";
+import Entitlements from "./Entitlements";
 
 const T = {
   dashboard: "\u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645",
@@ -20,6 +21,7 @@ const T = {
   reports: "\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631",
   defaulters: "\u0627\u0644\u0645\u062A\u0639\u062B\u0631\u0648\u0646",
   units: "\u0627\u0644\u0648\u062D\u062F\u0627\u062A",
+  entitlements: "\u0627\u0644\u0627\u0633\u062A\u062D\u0642\u0627\u0642\u0627\u062A",
   logout: "\u062E\u0631\u0648\u062C",
 };
 
@@ -30,6 +32,7 @@ const NAV_ITEMS = [
   { key: "tenants", label: T.tenants, icon: "\uD83D\uDC64" },
   { key: "leases", label: T.leases, icon: "\uD83D\uDCC4" },
   { key: "payments", label: T.payments, icon: "\uD83D\uDCB0" },
+  { key: "entitlements", label: T.entitlements, icon: "\uD83D\uDCC5" },
   { key: "reports", label: T.reports, icon: "\uD83D\uDCCA" },
   { key: "defaulters", label: T.defaulters, icon: "\u26A0\uFE0F" },
 ];
@@ -135,21 +138,16 @@ export default function App() {
           </div>
         )}
         {activePage === "properties" && !selectedPropertyId && (
-          <Properties
-            onBack={goBack}
-            onSelectProperty={(id) => setSelectedPropertyId(id)}
-          />
+          <Properties onBack={goBack} onSelectProperty={(id) => setSelectedPropertyId(id)} />
         )}
         {activePage === "properties" && selectedPropertyId && (
-          <PropertyDetail
-            propertyId={selectedPropertyId}
-            onBack={() => setSelectedPropertyId(null)}
-          />
+          <PropertyDetail propertyId={selectedPropertyId} onBack={() => setSelectedPropertyId(null)} />
         )}
         {activePage === "units" && <Units onBack={goBack} />}
         {activePage === "tenants" && <Tenants onBack={goBack} />}
         {activePage === "leases" && <Leases onBack={goBack} />}
         {activePage === "payments" && <Payments onBack={goBack} />}
+        {activePage === "entitlements" && <Entitlements onBack={goBack} />}
         {activePage === "reports" && <Reports onBack={goBack} />}
         {activePage === "defaulters" && <Defaulters onBack={goBack} />}
       </div>
