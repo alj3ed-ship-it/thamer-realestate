@@ -1,307 +1,235 @@
-﻿import { useState, useEffect } from "react";
-import { supabase } from "./supabaseClient";
-
-const PAYMENT_METHODS = ["تحويل بنكي", "نقدي", "شيك"];
-
-const STATUS_STYLE = {
-  "مدفوع":  { background: "#dcfce7", color: "#166534" },
-  "جزئي":   { background: "#fef9c3", color: "#854d0e" },
-  "متأخر":  { background: "#fee2e2", color: "#991b1b" },
-};
+﻿import { useState, useEffect } from 'react'
+import { supabase } from './supabaseClient'
 
 const FREQUENCY_MAP = {
-  "شهري": 12,
-  "ربع سنوي": 4,
-  "نصف سنوي": 2,
-  "سنوي": 1,
-};
-
-function calcDueInfo(lease, allPayments) {
-  if (!lease || !lease.start_date || !lease.rent_amount || !lease.payment_type) return null;
-  const freq = FREQUENCY_MAP[lease.payment_type] || 1;
-  const annualAmount = Number(lease.rent_amount);
-  const installmentAmount = annualAmount / freq;
-  const monthsInterval = 12 / freq;
-  const start = new Date(lease.start_date);
-  const today = new Date();
-  let dueCount = 0;
-  const dueDate = new Date(start);
-  while (dueDate <= today) { dueCount++; dueDate.setMonth(dueDate.getMonth() + monthsInterval); }
-  const totalDue = dueCount * installmentAmount;
-  const totalPaid = allPayments
-    .filter(p => p.lease_id === lease.id && p.status !== "متأخر")
-    .reduce((s, p) => s + Number(p.amount), 0);
-  const remaining = totalDue - totalPaid;
-  const nextDue = new Date(start);
-  while (nextDue <= today) { nextDue.setMonth(nextDue.getMonth() + monthsInterval); }
-  return { freq, installmentAmount, dueCount, totalDue, totalPaid, remaining, nextDue: nextDue.toLocaleDateString("ar-SA") };
+  'سنوي': 1,
+  'نصف سنوي': 2,
+  'ربع سنوي': 4,
+  'كل 4 أشهر': 3,
+  'شهري': 12,
 }
 
-export default function Payments({ onBack }) {
-  const [payments, setPayments]     = useState([]);
-  const [leases, setLeases]         = useState([]);
-  const [tenants, setTenants]       = useState([]);
-  const [properties, setProperties] = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [showForm, setShowForm]     = useState(false);
-  const [saving, setSaving]         = useState(false);
-  const [editingId, setEditingId]   = useState(null);
-  const [deletingId, setDeletingId] = useState(null);
-  const [filterStatus, setFilterStatus] = useState("الكل");
-  const [form, setForm] = useState({
-    lease_id: "", amount: "", payment_date: "", payment_method: "تحويل بنكي", status: "مدفوع", notes: "",
-  });
+const PAYMENT_METHODS = ['تحويل بنكي', 'نقداً', 'شيك']
 
-  useEffect(() => { fetchAll(); }, []);
+function Payments({ onBack }) {
+  const [payments, setPayments] = useState([])
+  const [leases, setLeases] = useState([])
+  const [tenants, setTenants] = useState([])
+  const [properties, setProperties] = useState([])
+  const [units, setUnits] = useState([])
+  const [leaseUnits, setLeaseUnits] = useState([])
+  const [status, setStatus] = useState('loading')
+  const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [filterProperty, setFilterProperty] = useState('الكل')
+  const [form, setForm] = useState({ lease_id: '', amount: '', payment_date: '', payment_method: '', notes: '' })
+  const [formError, setFormError] = useState('')
 
   async function fetchAll() {
-    setLoading(true);
-    const [pay, lea, ten, pro] = await Promise.all([
-      supabase.from("payments").select("*").order("payment_date", { ascending: false }),
-      supabase.from("leases").select("id, tenant_id, property_id, rent_amount, payment_type, start_date"),
-      supabase.from("tenants").select("id, name"),
-      supabase.from("properties").select("id, name"),
-    ]);
-    setPayments(pay.data || []);
-    setLeases(lea.data || []);
-    setTenants(ten.data || []);
-    setProperties(pro.data || []);
-    setLoading(false);
+    setStatus('loading')
+    const [pay, lea, ten, pro, uni, lu] = await Promise.all([
+      supabase.from('payments').select('*').order('payment_date', { ascending: false }),
+      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, unit_id'),
+      supabase.from('tenants').select('id, name'),
+      supabase.from('properties').select('id, name').order('name'),
+      supabase.from('units').select('id, unit_number'),
+      supabase.from('lease_units').select('lease_id, unit_id'),
+    ])
+    setPayments(pay.data || [])
+    setLeases(lea.data || [])
+    setTenants(ten.data || [])
+    setProperties(pro.data || [])
+    setUnits(uni.data || [])
+    setLeaseUnits(lu.data || [])
+    setStatus('success')
   }
 
-  function getSelectedLease() { return leases.find(l => l.id === form.lease_id) || null; }
+  useEffect(() => { fetchAll() }, [])
 
-  function openAddForm() {
-    setEditingId(null);
-    setForm({ lease_id: "", amount: "", payment_date: "", payment_method: "تحويل بنكي", status: "مدفوع", notes: "" });
-    setShowForm(true);
+  function getTenantName(leaseId) {
+    const lease = leases.find(l => l.id === leaseId)
+    return tenants.find(t => t.id === lease?.tenant_id)?.name || '—'
   }
 
-  function openEditForm(p) {
-    setEditingId(p.id);
-    setForm({ lease_id: p.lease_id || "", amount: p.amount || "", payment_date: p.payment_date || "", payment_method: p.payment_method || "تحويل بنكي", status: p.status || "مدفوع", notes: p.notes || "" });
-    setShowForm(true);
+  function getPropertyName(leaseId) {
+    const lease = leases.find(l => l.id === leaseId)
+    return properties.find(p => p.id === lease?.property_id)?.name || '—'
+  }
+
+  function getPropertyId(leaseId) {
+    return leases.find(l => l.id === leaseId)?.property_id || null
+  }
+
+  function getUnitNumbers(leaseId) {
+    const lease = leases.find(l => l.id === leaseId)
+    if (!lease) return '—'
+    const unitIds = leaseUnits.filter(lu => lu.lease_id === leaseId).map(lu => lu.unit_id)
+    if (lease.unit_id && !unitIds.includes(lease.unit_id)) unitIds.push(lease.unit_id)
+    const nums = unitIds.map(uid => units.find(u => u.id === uid)?.unit_number).filter(Boolean)
+    return nums.sort((a, b) => Number(a) - Number(b)).join('، ') || '—'
+  }
+
+  function getInstallmentAmount(leaseId) {
+    const lease = leases.find(l => l.id === leaseId)
+    if (!lease || !lease.rent_amount || !lease.payment_frequency) return ''
+    const freq = FREQUENCY_MAP[lease.payment_frequency] || 1
+    return Math.round(lease.rent_amount / freq)
+  }
+
+  function openAdd() {
+    setEditingId(null)
+    setForm({ lease_id: '', amount: '', payment_date: '', payment_method: '', notes: '' })
+    setFormError('')
+    setShowForm(true)
+  }
+
+  function openEdit(p) {
+    setEditingId(p.id)
+    setForm({ lease_id: p.lease_id || '', amount: p.amount || '', payment_date: p.payment_date || '', payment_method: p.payment_method || '', notes: p.notes || '' })
+    setFormError('')
+    setShowForm(true)
   }
 
   function handleLeaseChange(leaseId) {
-    const lease = leases.find(l => l.id === leaseId);
-    if (!lease) { setForm(prev => ({ ...prev, lease_id: leaseId, amount: "" })); return; }
-    const info = calcDueInfo(lease, payments);
-    let autoStatus = "مدفوع";
-    if (info && info.remaining > 0) autoStatus = "جزئي";
-    setForm(prev => ({ ...prev, lease_id: leaseId, amount: "", payment_date: new Date().toISOString().split("T")[0], status: autoStatus }));
+    const amt = getInstallmentAmount(leaseId)
+    setForm(f => ({ ...f, lease_id: leaseId, amount: amt ? String(amt) : f.amount }))
   }
 
   async function handleSave() {
-    if (!form.lease_id || !form.amount || !form.payment_date) return;
-    setSaving(true);
-    const lease = leases.find(l => l.id === form.lease_id);
-    const freq = FREQUENCY_MAP[lease?.payment_type] || 1;
-    const installment = Math.round(Number(lease?.rent_amount || 0) / freq);
-    const paid = Number(form.amount);
-    let autoStatus = paid <= 0 ? "متأخر" : paid < installment ? "جزئي" : "مدفوع";
-    const payload = { lease_id: form.lease_id, amount: paid, payment_date: form.payment_date, payment_method: form.payment_method, status: autoStatus, notes: form.notes || null };
-    if (editingId) await supabase.from("payments").update(payload).eq("id", editingId);
-    else await supabase.from("payments").insert([payload]);
-    setSaving(false); setShowForm(false); fetchAll();
+    if (!form.lease_id || !form.amount || !form.payment_date) { setFormError('يرجى ملء الحقول المطلوبة'); return }
+    setSaving(true); setFormError('')
+    const payload = { lease_id: form.lease_id, amount: Number(form.amount), payment_date: form.payment_date, payment_method: form.payment_method || null, notes: form.notes || null }
+    let error
+    if (editingId) { const res = await supabase.from('payments').update(payload).eq('id', editingId); error = res.error }
+    else { const res = await supabase.from('payments').insert([payload]); error = res.error }
+    setSaving(false)
+    if (error) { setFormError(error.message); return }
+    setShowForm(false); fetchAll()
   }
 
   async function handleDelete(id) {
-    if (!window.confirm("حذف الدفعة؟")) return;
-    setDeletingId(id);
-    await supabase.from("payments").delete().eq("id", id);
-    setDeletingId(null); fetchAll();
+    if (!window.confirm('حذف هذه الدفعة؟')) return
+    setDeletingId(id)
+    await supabase.from('payments').delete().eq('id', id)
+    setDeletingId(null); fetchAll()
   }
 
-  const allDueInfos    = leases.map(l => calcDueInfo(l, payments)).filter(Boolean);
-  const totalDueAll    = allDueInfos.reduce((s, i) => s + i.totalDue, 0);
-  const totalPaidAll   = allDueInfos.reduce((s, i) => s + i.totalPaid, 0);
-  const totalRemaining = allDueInfos.reduce((s, i) => s + Math.max(0, i.remaining), 0);
+  const filteredPayments = filterProperty === 'الكل'
+    ? payments
+    : payments.filter(p => getPropertyId(p.lease_id) === filterProperty)
 
-  const filtered = filterStatus === "الكل" ? payments : payments.filter(p => p.status === filterStatus);
-
-  function getTenantName(leaseId) {
-    const lease = leases.find(l => l.id === leaseId);
-    return tenants.find(t => t.id === lease?.tenant_id)?.name || "—";
-  }
-  function getPropertyName(leaseId) {
-    const lease = leases.find(l => l.id === leaseId);
-    return properties.find(p => p.id === lease?.property_id)?.name || "—";
-  }
-  function getLeaseName(leaseId) {
-    const lease = leases.find(l => l.id === leaseId);
-    const tenant = tenants.find(t => t.id === lease?.tenant_id);
-    const prop = properties.find(p => p.id === lease?.property_id);
-    return `${tenant?.name || "؟"} — ${prop?.name || "؟"}`;
-  }
-  function getRemaining(p) {
-    const lease = leases.find(l => l.id === p.lease_id);
-    if (!lease) return null;
-    const info = calcDueInfo(lease, payments);
-    return info ? info.remaining : null;
-  }
-
-  const cards = [
-    { label: "إجمالي المستحق",  value: totalDueAll,    bg: "#eff6ff", color: "#1e40af", border: "#93c5fd" },
-    { label: "إجمالي المدفوع",  value: totalPaidAll,   bg: "#dcfce7", color: "#166534", border: "#86efac" },
-    { label: "إجمالي المتبقي",  value: totalRemaining, bg: "#fee2e2", color: "#991b1b", border: "#fca5a5" },
-  ];
-
-  const alerts = leases.map(lease => {
-    const info = calcDueInfo(lease, payments);
-    if (!info || info.remaining <= 0) return null;
-    const tenant = tenants.find(t => t.id === lease.tenant_id);
-    return { lease, info, tenantName: tenant?.name || "—" };
-  }).filter(Boolean);
-
-  const selectedLease = getSelectedLease();
-  const dueInfo = selectedLease ? calcDueInfo(selectedLease, payments) : null;
+  const totalFiltered = filteredPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
 
   return (
-    <div dir="rtl" style={{ fontFamily: "Cairo, sans-serif", padding: "40px", maxWidth: "1200px", margin: "0 auto" }}>
-      <button onClick={onBack} style={{ padding: "8px 16px", marginBottom: "20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>← رجوع للوحة التحكم</button>
-      <h1 style={{ margin: "0 0 4px" }}>الدفعات</h1>
-      <p style={{ color: "#6b7280", margin: "0 0 24px" }}>تتبع وتسجيل دفعات الإيجار</p>
+    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1100px', margin: '0 auto' }}>
+      <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+        ← رجوع للوحة التحكم
+      </button>
+      <h1 style={{ margin: '0 0 4px' }}>الدفعات</h1>
+      <p style={{ color: '#6b7280', margin: '0 0 24px' }}>سجل الدفعات وتتبعها</p>
 
-      {alerts.length > 0 && (
-        <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 10, padding: "16px 20px", marginBottom: 24 }}>
-          <div style={{ fontWeight: 700, color: "#9a3412", marginBottom: 10, fontSize: 15 }}>⚠️ تنبيه — يوجد {alerts.length} مستأجر لديه مبالغ مستحقة غير مدفوعة:</div>
-          {alerts.map(({ lease, info, tenantName }) => (
-            <div key={lease.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderTop: "1px solid #fed7aa" }}>
-              <span style={{ fontWeight: 600, color: "#7c2d12" }}>{tenantName}</span>
-              <span style={{ color: "#9a3412", fontSize: 13 }}>مستحق {info.totalDue.toLocaleString()} ر | مدفوع {info.totalPaid.toLocaleString()} ر | <strong>متبقي {info.remaining.toLocaleString()} ر</strong></span>
-              <span style={{ fontSize: 12, color: "#9a3412" }}>الدفعة القادمة: {info.nextDue}</span>
-            </div>
-          ))}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button onClick={openAdd} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8 }}>
+          + تسجيل دفعة
+        </button>
+        <button onClick={fetchAll} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
+        <select value={filterProperty} onChange={e => setFilterProperty(e.target.value)}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif', marginRight: 'auto' }}>
+          <option value="الكل">كل العقارات</option>
+          {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <div style={{ background: '#e8f5e9', padding: '8px 16px', borderRadius: 8, fontWeight: 700, color: '#27ae60', fontSize: 15 }}>
+          المجموع: {totalFiltered.toLocaleString()} ريال
         </div>
+      </div>
+
+      {status === 'loading' && <p>جاري التحميل...</p>}
+
+      {status === 'success' && filteredPayments.length === 0 && (
+        <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>لا توجد دفعات.</div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 28 }}>
-        {cards.map(card => (
-          <div key={card.label} style={{ background: card.bg, border: `2px solid ${card.border}`, borderRadius: 10, padding: "16px 20px" }}>
-            <div style={{ color: card.color, fontSize: 13, marginBottom: 6 }}>{card.label}</div>
-            <div style={{ color: card.color, fontWeight: 700, fontSize: 22 }}>{card.value.toLocaleString()} ريال</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
-        <button onClick={openAddForm} style={{ padding: "10px 20px", cursor: "pointer", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: 8 }}>+ تسجيل دفعة جديدة</button>
-        <button onClick={fetchAll} style={{ padding: "10px 20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>تحديث</button>
-        <div style={{ marginRight: "auto", display: "flex", gap: 6 }}>
-          {["الكل", "مدفوع", "جزئي", "متأخر"].map(s => (
-            <button key={s} onClick={() => setFilterStatus(s)} style={{ padding: "6px 14px", borderRadius: 20, fontSize: 13, cursor: "pointer", border: filterStatus === s ? "2px solid #1B4D7A" : "1px solid #e5e7eb", background: filterStatus === s ? "#eff6ff" : "#fff", color: filterStatus === s ? "#1B4D7A" : "#6b7280", fontWeight: filterStatus === s ? 600 : 400 }}>{s}</button>
-          ))}
-        </div>
-      </div>
-
-      {loading && <p>جاري التحميل...</p>}
-      {!loading && filtered.length === 0 && <div style={{ background: "#f9fafb", padding: 20, borderRadius: 10, color: "#6b7280", textAlign: "center" }}>لا توجد دفعات مسجّلة</div>}
-
-      {!loading && filtered.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+      {status === 'success' && filteredPayments.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: "#1B4D7A", textAlign: "right" }}>
-                {["المستأجر", "العقار", "المبلغ", "المتبقي", "تاريخ الدفع", "طريقة الدفع", "الحالة", "ملاحظات", ""].map(h => (
-                  <th key={h} style={{ padding: "12px", color: "#fff", fontWeight: 600, fontSize: 13 }}>{h}</th>
+              <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
+                {['المستأجر', 'العقار', 'الوحدة', 'المبلغ', 'التاريخ', 'طريقة الدفع', 'ملاحظات', ''].map(h => (
+                  <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((p, idx) => {
-                const rem = getRemaining(p);
-                return (
-                  <tr key={p.id} style={{ background: idx % 2 === 0 ? "#fff" : "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
-                    <td style={{ padding: "12px", fontWeight: 600, color: "#1B4D7A" }}>{getTenantName(p.lease_id)}</td>
-                    <td style={{ padding: "12px", color: "#6b7280" }}>{getPropertyName(p.lease_id)}</td>
-                    <td style={{ padding: "12px", fontWeight: 600 }}>{Number(p.amount).toLocaleString()} ر</td>
-                    <td style={{ padding: "12px" }}>
-                      {rem === null ? "—" : rem <= 0
-                        ? <span style={{ color: "#166534", fontWeight: 600 }}>لا يوجد ✓</span>
-                        : <span style={{ color: "#991b1b", fontWeight: 700 }}>{rem.toLocaleString()} ر</span>}
-                    </td>
-                    <td style={{ padding: "12px", color: "#6b7280" }}>{p.payment_date || "—"}</td>
-                    <td style={{ padding: "12px", color: "#6b7280" }}>{p.payment_method || "—"}</td>
-                    <td style={{ padding: "12px" }}>
-                      <span style={{ ...STATUS_STYLE[p.status], padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600 }}>{p.status || "—"}</span>
-                    </td>
-                    <td style={{ padding: "12px", color: "#9ca3af", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.notes || "—"}</td>
-                    <td style={{ padding: "12px" }}>
-                      <button onClick={() => openEditForm(p)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer", marginLeft: 6 }}>تعديل</button>
-                      <button onClick={() => handleDelete(p.id)} disabled={deletingId === p.id} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>{deletingId === p.id ? "..." : "حذف"}</button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {filteredPayments.map((p, idx) => (
+                <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                  <td style={{ padding: '12px', fontWeight: 700, color: '#1B4D7A' }}>{getTenantName(p.lease_id)}</td>
+                  <td style={{ padding: '12px', color: '#6b7280' }}>{getPropertyName(p.lease_id)}</td>
+                  <td style={{ padding: '12px', color: '#6b7280', fontSize: 13 }}>{getUnitNumbers(p.lease_id)}</td>
+                  <td style={{ padding: '12px', fontWeight: 700, color: '#27ae60' }}>{Number(p.amount).toLocaleString()} ريال</td>
+                  <td style={{ padding: '12px', color: '#6b7280' }}>{p.payment_date || '—'}</td>
+                  <td style={{ padding: '12px', color: '#6b7280' }}>{p.payment_method || '—'}</td>
+                  <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{p.notes || '—'}</td>
+                  <td style={{ padding: '12px' }}>
+                    <button onClick={() => openEdit(p)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
+                    <button onClick={() => handleDelete(p.id)} disabled={deletingId === p.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
+                      {deletingId === p.id ? '...' : 'حذف'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       )}
 
       {showForm && (
-        <div style={{ position: "fixed", inset: 0, background: "#0006", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}>
-          <div style={{ background: "#fff", borderRadius: 12, padding: "1.5rem", width: 540, maxWidth: "95%", direction: "rtl", maxHeight: "90vh", overflowY: "auto" }}>
-            <h3 style={{ margin: "0 0 1rem" }}>{editingId ? "تعديل الدفعة" : "تسجيل دفعة جديدة"}</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div style={{ gridColumn: "span 2" }}>
-                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>العقد (المستأجر — العقار)</label>
-                <select value={form.lease_id} onChange={e => handleLeaseChange(e.target.value)} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14 }}>
-                  <option value="">اختر العقد</option>
-                  {leases.map(l => <option key={l.id} value={l.id}>{getLeaseName(l.id)}</option>)}
-                </select>
-              </div>
-              {dueInfo && (
-                <div style={{ gridColumn: "span 2", borderRadius: 10, overflow: "hidden", border: "1px solid #e5e7eb" }}>
-                  <div style={{ background: "#1B4D7A", color: "#fff", padding: "8px 14px", fontSize: 13, fontWeight: 600 }}>ملخص الاستحقاق</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr" }}>
-                    <div style={{ padding: "10px 14px", borderLeft: "1px solid #e5e7eb" }}>
-                      <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>المستحق حتى اليوم</div>
-                      <div style={{ fontWeight: 700, color: "#1B4D7A", fontSize: 15 }}>{dueInfo.totalDue.toLocaleString()} ر</div>
-                      <div style={{ fontSize: 11, color: "#9ca3af" }}>{dueInfo.dueCount} دفعة × {dueInfo.installmentAmount.toLocaleString()} ر</div>
-                    </div>
-                    <div style={{ padding: "10px 14px", borderLeft: "1px solid #e5e7eb" }}>
-                      <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>المدفوع فعلاً</div>
-                      <div style={{ fontWeight: 700, color: "#166534", fontSize: 15 }}>{dueInfo.totalPaid.toLocaleString()} ر</div>
-                    </div>
-                    <div style={{ padding: "10px 14px", background: dueInfo.remaining > 0 ? "#fff7ed" : "#f0fdf4" }}>
-                      <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>المتبقي</div>
-                      <div style={{ fontWeight: 700, color: dueInfo.remaining > 0 ? "#9a3412" : "#166534", fontSize: 15 }}>
-                        {dueInfo.remaining > 0 ? dueInfo.remaining.toLocaleString() + " ر" : "لا يوجد تأخر ✓"}
-                      </div>
-                      {dueInfo.remaining > 0 && <div style={{ fontSize: 11, color: "#9a3412" }}>الدفعة القادمة: {dueInfo.nextDue}</div>}
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div>
-                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>المبلغ (ريال)</label>
-                <input type="text" inputMode="numeric" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value.replace(/[^0-9]/g, "") })} placeholder="مثال: 5000" style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>تاريخ الدفع</label>
-                <input type="date" value={form.payment_date} onChange={e => setForm({ ...form, payment_date: e.target.value })} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
-              </div>
-              <div>
-                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>طريقة الدفع</label>
-                <select value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14 }}>
-                  {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
-                </select>
-              </div>
-              <div style={{ gridColumn: "span 2" }}>
-                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>ملاحظات (اختياري)</label>
-                <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
-              </div>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: '#fff', padding: '30px', borderRadius: 12, width: 480, maxWidth: '90%', direction: 'rtl', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h2 style={{ marginTop: 0 }}>{editingId ? 'تعديل دفعة' : 'تسجيل دفعة جديدة'}</h2>
+            <label style={{ fontSize: 13, color: '#444', display: 'block', marginBottom: 4 }}>العقد</label>
+            <select value={form.lease_id} onChange={e => handleLeaseChange(e.target.value)}
+              style={{ width: '100%', padding: 10, marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
+              <option value="">اختر عقداً</option>
+              {leases.map(l => {
+                const tname = tenants.find(t => t.id === l.tenant_id)?.name || ''
+                const pname = properties.find(p => p.id === l.property_id)?.name || ''
+                return <option key={l.id} value={l.id}>{tname} — {pname}</option>
+              })}
+            </select>
+            <label style={{ fontSize: 13, color: '#444', display: 'block', marginBottom: 4 }}>المبلغ (ريال)</label>
+            <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+              placeholder="مثال: 5000"
+              style={{ width: '100%', padding: '8px 10px', marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+            <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>تاريخ الدفع</label>
+            <input type="date" value={form.payment_date} onChange={e => setForm({ ...form, payment_date: e.target.value })}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+            <div style={{ marginTop: 15 }}>
+              <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>طريقة الدفع</label>
+              <select value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14 }}>
+                <option value="">اختياري</option>
+                {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
-            <div style={{ display: "flex", gap: 8, marginTop: "1rem", justifyContent: "flex-end" }}>
-              <button onClick={() => setShowForm(false)} disabled={saving} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer" }}>إلغاء</button>
-              <button onClick={handleSave} disabled={saving || !form.lease_id || !form.amount || !form.payment_date} style={{ padding: "8px 20px", borderRadius: 8, background: "#1B4D7A", color: "#fff", border: "none", cursor: "pointer", opacity: (!form.lease_id || !form.amount || !form.payment_date) ? 0.5 : 1 }}>
-                {saving ? "جاري الحفظ..." : editingId ? "حفظ التعديل" : "تسجيل الدفعة"}
+            <div style={{ marginTop: 15 }}>
+              <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>ملاحظات</label>
+              <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box', resize: 'vertical' }} />
+            </div>
+            {formError && <div style={{ color: '#c00', marginTop: 10, fontSize: 14 }}>{formError}</div>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button onClick={() => setShowForm(false)} disabled={saving} style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>إلغاء</button>
+              <button onClick={handleSave} disabled={saving} style={{ padding: '8px 20px', borderRadius: 8, background: '#1B4D7A', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                {saving ? 'جاري الحفظ...' : editingId ? 'حفظ التعديل' : 'تسجيل الدفعة'}
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
-  );
+  )
 }
+
+export default Payments
