@@ -46,13 +46,9 @@ function hijriPartsToGregorian(hy, hm, hd) {
   return `${g.year}-${mm}-${dd}`
 }
 
-function gregorianToHijri(dateStr) {
-  if (!dateStr) return ''
-  try {
-    const d = new Date(dateStr)
-    if (isNaN(d)) return dateStr
-    return d.toLocaleDateString('ar-SA-u-ca-islamic', { year: 'numeric', month: 'numeric', day: 'numeric' })
-  } catch { return dateStr }
+function hijriPartsToText(hy, hm, hd) {
+  if (!hy || !hm || !hd) return null
+  return `${hy}/${String(hm).padStart(2,'0')}/${String(hd).padStart(2,'0')}`
 }
 
 function HijriPicker({ label, value, onChange }) {
@@ -68,7 +64,7 @@ function HijriPicker({ label, value, onChange }) {
         <select value={value.month || ''} onChange={e => onChange({ ...value, month: Number(e.target.value) })}
           style={{ flex: 3, padding: '8px 6px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: 'Cairo, sans-serif' }}>
           <option value="">الشهر</option>
-          {HIJRI_MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+          {HIJRI_MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m} ({i+1})</option>)}
         </select>
         <select value={value.day || ''} onChange={e => onChange({ ...value, day: Number(e.target.value) })}
           style={{ flex: 2, padding: '8px 6px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: 'Cairo, sans-serif' }}>
@@ -78,7 +74,7 @@ function HijriPicker({ label, value, onChange }) {
       </div>
       {value.year && value.month && value.day && (
         <div style={{ fontSize: 11, color: '#059669', marginTop: 3 }}>
-          ← {hijriPartsToGregorian(value.year, value.month, value.day)}
+          هجري: {hijriPartsToText(value.year, value.month, value.day)} ← ميلادي: {hijriPartsToGregorian(value.year, value.month, value.day)}
         </div>
       )}
     </div>
@@ -180,10 +176,12 @@ function Payments({ onBack }) {
   function openEdit(p) {
     setEditingId(p.id)
     setForm({
-      lease_id: p.lease_id || '', amount: p.amount || '',
+      lease_id: p.lease_id || '',
+      amount: p.amount || '',
       payment_date: p.payment_date || '',
       payment_hijri: { year: '', month: '', day: '' },
-      payment_method: p.payment_method || '', notes: p.notes || ''
+      payment_method: p.payment_method || '',
+      notes: p.notes || ''
     })
     setFormError('')
     setShowForm(true)
@@ -196,13 +194,21 @@ function Payments({ onBack }) {
 
   function handleHijriChange(val) {
     const g = hijriPartsToGregorian(val.year, val.month, val.day)
-    setForm(f => ({ ...f, payment_hijri: val, payment_date: g || f.payment_date }))
+    const h = hijriPartsToText(val.year, val.month, val.day)
+    setForm(f => ({ ...f, payment_hijri: val, payment_date: g || f.payment_date, payment_date_hijri: h || '' }))
   }
 
   async function handleSave() {
     if (!form.lease_id || !form.amount || !form.payment_date) { setFormError('يرجى ملء الحقول المطلوبة'); return }
     setSaving(true); setFormError('')
-    const payload = { lease_id: form.lease_id, amount: Number(form.amount), payment_date: form.payment_date, payment_method: form.payment_method || null, notes: form.notes || null }
+    const payload = {
+      lease_id: form.lease_id,
+      amount: Number(form.amount),
+      payment_date: form.payment_date,
+      payment_date_hijri: form.payment_date_hijri || null,
+      payment_method: form.payment_method || null,
+      notes: form.notes || null
+    }
     let error
     if (editingId) { const res = await supabase.from('payments').update(payload).eq('id', editingId); error = res.error }
     else { const res = await supabase.from('payments').insert([payload]); error = res.error }
@@ -221,7 +227,7 @@ function Payments({ onBack }) {
   const filteredPayments = (filterProperty === 'الكل'
     ? payments
     : payments.filter(p => getPropertyId(p.lease_id) === filterProperty)
-  ).sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date))
+  ).sort((a, b) => new Date(a.payment_date) - new Date(b.payment_date))
 
   const totalFiltered = filteredPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
 
@@ -280,7 +286,7 @@ function Payments({ onBack }) {
                     </td>
                     <td style={{ padding: '12px', fontWeight: 700, color: '#27ae60' }}>{Number(p.amount).toLocaleString()} ريال</td>
                     <td style={{ padding: '12px', color: '#6b7280' }}>
-                      <div>{gregorianToHijri(p.payment_date)}</div>
+                      <div style={{ fontWeight: 600 }}>{p.payment_date_hijri ? p.payment_date_hijri + ' هـ' : '—'}</div>
                       <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.payment_date}</div>
                     </td>
                     <td style={{ padding: '12px', color: '#6b7280' }}>{p.payment_method || '—'}</td>
@@ -320,11 +326,6 @@ function Payments({ onBack }) {
             <div style={{ marginBottom: 15 }}>
               <HijriPicker label="تاريخ الدفع (هجري)" value={form.payment_hijri} onChange={handleHijriChange} />
             </div>
-            {form.payment_date && (
-              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 10 }}>
-                التاريخ الميلادي: {form.payment_date}
-              </div>
-            )}
             <div style={{ marginTop: 15 }}>
               <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>طريقة الدفع</label>
               <select value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })}
