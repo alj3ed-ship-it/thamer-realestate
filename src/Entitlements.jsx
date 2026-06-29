@@ -52,6 +52,7 @@ function getPaymentDates(startDateStr, endDateStr, frequency) {
 export default function Entitlements() {
   const [leases, setLeases] = useState([]);
   const [properties, setProperties] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [selectedYear, setSelectedYear] = useState("1448");
   const [selectedMonthNum, setSelectedMonthNum] = useState("1");
   const [selectedProperty, setSelectedProperty] = useState("all");
@@ -69,9 +70,25 @@ export default function Entitlements() {
       tenants (name),
       lease_units (units (unit_number, unit_type, property_id, properties (id, name, priority)))
     `);
+    const { data: paymentsData } = await supabase.from("payments").select("lease_id, amount_paid, status, payment_date_hijri");
     setProperties(propsData || []);
     setLeases(leasesData || []);
+    setPayments(paymentsData || []);
     setLoading(false);
+  }
+
+  function getPaymentStatus(leaseId, filterYear, filterMonth) {
+    const leasePayments = payments.filter(p => p.lease_id === leaseId);
+    const match = leasePayments.find(p => {
+      const dateStr = p.payment_date_hijri;
+      if (!dateStr) return false;
+      const d = parseHijri(dateStr);
+      return d && d.year === filterYear && d.month === filterMonth;
+    });
+    if (!match) return "unpaid";
+    if (match.status === "مدفوع" || match.status === "paid") return "paid";
+    if (match.status === "جزئي") return "partial";
+    return "unpaid";
   }
 
   function handleSearch() {
@@ -94,6 +111,8 @@ export default function Entitlements() {
         ? Math.round(lease.contract_value / (12 / intervalMonths))
         : null;
 
+      const status = getPaymentStatus(lease.id, filterYear, filterMonth);
+
       const addedKeys = new Set();
       for (const unit of units) {
         const propertyId = unit.property_id;
@@ -112,6 +131,7 @@ export default function Entitlements() {
           unit: unit.unit_number,
           amount: amountPerPayment,
           frequency: lease.payment_frequency,
+          status: status,
         });
       }
     }
@@ -127,6 +147,21 @@ export default function Entitlements() {
   }
 
   const totalAmount = results.reduce((sum, r) => sum + (r.amount || 0), 0);
+  const paidAmount = results.filter(r => r.status === "paid").reduce((sum, r) => sum + (r.amount || 0), 0);
+  const partialAmount = results.filter(r => r.status === "partial").reduce((sum, r) => sum + (r.amount || 0), 0);
+  const unpaidAmount = results.filter(r => r.status === "unpaid").reduce((sum, r) => sum + (r.amount || 0), 0);
+
+  function statusBadge(status) {
+    if (status === "paid") return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
+    if (status === "partial") return <span style={{ background: "#FEF9E7", color: "#f39c12", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>جزئي ⚠</span>;
+    return <span style={{ background: "#FDEDEC", color: "#e74c3c", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>لم يُسدَّد ✗</span>;
+  }
+
+  function amountColor(status) {
+    if (status === "paid") return "#27ae60";
+    if (status === "partial") return "#f39c12";
+    return "#e74c3c";
+  }
 
   if (loading) return <div style={{ padding: "32px", textAlign: "center" }}>جاري التحميل...</div>;
 
@@ -137,22 +172,15 @@ export default function Entitlements() {
       <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "20px", marginBottom: "24px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
         <div>
           <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>السنة الهجرية</label>
-          <input
-            type="number"
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(e.target.value)}
+          <input type="number" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}
             style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", width: "100px", fontFamily: "Cairo, sans-serif" }}
-            min="1440" max="1460"
-          />
+            min="1440" max="1460" />
         </div>
 
         <div>
           <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>الشهر</label>
-          <select
-            value={selectedMonthNum}
-            onChange={(e) => setSelectedMonthNum(e.target.value)}
-            style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Cairo, sans-serif", minWidth: "160px" }}
-          >
+          <select value={selectedMonthNum} onChange={(e) => setSelectedMonthNum(e.target.value)}
+            style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Cairo, sans-serif", minWidth: "160px" }}>
             {HIJRI_MONTHS.map((name, i) => (
               <option key={i + 1} value={i + 1}>{i + 1} - {name}</option>
             ))}
@@ -161,11 +189,8 @@ export default function Entitlements() {
 
         <div>
           <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>العقار</label>
-          <select
-            value={selectedProperty}
-            onChange={(e) => setSelectedProperty(e.target.value)}
-            style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Cairo, sans-serif", minWidth: "180px" }}
-          >
+          <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)}
+            style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Cairo, sans-serif", minWidth: "180px" }}>
             <option value="all">كل العقارات</option>
             {properties.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
@@ -173,19 +198,31 @@ export default function Entitlements() {
           </select>
         </div>
 
-        <button
-          onClick={handleSearch}
-          style={{ background: "#1B4D7A", color: "#fff", padding: "9px 28px", borderRadius: "8px", border: "none", fontSize: "14px", fontFamily: "Cairo, sans-serif", cursor: "pointer", fontWeight: "bold" }}
-        >
+        <button onClick={handleSearch}
+          style={{ background: "#1B4D7A", color: "#fff", padding: "9px 28px", borderRadius: "8px", border: "none", fontSize: "14px", fontFamily: "Cairo, sans-serif", cursor: "pointer", fontWeight: "bold" }}>
           بحث
         </button>
       </div>
 
       {searched && results.length > 0 && (
         <>
-          <div style={{ background: "#EBF5FB", border: "1px solid #AED6F1", borderRadius: "10px", padding: "14px 20px", marginBottom: "16px", display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontWeight: "bold", color: "#1B4D7A" }}>{results.length} دفعة مستحقة</span>
-            <span style={{ fontWeight: "bold", color: "#1B4D7A" }}>الإجمالي: {totalAmount.toLocaleString()} ريال</span>
+          <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>
+            <div style={{ flex: 1, background: "#EBF5FB", border: "1px solid #AED6F1", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+              <div style={{ fontSize: "13px", color: "#555" }}>إجمالي الدفعات</div>
+              <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>{totalAmount.toLocaleString()} ريال</div>
+            </div>
+            <div style={{ flex: 1, background: "#EAFAF1", border: "1px solid #A9DFBF", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+              <div style={{ fontSize: "13px", color: "#555" }}>مدفوع</div>
+              <div style={{ fontWeight: "bold", color: "#27ae60", fontSize: "18px" }}>{paidAmount.toLocaleString()} ريال</div>
+            </div>
+            <div style={{ flex: 1, background: "#FEF9E7", border: "1px solid #F9E79F", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+              <div style={{ fontSize: "13px", color: "#555" }}>جزئي</div>
+              <div style={{ fontWeight: "bold", color: "#f39c12", fontSize: "18px" }}>{partialAmount.toLocaleString()} ريال</div>
+            </div>
+            <div style={{ flex: 1, background: "#FDEDEC", border: "1px solid #F1948A", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+              <div style={{ fontSize: "13px", color: "#555" }}>لم يُسدَّد</div>
+              <div style={{ fontWeight: "bold", color: "#e74c3c", fontSize: "18px" }}>{unpaidAmount.toLocaleString()} ريال</div>
+            </div>
           </div>
 
           <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflow: "hidden" }}>
@@ -197,6 +234,7 @@ export default function Entitlements() {
                   <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>الوحدة</th>
                   <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>المبلغ</th>
                   <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>نوع الدفع</th>
+                  <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>الحالة</th>
                 </tr>
               </thead>
               <tbody>
@@ -205,8 +243,11 @@ export default function Entitlements() {
                     <td style={{ padding: "12px 16px", fontWeight: "500" }}>{r.tenant}</td>
                     <td style={{ padding: "12px 16px", color: "#444" }}>{r.property}</td>
                     <td style={{ padding: "12px 16px", color: "#444" }}>{r.unit}</td>
-                    <td style={{ padding: "12px 16px", fontWeight: "bold", color: "#27ae60" }}>{r.amount ? r.amount.toLocaleString() + " ريال" : "-"}</td>
+                    <td style={{ padding: "12px 16px", fontWeight: "bold", color: amountColor(r.status) }}>
+                      {r.amount ? r.amount.toLocaleString() + " ريال" : "-"}
+                    </td>
                     <td style={{ padding: "12px 16px", color: "#666" }}>{r.frequency}</td>
+                    <td style={{ padding: "12px 16px" }}>{statusBadge(r.status)}</td>
                   </tr>
                 ))}
               </tbody>
