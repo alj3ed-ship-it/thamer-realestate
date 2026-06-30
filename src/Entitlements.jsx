@@ -7,6 +7,7 @@ const FREQUENCY_MONTHS = {
   "نصف سنوي": 6,
   "سنوي": 12,
   "كل 4 أشهر": 4,
+  "دفعتين": 6,
 };
 
 const HIJRI_MONTHS = [
@@ -104,6 +105,7 @@ export default function Entitlements() {
 
     if (hasExplicitPaid) return { status: "paid", paidAmount: totalPaid };
     if (hasExplicitPartial) return { status: "partial", paidAmount: totalPaid };
+      if (totalPaid === 0) return { status: "unpaid", paidAmount: 0 };
 
     // إذا ما في status صريح، قارن المبلغ
     if (expectedAmount && totalPaid > 0) {
@@ -141,34 +143,49 @@ export default function Entitlements() {
 
       const { status, paidAmount } = getPaymentInfo(lease.id, filterYear, filterMonth, amountPerPayment);
 
-      const addedKeys = new Set();
-      for (const unit of leaseUnitsList) {
-        const propertyId = unit.property_id;
-        const propertyName = unit.properties?.name || "";
-        const propertyPriority = unit.properties?.priority ?? 99;
-        if (selectedProperty !== "all" && propertyId !== selectedProperty) continue;
-        const key = lease.id + "-" + propertyId;
-        if (addedKeys.has(key)) continue;
-        addedKeys.add(key);
+     const unitsByProperty = {};
+for (const unit of leaseUnitsList) {
+  const propertyId = unit.property_id;
+  if (selectedProperty !== "all" && propertyId !== selectedProperty) continue;
+  if (!unitsByProperty[propertyId]) {
+    unitsByProperty[propertyId] = {
+      propertyName: unit.properties?.name || "",
+      propertyPriority: unit.properties?.priority ?? 99,
+      unitNumbers: [], sortType: 99, sortNum: 999,
+    };
+  }
+        unitsByProperty[propertyId].unitNumbers.push((unit.unit_type || "") + " " + unit.unit_number);
+const typeOrder = { "محل": 1, "شقة": 2, "ورشة": 3 }[unit.unit_type] || 4;
+const numVal = parseInt(unit.unit_number) || 999;
+if (typeOrder < unitsByProperty[propertyId].sortType || (typeOrder === unitsByProperty[propertyId].sortType && numVal < unitsByProperty[propertyId].sortNum)) {
+  unitsByProperty[propertyId].sortType = typeOrder;
+  unitsByProperty[propertyId].sortNum = numVal;
+}
+}
 
-        found.push({
-          tenant: lease.tenants?.name || "",
-          property: propertyName,
-          propertyId: propertyId,
-          propertyPriority: propertyPriority,
-          unit: unit.unit_number,
-          amount: amountPerPayment,
-          paidAmount: paidAmount,
-          frequency: lease.payment_frequency,
-          status: status,
-        });
+for (const propertyId in unitsByProperty) {
+  const info = unitsByProperty[propertyId];
+  found.push({
+  tenant: lease.tenants?.name || "",
+property: info.propertyName,
+propertyId: propertyId,
+propertyPriority: info.propertyPriority,
+unit: info.unitNumbers.join(" + "),
+sortType: info.sortType,
+sortNum: info.sortNum,
+amount: amountPerPayment,
+paidAmount: paidAmount,
+frequency: lease.payment_frequency,
+status: status,
+   });
+}
       }
-    }
 
     found.sort((a, b) => {
       if (a.propertyPriority !== b.propertyPriority)
         return (a.propertyPriority ?? 99) - (b.propertyPriority ?? 99);
-      return parseInt(a.unit) - parseInt(b.unit);
+      if (a.sortType !== b.sortType) return a.sortType - b.sortType;
+         return a.sortNum - b.sortNum;
     });
 
     setResults(found);
