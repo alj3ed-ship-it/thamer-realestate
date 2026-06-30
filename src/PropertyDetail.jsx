@@ -4,6 +4,20 @@ import { supabase } from './supabaseClient'
 const UNIT_STATUS = ['مؤجرة', 'شاغرة', 'صيانة']
 const UNIT_TYPES = ['شقة', 'محل', 'مستودع', 'غرفة', 'فيلا', 'أرض']
 
+const TYPE_ORDER = { 'محل': 1, 'شقة': 2, 'ورشة': 3 }
+
+function sortUnits(list) {
+  return [...list].sort((a, b) => {
+    const typeA = TYPE_ORDER[a.unit_type] ?? 99
+    const typeB = TYPE_ORDER[b.unit_type] ?? 99
+    if (typeA !== typeB) return typeA - typeB
+    const numA = parseInt(String(a.unit_number).match(/\d+/)?.[0] ?? '0', 10)
+    const numB = parseInt(String(b.unit_number).match(/\d+/)?.[0] ?? '0', 10)
+    if (numA !== numB) return numA - numB
+    return String(a.unit_number).localeCompare(String(b.unit_number))
+  })
+}
+
 export default function PropertyDetail({ propertyId, onBack }) {
   const [property, setProperty] = useState(null)
   const [units, setUnits] = useState([])
@@ -24,7 +38,7 @@ export default function PropertyDetail({ propertyId, onBack }) {
       supabase.from('units').select('*').eq('property_id', propertyId).order('created_at')
     ])
     setProperty(prop.data)
-    setUnits(unts.data || [])
+    setUnits(sortUnits(unts.data || []))
     setLoading(false)
   }
 
