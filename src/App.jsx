@@ -11,6 +11,7 @@ import ViewerLayout from "./ViewerLayout";
 import PropertyDetail from "./PropertyDetail";
 import Units from "./Units";
 import Entitlements from "./Entitlements";
+import DashboardCharts from "./components/DashboardCharts";
 
 const T = {
   dashboard: "\u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645",
@@ -84,10 +85,11 @@ export default function App() {
   if (role === "viewer") return <ViewerLayout />;
   if (!role) return <Login onLogin={(r) => setRole(r)} />;
 
-  const cardStyle = {
-    background: "#fff", borderRadius: "12px", padding: "24px 20px",
-    boxShadow: "0 2px 12px rgba(0,0,0,0.07)", textAlign: "center", flex: 1, cursor: "pointer"
-  };
+ const cardStyle = {
+  background: "#fff", borderRadius: "10px", padding: "12px 10px",
+  boxShadow: "0 2px 12px rgba(0,0,0,0.07)", textAlign: "center", flex: 1, cursor: "pointer"
+};
+
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "Cairo, sans-serif", direction: "rtl" }}>
@@ -129,12 +131,13 @@ export default function App() {
                 { label: T.payments, value: stats.payments, icon: "\uD83D\uDCB0", color: "#c0392b", page: "payments" },
               ].map(card => (
                 <div key={card.label} style={cardStyle} onClick={() => card.page && setActivePage(card.page)}>
-                  <div style={{ fontSize: "32px" }}>{card.icon}</div>
-                  <div style={{ fontSize: "28px", fontWeight: "bold", color: card.color, margin: "8px 0" }}>{card.value}</div>
+                 <div style={{ fontSize: "20px" }}>{card.icon}</div>
+                           <div style={{ fontSize: "18px", fontWeight: "bold", color: card.color, margin: "4px 0" }}>{card.value}</div>
                   <div style={{ color: "#666", fontSize: "14px" }}>{card.label}</div>
                 </div>
               ))}
             </div>
+                   <DashboardCharts />
           </div>
         )}
         {activePage === "properties" && !selectedPropertyId && (
