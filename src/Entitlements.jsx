@@ -56,7 +56,7 @@ export default function Entitlements() {
       leases (
         id, property_id, start_date_hijri,
         properties ( name, priority ),
-        tenants ( name, notes ),
+        tenants ( name, note ),
         lease_units ( units ( unit_number, unit_type ) )
       )
     `);
@@ -108,7 +108,7 @@ export default function Entitlements() {
 
       found.push({
         tenant: lease.tenants?.name || "",
-        activity: lease.tenants?.notes || "—",
+        activity: lease.tenants?.note || "—",
         property: lease.properties?.name || "",
         propertyPriority: lease.properties?.priority ?? 99,
         unit: units.map((u) => `${u.unit_type} ${u.unit_number}`).join(" + ") || "—",
