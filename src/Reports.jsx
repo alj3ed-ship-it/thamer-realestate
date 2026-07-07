@@ -30,7 +30,7 @@ export default function Reports({ onBack }) {
   const revenueByProperty = properties.map(p => {
     const propUnits = units.filter(u => u.property_id === p.id);
     const propUnitIds = propUnits.map(u => u.id);
-    const propLeases = leases.filter(l => propUnitIds.includes(l.unit_id) && l.status === "نشط");
+    const propLeases = leases.filter(l => l.property_id === p.id && l.status === "active");
     const annual = propLeases.reduce((s, l) => s + Number(l.rent_amount), 0);
     return { ...p, annual };
   });

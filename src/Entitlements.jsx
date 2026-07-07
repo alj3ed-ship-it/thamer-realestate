@@ -270,8 +270,12 @@ export default function Entitlements() {
               { key: "statusLabel", label: "الحالة" },
             ]}
             filename={`entitlements_${selectedYear}_${selectedMonthNum}`}
-            title="تقرير جدول الاستحقاقات"
-            printTargetId="entitlements-table"
+            stats={[
+              { label: "مدفوع", value: `${paidAmount.toLocaleString()} ريال`, color: "#27ae60" },
+              { label: "جزئي", value: `${partialAmount.toLocaleString()} ريال`, color: "#f39c12" },
+              { label: "لم يُسدَّد", value: `${unpaidAmount.toLocaleString()} ريال`, color: "#e74c3c" },
+              { label: "إجمالي الدفعات", value: `${totalAmount.toLocaleString()} ريال`, color: "#1B4D7A" },
+            ]}
           />
 
           <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>
