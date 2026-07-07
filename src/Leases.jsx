@@ -50,6 +50,90 @@ function hijriPartsToText(hy, hm, hd) {
   return `${hy}/${String(hm).padStart(2,'0')}/${String(hd).padStart(2,'0')}`;
 }
 
+// إضافة عدد أشهر هجرية على تاريخ هجري (لتوليد تواريخ الدفعات المقترحة)
+function addHijriMonths(hijri, monthsToAdd) {
+  if (!hijri.year || !hijri.month || !hijri.day) return { year: "", month: "", day: "" };
+  const totalMonths = (hijri.month - 1) + monthsToAdd;
+  const yearAdd = Math.floor(totalMonths / 12);
+  const newMonth = (totalMonths % 12) + 1;
+  return { year: hijri.year + yearAdd, month: newMonth, day: hijri.day };
+}
+
+// عدد الدفعات والفاصل الهجري بالأشهر حسب نوع الدفع
+function getInstallmentPlan(paymentType) {
+  const map = {
+    "شهري": { count: 12, stepMonths: 1 },
+    "ربع سنوي": { count: 4, stepMonths: 3 },
+    "نصف سنوي": { count: 2, stepMonths: 6 },
+    "سنوي": { count: 1, stepMonths: 12 },
+    "كل 4 أشهر": { count: 3, stepMonths: 4 },
+    "دفعتين": { count: 2, stepMonths: 6 },
+  };
+  return map[paymentType] || { count: 1, stepMonths: 12 };
+}
+
+// قائمة مستأجرين قابلة للبحث بالكتابة (بدل قائمة منسدلة طويلة)
+function TenantSearchSelect({ tenants, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const selectedTenant = tenants.find(t => t.id === value);
+  const displayValue = open ? query : (selectedTenant ? selectedTenant.name : (value === "الكل" ? "كل المستأجرين" : ""));
+
+  const filtered = query.trim() === ""
+    ? tenants
+    : tenants.filter(t => (t.name || "").includes(query.trim()));
+
+  function pick(id) {
+    onChange(id);
+    setQuery("");
+    setOpen(false);
+  }
+
+  return (
+    <div style={{ position: "relative", minWidth: 200 }}
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setOpen(false); setQuery(""); } }}>
+      <input
+        type="text"
+        value={displayValue}
+        onFocus={() => { setOpen(true); setQuery(""); }}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        placeholder="اكتب اسم المستأجر..."
+        style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, fontFamily: "Cairo, sans-serif", boxSizing: "border-box" }}
+      />
+      {open && (
+        <div style={{
+          position: "absolute", top: "100%", right: 0, left: 0, zIndex: 30,
+          background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, marginTop: 4,
+          maxHeight: 260, overflowY: "auto", boxShadow: "0 6px 16px rgba(0,0,0,0.12)"
+        }}>
+          <div
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => pick("الكل")}
+            style={{ padding: "8px 12px", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#1B4D7A", borderBottom: "1px solid #f0f0f0" }}
+          >
+            كل المستأجرين
+          </div>
+          {filtered.length === 0 ? (
+            <div style={{ padding: "10px 12px", color: "#9ca3af", fontSize: 13 }}>لا يوجد مستأجر مطابق</div>
+          ) : (
+            filtered.map(t => (
+              <div
+                key={t.id}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(t.id)}
+                style={{ padding: "8px 12px", cursor: "pointer", fontSize: 14, background: value === t.id ? "#eff6ff" : "#fff" }}
+              >
+                {t.name}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getUnitSortKey(unit) {
   const num = Number(unit.unit_number);
   const typeOffset = ["شقة", "ورشة"].includes(unit.unit_type) ? 1000 : 0;
@@ -92,6 +176,7 @@ export default function Leases({ onBack }) {
   const [properties, setProperties] = useState([]);
   const [units, setUnits] = useState([]);
   const [tenants, setTenants] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [filteredUnits, setFilteredUnits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -99,6 +184,7 @@ export default function Leases({ onBack }) {
   const [editingId, setEditingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [filterProperty, setFilterProperty] = useState("الكل");
+  const [filterTenant, setFilterTenant] = useState("الكل");
   const [form, setForm] = useState({
     property_id: "", selected_unit_ids: [], tenant_id: "",
     start_hijri: { year: "", month: "", day: "" },
@@ -106,18 +192,20 @@ export default function Leases({ onBack }) {
     start_date: "", end_date: "",
     start_date_hijri: "", end_date_hijri: "",
     rent_amount: "", payment_type: "سنوي", notes: "",
+    installments: [],
   });
 
   useEffect(() => { fetchAll(); }, []);
 
   async function fetchAll() {
     setLoading(true);
-    const [l, lu, p, u, t] = await Promise.all([
+    const [l, lu, p, u, t, pay] = await Promise.all([
       supabase.from("leases").select("*").order("created_at", { ascending: false }),
       supabase.from("lease_units").select("*"),
       supabase.from("properties").select("id, name").order("name"),
       supabase.from("units").select("id, unit_number, unit_type, property_id, status"),
       supabase.from("tenants").select("id, name"),
+      supabase.from("payments").select("lease_id, installment_number, total_installments, due_date_hijri, due_date_gregorian, status").order("installment_number"),
     ]);
     const leasesData = l.data || [];
     const luData = lu.data || [];
@@ -141,11 +229,22 @@ export default function Leases({ onBack }) {
     setProperties(p.data || []);
     setUnits(unitsData);
     setTenants(t.data || []);
+    setPayments(pay.data || []);
     setLoading(false);
   }
 
   function getLeaseUnitIds(leaseId) {
     return leaseUnits.filter(lu => lu.lease_id === leaseId).map(lu => lu.unit_id);
+  }
+
+  function getInstallmentDate(leaseId, num) {
+    const row = payments.find(p => p.lease_id === leaseId && p.installment_number === num);
+    if (!row) return "—";
+    return row.due_date_hijri || row.due_date_gregorian || "—";
+  }
+
+  function getExtraInstallmentsCount(leaseId) {
+    return payments.filter(p => p.lease_id === leaseId && p.installment_number > 4).length;
   }
 
   function getLeaseUnitsDisplay(leaseId) {
@@ -165,7 +264,8 @@ export default function Leases({ onBack }) {
       end_hijri: { year: "", month: "", day: "" },
       start_date: "", end_date: "",
       start_date_hijri: "", end_date_hijri: "",
-      rent_amount: "", payment_type: "سنوي", notes: ""
+      rent_amount: "", payment_type: "سنوي", notes: "",
+      installments: [],
     });
     setFilteredUnits([]);
     setShowForm(true);
@@ -187,6 +287,7 @@ export default function Leases({ onBack }) {
       rent_amount: lease.rent_amount || "",
       payment_type: lease.payment_type || "سنوي",
       notes: lease.notes || "",
+      installments: [],
     });
     setFilteredUnits(
       units.filter(u => u.property_id === lease.property_id && (u.status === "شاغرة" || currentUnitIds.includes(u.id)))
@@ -207,6 +308,7 @@ export default function Leases({ onBack }) {
     const g = hijriPartsToGregorian(val.year, val.month, val.day);
     const h = hijriPartsToText(val.year, val.month, val.day);
     setForm(prev => ({ ...prev, start_hijri: val, start_date: g || "", start_date_hijri: h || "" }));
+    if (!editingId) regenerateInstallments({ start_hijri: val });
   }
 
   function handleEndHijri(val) {
@@ -215,12 +317,52 @@ export default function Leases({ onBack }) {
     setForm(prev => ({ ...prev, end_hijri: val, end_date: g || "", end_date_hijri: h || "" }));
   }
 
+  function handlePaymentTypeChange(paymentType) {
+    setForm(prev => ({ ...prev, payment_type: paymentType }));
+    if (!editingId) regenerateInstallments({ payment_type: paymentType });
+  }
+
   function toggleUnit(unitId) {
     setForm(prev => {
       const ids = prev.selected_unit_ids;
       return ids.includes(unitId)
         ? { ...prev, selected_unit_ids: ids.filter(id => id !== unitId) }
         : { ...prev, selected_unit_ids: [...ids, unitId] };
+    });
+  }
+
+  // يولّد جدول الدفعات تلقائياً (مبلغ متساوٍ + تواريخ مقترحة بفاصل منتظم) - قابل للتعديل بالكامل بعدها
+  function regenerateInstallments(overrides = {}) {
+    const paymentType = overrides.payment_type ?? form.payment_type;
+    const rentAmount = Number(overrides.rent_amount ?? form.rent_amount) || 0;
+    const startHijri = overrides.start_hijri ?? form.start_hijri;
+
+    const { count, stepMonths } = getInstallmentPlan(paymentType);
+    if (!rentAmount || !startHijri.year || !startHijri.month || !startHijri.day) {
+      setForm(prev => ({ ...prev, installments: [] }));
+      return;
+    }
+    const amountPer = Math.round(rentAmount / count);
+    const newInstallments = Array.from({ length: count }, (_, i) => ({
+      amount: amountPer,
+      hijri: addHijriMonths(startHijri, i * stepMonths),
+    }));
+    setForm(prev => ({ ...prev, installments: newInstallments }));
+  }
+
+  function updateInstallmentAmount(index, value) {
+    setForm(prev => {
+      const list = [...prev.installments];
+      list[index] = { ...list[index], amount: value };
+      return { ...prev, installments: list };
+    });
+  }
+
+  function updateInstallmentHijri(index, value) {
+    setForm(prev => {
+      const list = [...prev.installments];
+      list[index] = { ...list[index], hijri: value };
+      return { ...prev, installments: list };
     });
   }
 
@@ -257,6 +399,24 @@ export default function Leases({ onBack }) {
     } else {
       const { data } = await supabase.from("leases").insert([payload]).select("id");
       leaseId = data?.[0]?.id;
+      // كتابة جدول الدفعات الثابت (المدخل يدوياً بالنموذج) - فقط عند إنشاء عقد جديد
+      if (leaseId && form.installments.length > 0) {
+        const paymentRows = form.installments.map((inst, i) => {
+          const dueHijriText = hijriPartsToText(inst.hijri.year, inst.hijri.month, inst.hijri.day);
+          const dueGregorian = hijriPartsToGregorian(inst.hijri.year, inst.hijri.month, inst.hijri.day);
+          return {
+            lease_id: leaseId,
+            installment_number: i + 1,
+            total_installments: form.installments.length,
+            amount_due: Number(inst.amount) || 0,
+            amount_paid: 0,
+            due_date_hijri: dueHijriText,
+            due_date_gregorian: dueGregorian,
+            status: "لم يُسدَّد",
+          };
+        });
+        await supabase.from("payments").insert(paymentRows);
+      }
     }
     if (leaseId) {
       const luRows = form.selected_unit_ids.map(uid => ({ lease_id: leaseId, unit_id: uid }));
@@ -280,9 +440,30 @@ export default function Leases({ onBack }) {
     fetchAll();
   }
 
-  const filteredLeases = filterProperty === "الكل"
-    ? leases
-    : leases.filter(l => l.property_id === filterProperty);
+  // فلترة بالعقار + المستأجر مع بعض
+  const filteredLeases = leases.filter(l => {
+    const matchProperty = filterProperty === "الكل" || l.property_id === filterProperty;
+    const matchTenant = filterTenant === "الكل" || l.tenant_id === filterTenant;
+    return matchProperty && matchTenant;
+  });
+
+  // قائمة المستأجرين مرتبطين فعلياً بالعقار المختار فقط (أو الكل لو ما فيه فلتر عقار)
+  const tenantIdsInProperty = filterProperty === "الكل"
+    ? null
+    : new Set(leases.filter(l => l.property_id === filterProperty).map(l => l.tenant_id));
+  const availableTenants = (tenantIdsInProperty ? tenants.filter(t => tenantIdsInProperty.has(t.id)) : tenants);
+  const sortedTenants = [...availableTenants].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
+
+  // لو غيّرنا العقار وصار المستأجر المختار مو تابع له، نرجّع الفلتر لـ"الكل" تلقائياً
+  useEffect(() => {
+    if (filterTenant !== "الكل" && tenantIdsInProperty && !tenantIdsInProperty.has(filterTenant)) {
+      setFilterTenant("الكل");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterProperty]);
+
+  // إجمالي مبلغ العقود الظاهرة حالياً (يتغيّر تلقائياً حسب الفلاتر)
+  const totalAmount = filteredLeases.reduce((sum, l) => sum + Number(l.rent_amount || 0), 0);
 
   const total = getTotal();
 
@@ -301,12 +482,28 @@ export default function Leases({ onBack }) {
         <button onClick={fetchAll} style={{ padding: "10px 20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
           تحديث
         </button>
+        <TenantSearchSelect tenants={sortedTenants} value={filterTenant} onChange={setFilterTenant} />
         <select value={filterProperty} onChange={e => setFilterProperty(e.target.value)}
           style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, fontFamily: "Cairo, sans-serif", marginRight: "auto" }}>
           <option value="الكل">كل العقارات</option>
           {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       </div>
+
+      {!loading && (
+        <div style={{
+          background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10,
+          padding: "14px 20px", marginBottom: 20, display: "flex",
+          justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8
+        }}>
+          <span style={{ color: "#374151", fontSize: 14 }}>
+            عدد العقود الظاهرة: <strong>{filteredLeases.length}</strong>
+          </span>
+          <span style={{ color: "#1d4ed8", fontWeight: 700, fontSize: 18 }}>
+            الإجمالي: {totalAmount.toLocaleString()} ريال
+          </span>
+        </div>
+      )}
 
       {loading && <p>جاري التحميل...</p>}
 
@@ -321,7 +518,7 @@ export default function Leases({ onBack }) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
             <thead>
               <tr style={{ background: "#1B4D7A", textAlign: "right" }}>
-                {["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "البداية", "النهاية", "الملاحظات", ""].map(h => (
+                {["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الملاحظات", ""].map(h => (
                   <th key={h} style={{ padding: "12px", color: "#fff", fontWeight: 600, fontSize: 13 }}>{h}</th>
                 ))}
               </tr>
@@ -333,21 +530,24 @@ export default function Leases({ onBack }) {
                 return (
                   <tr key={l.id} style={{ background: idx % 2 === 0 ? "#fff" : "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
                     <td style={{ padding: "12px", fontWeight: 600, color: "#1B4D7A" }}>{tenant?.name || "—"}</td>
-                    <td style={{ padding: "12px", color: "#6b7280" }}>{property?.name || "—"}</td>
-                    <td style={{ padding: "12px", color: "#6b7280" }}>{getLeaseUnitsDisplay(l.id)}</td>
+                    <td style={{ padding: "12px", color: "#0e7490", fontWeight: 600 }}>{property?.name || "—"}</td>
+                    <td style={{ padding: "12px", color: "#7c3aed", fontWeight: 600 }}>{getLeaseUnitsDisplay(l.id)}</td>
                     <td style={{ padding: "12px" }}>
-                      <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "3px 10px", borderRadius: 6, fontSize: 12 }}>
+                      <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "3px 10px", borderRadius: 6, fontSize: 12, whiteSpace: "nowrap", display: "inline-block" }}>
                         {l.payment_type || "—"}
                       </span>
                     </td>
                     <td style={{ padding: "12px", fontWeight: 600 }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</td>
-                    <td style={{ padding: "12px", color: "#6b7280", fontSize: 12 }}>
-                      <div style={{ fontWeight: 600 }}>{l.start_date_hijri ? l.start_date_hijri + ' هـ' : '—'}</div>
-                      <div style={{ color: "#9ca3af", fontSize: 11 }}>{l.start_date || ''}</div>
-                    </td>
-                    <td style={{ padding: "12px", color: "#6b7280", fontSize: 12 }}>
-                      <div style={{ fontWeight: 600 }}>{l.end_date_hijri ? l.end_date_hijri + ' هـ' : '—'}</div>
-                      <div style={{ color: "#9ca3af", fontSize: 11 }}>{l.end_date || ''}</div>
+                    <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 1)}</td>
+                    <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 2)}</td>
+                    <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 3)}</td>
+                    <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
+                      {getInstallmentDate(l.id, 4)}
+                      {getExtraInstallmentsCount(l.id) > 0 && (
+                        <div style={{ color: "#9ca3af", fontSize: 10, fontWeight: 400 }}>
+                          +{getExtraInstallmentsCount(l.id)} دفعة أخرى (بصفحة الدفعات)
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: "12px", color: "#6b7280", maxWidth: "160px", whiteSpace: "normal", wordBreak: "break-word" }}>{l.notes || "—"}</td>
                     <td style={{ padding: "12px" }}>
@@ -419,7 +619,7 @@ export default function Leases({ onBack }) {
               <HijriPicker label="تاريخ النهاية (هجري)" value={form.end_hijri} onChange={handleEndHijri} />
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>نوع الدفع</label>
-                <select value={form.payment_type} onChange={e => setForm({ ...form, payment_type: e.target.value })}
+                <select value={form.payment_type} onChange={e => handlePaymentTypeChange(e.target.value)}
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14 }}>
                   {PAYMENT_TYPES.map(p => <option key={p.label}>{p.label}</option>)}
                 </select>
@@ -427,6 +627,7 @@ export default function Leases({ onBack }) {
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>المبلغ (ريال)</label>
                 <input type="text" value={form.rent_amount} onChange={e => setForm({ ...form, rent_amount: e.target.value })}
+                  onBlur={() => { if (!editingId) regenerateInstallments(); }}
                   placeholder="أدخل المبلغ"
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
               </div>
@@ -437,6 +638,41 @@ export default function Leases({ onBack }) {
                 <div><span style={{ color: "#6b7280", fontSize: 13 }}>كل دفعة: </span><span style={{ fontWeight: 700, fontSize: 16, color: "#059669" }}>{total.installment.toLocaleString()} ريال × {total.count}</span></div>
               </div>
             )}
+
+            {!editingId && form.installments.length > 0 && (
+              <div style={{ margin: "12px 0", border: "1px solid #e5e7eb", borderRadius: 8, padding: "12px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <label style={{ fontSize: 13, color: "#374151", fontWeight: 700 }}>جدول الدفعات (قابل للتعديل)</label>
+                  <button type="button" onClick={() => regenerateInstallments()}
+                    style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer" }}>
+                    إعادة توزيع تلقائي
+                  </button>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {form.installments.map((inst, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-end", background: "#f9fafb", padding: 8, borderRadius: 8 }}>
+                      <div style={{ width: 70, fontSize: 12, color: "#6b7280", paddingBottom: 8 }}>الدفعة {i + 1}</div>
+                      <div style={{ flex: 1 }}>
+                        <HijriPicker label="التاريخ" value={inst.hijri} onChange={(v) => updateInstallmentHijri(i, v)} />
+                      </div>
+                      <div style={{ width: 110 }}>
+                        <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>المبلغ</label>
+                        <input type="number" value={inst.amount}
+                          onChange={(e) => updateInstallmentAmount(i, e.target.value)}
+                          style={{ width: "100%", padding: "8px 6px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, boxSizing: "border-box" }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {editingId && (
+              <div style={{ margin: "12px 0", fontSize: 12, color: "#9ca3af", background: "#f9fafb", padding: 10, borderRadius: 8 }}>
+                ملاحظة: تعديل العقد هنا لا يغيّر جدول الدفعات المسجّل مسبقاً — لتعديل دفعة معينة استخدم صفحة "الدفعات".
+              </div>
+            )}
+
             <div style={{ marginTop: 12 }}>
               <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>ملاحظات (اختياري)</label>
               <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2}
