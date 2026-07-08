@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../supabaseClient';
 
 const OCC_COLORS = { مؤجرة: '#2563eb', شاغرة: '#f59e0b', صيانة: '#ef4444' };
@@ -88,15 +88,14 @@ function DashboardCharts() {
   const collectionPct = totalPayments ? Math.round((paidCount / totalPayments) * 100) : 0;
 
   const totalRevenue = revenue.reduce((s, r) => s + r.value, 0);
-
-  const chartHeight = Math.max(300, revenue.length * 55);
+  const maxRevenue = Math.max(...revenue.map((r) => r.value), 1);
 
   const Donut = ({ data, colors, centerValue, centerLabel }) => (
     <div style={styles.donutBlock}>
       <div style={styles.donutChartWrap}>
-        <ResponsiveContainer width={200} height={200}>
+        <ResponsiveContainer width={190} height={190}>
           <PieChart>
-            <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={62} outerRadius={90} paddingAngle={3}>
+            <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={56} outerRadius={84} paddingAngle={3}>
               {data.map((entry, i) => <Cell key={i} fill={colors[entry.name] || '#94a3b8'} />)}
             </Pie>
             <Tooltip />
@@ -120,6 +119,25 @@ function DashboardCharts() {
           );
         })}
       </div>
+    </div>
+  );
+
+  // قائمة أشرطة مخصّصة (بدون recharts) للإيراد السنوي — تفادي تداخل الأسماء وتصغير المساحة
+  const RevenueBars = () => (
+    <div style={styles.revenueList}>
+      {revenue.map((r, i) => {
+        const pct = Math.max((r.value / maxRevenue) * 100, 3);
+        const color = selectedProperty === 'all' ? BAR_PALETTE[i % BAR_PALETTE.length] : BAR_HIGHLIGHT;
+        return (
+          <div key={i} style={styles.revenueRow} title={r.name}>
+            <div style={styles.revenueName}>{r.name}</div>
+            <div style={styles.revenueTrack}>
+              <div style={{ ...styles.revenueFill, width: `${pct}%`, background: color }} />
+            </div>
+            <div style={styles.revenueValue}>{r.value.toLocaleString()}</div>
+          </div>
+        );
+      })}
     </div>
   );
 
@@ -152,39 +170,29 @@ function DashboardCharts() {
             </div>
           </div>
 
-          <div style={styles.donutsRow}>
+          {/* صف واحد: حالة الوحدات | الإيراد السنوي (بالوسط) | حالة الدفعات */}
+          <div style={styles.chartsRow}>
             {occupancy.length > 0 && (
-              <div style={styles.donutSection}>
+              <div style={styles.sideChartSection}>
                 <div style={styles.sectionTitle}>حالة الوحدات</div>
                 <Donut data={occupancy} colors={OCC_COLORS} centerValue={occupancyPct} centerLabel="إشغال" />
               </div>
             )}
+
+            {revenue.length > 0 && (
+              <div style={styles.middleChartSection}>
+                <div style={styles.sectionTitle}>الإيراد السنوي</div>
+                <RevenueBars />
+              </div>
+            )}
+
             {payments.length > 0 && (
-              <div style={styles.donutSection}>
+              <div style={styles.sideChartSection}>
                 <div style={styles.sectionTitle}>حالة الدفعات</div>
                 <Donut data={payments} colors={PAY_COLORS} centerValue={collectionPct} centerLabel="تحصيل" />
               </div>
             )}
           </div>
-
-          {revenue.length > 0 && (
-            <div style={{ marginTop: '32px' }}>
-              <div style={styles.sectionTitle}>الإيراد السنوي</div>
-              <ResponsiveContainer width="100%" height={chartHeight}>
-                <BarChart data={revenue} layout="vertical" margin={{ top: 10, right: 60, bottom: 10, left: 10 }} barCategoryGap={18}>
-                  <XAxis type="number" tick={{ fill: '#374151', fontSize: 12 }} />
-                  <YAxis type="category" dataKey="name" width={170} tick={{ fill: '#111827', fontSize: 14, fontWeight: 600 }} tickLine={false} />
-                  <Tooltip formatter={(v) => `${v.toLocaleString()} ريال`} />
-                  <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={28}>
-                    {revenue.map((_, i) => (
-                      <Cell key={i} fill={selectedProperty === 'all' ? BAR_PALETTE[i % BAR_PALETTE.length] : BAR_HIGHLIGHT} />
-                    ))}
-                    <LabelList dataKey="value" position="right" formatter={(v) => `${v.toLocaleString()} ﷼`} style={{ fill: '#111827', fontSize: 13, fontWeight: 'bold' }} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
         </>
       )}
     </div>
@@ -192,28 +200,40 @@ function DashboardCharts() {
 }
 
 const styles = {
-  card: { backgroundColor: '#fff', borderRadius: '12px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '24px' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
+  card: { backgroundColor: '#fff', borderRadius: '12px', padding: '22px 26px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '16px' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' },
   title: { margin: 0, fontSize: '19px', fontWeight: 'bold', color: '#111827' },
-  select: { padding: '8px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', color: '#111827' },
-  loading: { textAlign: 'center', color: '#6b7280', padding: '40px 0' },
-  kpiRow: { display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '28px' },
-  kpiCard: { flex: 1, minWidth: '180px', backgroundColor: '#f8fafc', borderRadius: '10px', padding: '18px', textAlign: 'center' },
-  kpiValue: { fontSize: '28px', fontWeight: 'bold' },
-  kpiLabel: { fontSize: '13px', color: '#6b7280', marginTop: '6px' },
-  sectionTitle: { fontSize: '15px', fontWeight: 'bold', color: '#374151', marginBottom: '12px' },
-  donutsRow: { display: 'flex', gap: '32px', flexWrap: 'wrap' },
-  donutSection: { flex: 1, minWidth: '320px' },
-  donutBlock: { display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' },
-  donutChartWrap: { position: 'relative', width: '200px', height: '200px' },
+  select: { padding: '7px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827' },
+  loading: { textAlign: 'center', color: '#6b7280', padding: '30px 0' },
+
+  kpiRow: { display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '20px' },
+  kpiCard: { flex: 1, minWidth: '170px', backgroundColor: '#f8fafc', borderRadius: '10px', padding: '14px 18px', textAlign: 'center' },
+  kpiValue: { fontSize: '24px', fontWeight: 'bold' },
+  kpiLabel: { fontSize: '13px', color: '#6b7280', marginTop: '4px' },
+
+  sectionTitle: { fontSize: '15px', fontWeight: 'bold', color: '#374151', marginBottom: '12px', textAlign: 'center' },
+
+  chartsRow: { display: 'grid', gridTemplateColumns: '1fr 1.6fr 1fr', gap: '20px', alignItems: 'start' },
+  sideChartSection: { minWidth: '0' },
+  middleChartSection: { minWidth: '0' },
+
+  donutBlock: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' },
+  donutChartWrap: { position: 'relative', width: '190px', height: '190px' },
   donutCenter: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' },
-  donutCenterValue: { fontSize: '26px', fontWeight: 'bold', color: '#111827' },
-  donutCenterLabel: { fontSize: '12px', color: '#6b7280' },
-  legendList: { display: 'flex', flexDirection: 'column', gap: '10px' },
-  legendRow: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px' },
-  legendDot: { width: '12px', height: '12px', borderRadius: '3px', display: 'inline-block' },
-  legendName: { color: '#111827', fontWeight: 600, minWidth: '80px' },
-  legendValue: { color: '#6b7280' }
+  donutCenterValue: { fontSize: '22px', fontWeight: 'bold', color: '#111827' },
+  donutCenterLabel: { fontSize: '13px', color: '#6b7280' },
+  legendList: { display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' },
+  legendRow: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', justifyContent: 'center' },
+  legendDot: { width: '12px', height: '12px', borderRadius: '3px', display: 'inline-block', flexShrink: 0 },
+  legendName: { color: '#111827', fontWeight: 600 },
+  legendValue: { color: '#6b7280' },
+
+  revenueList: { display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '280px', overflowY: 'auto', paddingLeft: '2px' },
+  revenueRow: { display: 'flex', alignItems: 'center', gap: '10px' },
+  revenueName: { width: '130px', flexShrink: 0, fontSize: '14px', color: '#111827', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  revenueTrack: { flex: 1, height: '20px', background: '#f1f5f9', borderRadius: '10px', overflow: 'hidden' },
+  revenueFill: { height: '100%', borderRadius: '10px', transition: 'width 0.3s ease' },
+  revenueValue: { width: '90px', flexShrink: 0, fontSize: '14px', color: '#111827', fontWeight: 700, textAlign: 'left' },
 };
 
 export default DashboardCharts;
