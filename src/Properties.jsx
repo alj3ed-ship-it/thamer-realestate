@@ -63,48 +63,55 @@ function Properties({ onBack, onSelectProperty }) {
   }
 
   return (
-    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1000px', margin: '0 auto' }}>
-      <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1050px', margin: '0 auto' }}>
+      <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff' }}>
         ← رجوع للوحة التحكم
       </button>
-      <h1 style={{ margin: '0 0 4px' }}>العقارات</h1>
-      <p style={{ color: '#6b7280', margin: '0 0 24px' }}>إدارة قائمة العقارات</p>
+      <h1 style={{ margin: '0 0 4px', color: '#1B4D7A', fontSize: 26 }}>العقارات</h1>
+      <p style={{ color: '#6b7280', margin: '0 0 24px', fontSize: 14 }}>إدارة قائمة العقارات</p>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-        <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8 }}>
+        <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600 }}>
           + إضافة عقار جديد
         </button>
-        <button onClick={fetchProperties} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
+        <button onClick={fetchProperties} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff' }}>تحديث</button>
       </div>
 
       {status === 'loading' && <p>جاري التحميل...</p>}
       {status === 'error' && <div style={{ background: '#fee', padding: 15, borderRadius: 8, color: '#c00' }}>فشل تحميل العقارات: {errorMsg}</div>}
       {status === 'success' && properties.length === 0 && (
-        <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>لا توجد عقارات مسجّلة حالياً.</div>
+        <div style={{ background: '#f9fafb', padding: 24, borderRadius: 12, color: '#6b7280', textAlign: 'center' }}>لا توجد عقارات مسجّلة حالياً.</div>
       )}
 
       {status === 'success' && properties.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <div style={{ overflowX: 'auto', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
             <thead>
               <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
                 {['اسم العقار', 'العنوان', 'عدد الوحدات', ''].map(h => (
-                  <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
+                  <th key={h} style={{ padding: '13px 14px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {properties.map((p, idx) => (
-                <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                  <td style={{ padding: '12px' }}>
+                <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #eef1f5' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#eef4fb'}
+                  onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : '#f8fafc'}>
+                  <td style={{ padding: '12px 14px' }}>
                     <span onClick={() => onSelectProperty && onSelectProperty(p.id)}
-                      style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                      style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 700 }}>
                       {p.name}
                     </span>
                   </td>
-                  <td style={{ padding: '12px', color: '#6b7280' }}>{p.address || '—'}</td>
-                  <td style={{ padding: '12px', fontWeight: 600, color: '#1B4D7A' }}>{unitCounts[p.id] || 0}</td>
-                  <td style={{ padding: '12px' }}>
+                  <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.address || '—'}</td>
+                  <td style={{ padding: '12px 14px' }}>
+                    <span style={{
+                      background: '#eef4fb', color: '#1B4D7A', border: '1px solid #cfe0f2',
+                      padding: '3px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700
+                    }}>{unitCounts[p.id] || 0}</span>
+                  </td>
+                  <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
                     <button onClick={() => openEditForm(p)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
                     <button onClick={() => handleDelete(p)} disabled={deletingId === p.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
                       {deletingId === p.id ? '...' : 'حذف'}
