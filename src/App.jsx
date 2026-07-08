@@ -86,7 +86,7 @@ export default function App() {
   if (!role) return <Login onLogin={(r) => setRole(r)} />;
 
  const cardStyle = {
-  background: "#fff", borderRadius: "10px", padding: "12px 10px",
+  background: "#fff", borderRadius: "10px", padding: "16px 12px",
   boxShadow: "0 2px 12px rgba(0,0,0,0.07)", textAlign: "center", flex: 1, cursor: "pointer"
 };
 
@@ -120,9 +120,9 @@ export default function App() {
 
       <div style={{ flex: 1, background: "#f0f4f8", overflow: "auto" }}>
         {activePage === "dashboard" && (
-          <div style={{ padding: "32px" }}>
-            <h2 style={{ color: "#1B4D7A", marginBottom: "24px" }}>{T.dashboard}</h2>
-            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+          <div style={{ padding: "18px 22px" }}>
+            <h2 style={{ color: "#1B4D7A", marginBottom: "12px", fontSize: "20px" }}>{T.dashboard}</h2>
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
               {[
                 { label: T.properties, value: stats.properties, icon: "\uD83C\uDFE2\uD83C\uDFE2\uD83C\uDFE2", color: "#2E6394", page: "properties" },
                 { label: T.units, value: stats.units, icon: "\uD83D\uDEAA\uD83D\uDEAA\uD83D\uDEAA", color: "#27ae60", page: "units" },
@@ -131,8 +131,8 @@ export default function App() {
                 { label: T.payments, value: stats.payments, icon: "\uD83D\uDCB0", color: "#c0392b", page: "payments" },
               ].map(card => (
                 <div key={card.label} style={cardStyle} onClick={() => card.page && setActivePage(card.page)}>
-                 <div style={{ fontSize: "20px" }}>{card.icon}</div>
-                           <div style={{ fontSize: "18px", fontWeight: "bold", color: card.color, margin: "4px 0" }}>{card.value}</div>
+                 <div style={{ fontSize: "22px" }}>{card.icon}</div>
+                           <div style={{ fontSize: "20px", fontWeight: "bold", color: card.color, margin: "4px 0" }}>{card.value}</div>
                   <div style={{ color: "#666", fontSize: "14px" }}>{card.label}</div>
                 </div>
               ))}
