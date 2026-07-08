@@ -6,6 +6,26 @@ const UNIT_TYPES = ['شقة', 'محل', 'مستودع', 'غرفة', 'فيلا', 
 
 const TYPE_ORDER = { 'محل': 1, 'شقة': 2, 'ورشة': 3 }
 
+const TYPE_BADGE_COLORS = {
+  'محل': { bg: '#dbeafe', color: '#1e40af', border: '#93c5fd' },
+  'شقة': { bg: '#f3e8ff', color: '#7c3aed', border: '#d8b4fe' },
+  'ورشة': { bg: '#fef3c7', color: '#b45309', border: '#fde68a' },
+  'مستودع': { bg: '#ffedd5', color: '#c2410c', border: '#fed7aa' },
+  'غرفة': { bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
+  'فيلا': { bg: '#dcfce7', color: '#15803d', border: '#86efac' },
+  'أرض': { bg: '#f1f5f9', color: '#334155', border: '#cbd5e1' },
+}
+
+const STATUS_BADGE = {
+  'مؤجرة': { bg: '#dcfce7', color: '#15803d', border: '#86efac' },
+  'شاغرة': { bg: '#fef9c3', color: '#a16207', border: '#fde047' },
+  'صيانة': { bg: '#fee2e2', color: '#b91c1c', border: '#fca5a5' },
+}
+
+function unitTypeStyle(type) {
+  return TYPE_BADGE_COLORS[type] || { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' }
+}
+
 function sortUnits(list) {
   return [...list].sort((a, b) => {
     const typeA = TYPE_ORDER[a.unit_type] ?? 99
@@ -96,78 +116,115 @@ export default function PropertyDetail({ propertyId, onBack }) {
     setDeletingId(null); fetchAll()
   }
 
-  const statusColor = {
-    'مؤجرة': { background: '#dcfce7', color: '#166534' },
-    'شاغرة': { background: '#fef9c3', color: '#854d0e' },
-    'صيانة': { background: '#fee2e2', color: '#991b1b' }
-  }
+  const rentedCount = units.filter(u => u.status === 'مؤجرة').length
+  const vacantCount = units.filter(u => u.status === 'شاغرة').length
+  const maintenanceCount = units.filter(u => u.status === 'صيانة').length
+  const occupancyPct = units.length ? Math.round((rentedCount / units.length) * 100) : 0
+
+  const summaryCards = [
+    { label: 'إجمالي الوحدات', value: units.length, icon: '🏢', accent: '#1B4D7A', bg: '#eef4fb' },
+    { label: 'مؤجرة', value: rentedCount, icon: '✅', accent: '#15803d', bg: '#eefdf3' },
+    { label: 'شاغرة', value: vacantCount, icon: '🟡', accent: '#a16207', bg: '#fffbea' },
+    { label: 'صيانة', value: maintenanceCount, icon: '🛠️', accent: '#b91c1c', bg: '#fef2f2' },
+  ]
 
   if (loading) return <div style={{ padding: 40, fontFamily: 'Cairo, sans-serif' }}>جاري التحميل...</div>
 
   return (
-    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1000px', margin: '0 auto' }}>
-      <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1050px', margin: '0 auto' }}>
+      <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff' }}>
         ← رجوع للعقارات
       </button>
 
-      <h1 style={{ margin: '0 0 4px', color: '#1B4D7A' }}>{property?.name}</h1>
-      <p style={{ color: '#666', margin: '0 0 20px' }}>{property?.address || ''}</p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12, marginBottom: 22 }}>
+        <div>
+          <h1 style={{ margin: '0 0 4px', color: '#1B4D7A', fontSize: 26 }}>{property?.name}</h1>
+          <p style={{ color: '#6b7280', margin: 0, fontSize: 14 }}>{property?.address || ''}</p>
+        </div>
+        <div style={{
+          background: '#1B4D7A', color: '#fff', borderRadius: 12, padding: '10px 22px',
+          textAlign: 'center', minWidth: 120
+        }}>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>{occupancyPct}%</div>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>نسبة الإشغال</div>
+        </div>
+      </div>
 
-      <div style={{ display: 'flex', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
-        {[
-          { label: 'إجمالي الوحدات', value: units.length, bg: '#eff6ff', color: '#1B4D7A' },
-          { label: 'مؤجرة', value: units.filter(u => u.status === 'مؤجرة').length, bg: '#dcfce7', color: '#166534' },
-          { label: 'شاغرة', value: units.filter(u => u.status === 'شاغرة').length, bg: '#fef9c3', color: '#854d0e' },
-          { label: 'صيانة', value: units.filter(u => u.status === 'صيانة').length, bg: '#fee2e2', color: '#991b1b' },
-        ].map(c => (
-          <div key={c.label} style={{ background: c.bg, borderRadius: 10, padding: '14px 20px', minWidth: 140 }}>
-            <div style={{ fontSize: 13, color: c.color, marginBottom: 4 }}>{c.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: c.color }}>{c.value}</div>
+      {/* بطاقات الملخص - تصميم جديد */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 28 }}>
+        {summaryCards.map(c => (
+          <div key={c.label} style={{
+            background: c.bg, borderRadius: 14, padding: '16px 18px',
+            border: `1px solid ${c.accent}22`, display: 'flex', alignItems: 'center', gap: 14
+          }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: 10, background: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
+            }}>{c.icon}</div>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: c.accent, lineHeight: 1.1 }}>{c.value}</div>
+              <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 2 }}>{c.label}</div>
+            </div>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-        <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
+        <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600 }}>
           + إضافة وحدة
         </button>
-        <button onClick={fetchAll} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
+        <button onClick={fetchAll} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff' }}>تحديث</button>
       </div>
 
       {units.length === 0 && (
-        <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>لا توجد وحدات مسجّلة لهذا العقار</div>
+        <div style={{ background: '#f9fafb', padding: 24, borderRadius: 12, color: '#6b7280', textAlign: 'center' }}>لا توجد وحدات مسجّلة لهذا العقار</div>
       )}
 
       {units.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-          <thead>
-            <tr style={{ background: '#f9fafb', textAlign: 'right' }}>
-              {['رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'ملاحظات', ''].map(h => (
-                <th key={h} style={{ padding: '12px', borderBottom: '2px solid #e5e7eb', color: '#6b7280', fontWeight: 500 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {units.map(u => (
-              <tr key={u.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                <td style={{ padding: '12px', fontWeight: 600, color: '#1B4D7A' }}>{u.unit_number}</td>
-                <td style={{ padding: '12px' }}>{u.unit_type || '—'}</td>
-                <td style={{ padding: '12px' }}>{u.floor ?? '—'}</td>
-                <td style={{ padding: '12px' }}>{u.area_sqm ? u.area_sqm + ' م²' : '—'}</td>
-                <td style={{ padding: '12px' }}>
-                  <span style={{ ...statusColor[u.status], padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>{u.status || '—'}</span>
-                </td>
-                <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{u.notes || '—'}</td>
-                <td style={{ padding: '12px' }}>
-                  <button onClick={() => openEditForm(u)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
-                  <button onClick={() => handleDelete(u)} disabled={deletingId === u.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
-                    {deletingId === u.id ? '...' : 'حذف'}
-                  </button>
-                </td>
+        <div style={{ borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
+            <thead>
+              <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
+                {['رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'ملاحظات', ''].map(h => (
+                  <th key={h} style={{ padding: '13px 14px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {units.map((u, idx) => {
+                const tStyle = unitTypeStyle(u.unit_type)
+                const sStyle = STATUS_BADGE[u.status] || { bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' }
+                return (
+                  <tr key={u.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #eef1f5' }}>
+                    <td style={{ padding: '12px 14px', fontWeight: 700, color: '#1B4D7A' }}>{u.unit_number}</td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <span style={{
+                        background: tStyle.bg, color: tStyle.color, border: `1px solid ${tStyle.border}`,
+                        padding: '2px 10px', borderRadius: 12, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap'
+                      }}>{u.unit_type || '—'}</span>
+                    </td>
+                    <td style={{ padding: '12px 14px', color: '#6b7280' }}>{u.floor ?? '—'}</td>
+                    <td style={{ padding: '12px 14px', color: '#6b7280' }}>{u.area_sqm ? u.area_sqm + ' م²' : '—'}</td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <span style={{
+                        background: sStyle.bg, color: sStyle.color, border: `1px solid ${sStyle.border}`,
+                        padding: '3px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap'
+                      }}>{u.status || '—'}</span>
+                    </td>
+                    <td style={{ padding: '12px 14px', color: '#9ca3af', fontSize: 13 }}>{u.notes || '—'}</td>
+                    <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                      <button onClick={() => openEditForm(u)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
+                      <button onClick={() => handleDelete(u)} disabled={deletingId === u.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
+                        {deletingId === u.id ? '...' : 'حذف'}
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {showForm && (
