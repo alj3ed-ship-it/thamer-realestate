@@ -27,11 +27,14 @@ export default function Reports({ onBack }) {
     return { ...p, rented, total, pct };
   });
 
+  // نعتبر العقد "فعّال" إذا كانت حالته active صراحة، أو إذا كانت حالته فاضية (بعض
+  // العقود المضافة من فورم "إضافة عقد جديد" لا تحفظ عمود status أصلاً) —
+  // هذا يمنع تكرار مشكلة عدم احتساب عقود جديدة بتقرير الإيرادات
   const revenueByProperty = properties.map(p => {
     const propUnits = units.filter(u => u.property_id === p.id);
     const propUnitIds = propUnits.map(u => u.id);
-    const propLeases = leases.filter(l => l.property_id === p.id && l.status === "active");
-    const annual = propLeases.reduce((s, l) => s + Number(l.rent_amount), 0);
+    const propLeases = leases.filter(l => l.property_id === p.id && (l.status === "active" || l.status === "نشط" || !l.status));
+    const annual = propLeases.reduce((s, l) => s + Number(l.rent_amount || 0), 0);
     return { ...p, annual };
   });
 
@@ -181,5 +184,3 @@ export default function Reports({ onBack }) {
     </div>
   );
 }
-
-
