@@ -4,6 +4,16 @@ import { supabase } from './supabaseClient'
 const PROPERTY_TYPES = ['فيلا', 'أرض', 'عمارة', 'مجمع تجاري', 'عمارة سكنية']
 const OTHER_OPTION = 'أخرى'
 
+// أولوية العقار (نفس ترتيب صفحة العرض /view وصفحة الوحدات)
+function getPropertyPriority(name) {
+  if (!name) return 99
+  if (name.includes('سلمان')) return 1
+  if (name.includes('إبراهيم') || name.includes('أبراهيم') || name.includes('ابراهيم')) return 2
+  if (name.includes('عبدالله الكبيرة')) return 3
+  if (name.includes('عبدالله الصغيرة')) return 4
+  return 99
+}
+
 function Properties({ onBack, onSelectProperty }) {
   const [properties, setProperties] = useState([])
   const [unitCounts, setUnitCounts] = useState({})
@@ -35,6 +45,13 @@ function Properties({ onBack, onSelectProperty }) {
     setUnitCounts(counts)
     setStatus('success')
   }
+
+  const sortedProperties = [...properties].sort((a, b) => {
+    const pa = getPropertyPriority(a.name)
+    const pb = getPropertyPriority(b.name)
+    if (pa !== pb) return pa - pb
+    return (a.name || '').localeCompare(b.name || '', 'ar')
+  })
 
   useEffect(() => { fetchProperties() }, [])
 
@@ -97,11 +114,11 @@ function Properties({ onBack, onSelectProperty }) {
 
       {status === 'loading' && <p>جاري التحميل...</p>}
       {status === 'error' && <div style={{ background: '#fee', padding: 15, borderRadius: 8, color: '#c00' }}>فشل تحميل العقارات: {errorMsg}</div>}
-      {status === 'success' && properties.length === 0 && (
+      {status === 'success' && sortedProperties.length === 0 && (
         <div style={{ background: '#f9fafb', padding: 24, borderRadius: 12, color: '#6b7280', textAlign: 'center' }}>لا توجد عقارات مسجّلة حالياً.</div>
       )}
 
-      {status === 'success' && properties.length > 0 && (
+      {status === 'success' && sortedProperties.length > 0 && (
         <div style={{ overflowX: 'auto', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
             <thead>
@@ -112,7 +129,7 @@ function Properties({ onBack, onSelectProperty }) {
               </tr>
             </thead>
             <tbody>
-              {properties.map((p, idx) => (
+              {sortedProperties.map((p, idx) => (
                 <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #eef1f5' }}
                   onMouseEnter={e => e.currentTarget.style.background = '#eef4fb'}
                   onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : '#f8fafc'}>
