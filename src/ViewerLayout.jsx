@@ -16,13 +16,17 @@ const TENANT_BADGE_COLOR = { bg: "#F4ECF7", color: "#6C3483", border: "#D2B4DE" 
 
 function parseHijri(dateStr) {
   if (!dateStr) return null;
-  const parts = dateStr.split("/");
-  if (parts.length !== 3) return null;
-  const day = parseInt(parts[0]);
-  const month = parseInt(parts[1]);
-  const year = parseInt(parts[2]);
-  if (!day || !month || !year) return null;
-  return { year, month, day };
+  const parts = dateStr.split("/").map((p) => parseInt(p));
+  if (parts.length !== 3 || parts.some((p) => isNaN(p))) return null;
+  // يدعم صيغتين: يوم/شهر/سنة (مثل 1/2/1448) أو سنة/شهر/يوم (مثل 1448/02/01)
+  // نحدد أي رقم هو السنة بناءً على كونه أكبر من 1300
+  if (parts[0] >= 1300) {
+    return { year: parts[0], month: parts[1], day: parts[2] };
+  }
+  if (parts[2] >= 1300) {
+    return { day: parts[0], month: parts[1], year: parts[2] };
+  }
+  return null;
 }
 
 function addHijriMonths(date, months) {
