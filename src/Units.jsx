@@ -7,6 +7,32 @@ const statusColor = {
   'صيانة': { background: '#fee2e2', color: '#991b1b' }
 }
 
+// أولوية العقار (نفس ترتيب صفحة العرض /view)
+function getPropertyPriority(name) {
+  if (!name) return 99
+  if (name.includes('سلمان')) return 1
+  if (name.includes('إبراهيم')) return 2
+  if (name.includes('عبدالله الكبيرة')) return 3
+  if (name.includes('عبدالله الصغيرة')) return 4
+  return 99
+}
+
+// أولوية نوع الوحدة: محل > شقة > ورشة > غيرها
+function getUnitTypePriority(type) {
+  if (!type) return 99
+  if (type === 'محل') return 1
+  if (type === 'شقة') return 2
+  if (type === 'ورشة') return 3
+  return 99
+}
+
+// استخراج الرقم من رقم الوحدة للترتيب التصاعدي الصحيح (1,2,3.. وليس 1,10,2)
+function getUnitNumberValue(unitNumber) {
+  if (unitNumber === null || unitNumber === undefined) return 999999
+  const parsed = parseInt(String(unitNumber).replace(/[^\d]/g, ''), 10)
+  return isNaN(parsed) ? 999999 : parsed
+}
+
 export default function Units({ onBack }) {
   const [units, setUnits] = useState([])
   const [properties, setProperties] = useState([])
@@ -31,6 +57,27 @@ export default function Units({ onBack }) {
     const matchStatus = filterStatus === 'الكل' || u.status === filterStatus
     const matchProperty = filterProperty === 'الكل' || u.property_id === filterProperty
     return matchStatus && matchProperty
+  })
+
+  // الترتيب: العقار (بالأولوية) → النوع (محل > شقة > ورشة) → رقم الوحدة تصاعدي
+  const sorted = [...filtered].sort((a, b) => {
+    const propA = properties.find(p => p.id === a.property_id)
+    const propB = properties.find(p => p.id === b.property_id)
+
+    const propPriorityA = getPropertyPriority(propA?.name)
+    const propPriorityB = getPropertyPriority(propB?.name)
+    if (propPriorityA !== propPriorityB) return propPriorityA - propPriorityB
+
+    // نفس أولوية العقار: رتب أبجدياً باسم العقار كضمان إضافي (لحالة عقارين بنفس الأولوية 99)
+    const nameA = propA?.name || ''
+    const nameB = propB?.name || ''
+    if (nameA !== nameB) return nameA.localeCompare(nameB, 'ar')
+
+    const typePriorityA = getUnitTypePriority(a.unit_type)
+    const typePriorityB = getUnitTypePriority(b.unit_type)
+    if (typePriorityA !== typePriorityB) return typePriorityA - typePriorityB
+
+    return getUnitNumberValue(a.unit_number) - getUnitNumberValue(b.unit_number)
   })
 
   const total = units.length
@@ -79,13 +126,13 @@ export default function Units({ onBack }) {
 
       {loading && <p>جاري التحميل...</p>}
 
-      {!loading && filtered.length === 0 && (
+      {!loading && sorted.length === 0 && (
         <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>
           لا توجد وحدات
         </div>
       )}
 
-      {!loading && filtered.length > 0 && (
+      {!loading && sorted.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
@@ -96,7 +143,7 @@ export default function Units({ onBack }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((u, idx) => {
+              {sorted.map((u, idx) => {
                 const prop = properties.find(p => p.id === u.property_id)
                 return (
                   <tr key={u.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>

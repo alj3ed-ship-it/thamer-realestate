@@ -1,6 +1,9 @@
 ﻿import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 
+const PROPERTY_TYPES = ['فيلا', 'أرض', 'عمارة', 'مجمع تجاري', 'عمارة سكنية']
+const OTHER_OPTION = 'أخرى'
+
 function Properties({ onBack, onSelectProperty }) {
   const [properties, setProperties] = useState([])
   const [unitCounts, setUnitCounts] = useState({})
@@ -12,6 +15,8 @@ function Properties({ onBack, onSelectProperty }) {
   const [editingId, setEditingId] = useState(null)
   const [formName, setFormName] = useState('')
   const [formAddress, setFormAddress] = useState('')
+  const [formType, setFormType] = useState('')
+  const [formCustomType, setFormCustomType] = useState('')
   const [formError, setFormError] = useState('')
 
   async function fetchProperties() {
@@ -34,17 +39,30 @@ function Properties({ onBack, onSelectProperty }) {
   useEffect(() => { fetchProperties() }, [])
 
   function openAddForm() {
-    setEditingId(null); setFormName(''); setFormAddress(''); setFormError(''); setShowForm(true)
+    setEditingId(null); setFormName(''); setFormAddress(''); setFormType(''); setFormCustomType(''); setFormError(''); setShowForm(true)
   }
 
   function openEditForm(property) {
-    setEditingId(property.id); setFormName(property.name || ''); setFormAddress(property.address || ''); setFormError(''); setShowForm(true)
+    setEditingId(property.id)
+    setFormName(property.name || '')
+    setFormAddress(property.address || '')
+    const existingType = property.property_type || ''
+    if (existingType && !PROPERTY_TYPES.includes(existingType)) {
+      setFormType(OTHER_OPTION)
+      setFormCustomType(existingType)
+    } else {
+      setFormType(existingType)
+      setFormCustomType('')
+    }
+    setFormError(''); setShowForm(true)
   }
 
   async function handleSave() {
     if (!formName.trim()) { setFormError('اسم العقار مطلوب'); return }
+    const finalType = formType === OTHER_OPTION ? formCustomType.trim() : formType
+    if (formType === OTHER_OPTION && !finalType) { setFormError('يرجى كتابة نوع العقار'); return }
     setSaving(true); setFormError('')
-    const payload = { name: formName.trim(), address: formAddress.trim() || null }
+    const payload = { name: formName.trim(), address: formAddress.trim() || null, property_type: finalType || null }
     let error
     if (editingId) { const res = await supabase.from('properties').update(payload).eq('id', editingId); error = res.error }
     else { const res = await supabase.from('properties').insert([payload]); error = res.error }
@@ -88,7 +106,7 @@ function Properties({ onBack, onSelectProperty }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
             <thead>
               <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                {['اسم العقار', 'العنوان', 'عدد الوحدات', ''].map(h => (
+                {['اسم العقار', 'النوع', 'العنوان', 'عدد الوحدات', ''].map(h => (
                   <th key={h} style={{ padding: '13px 14px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
                 ))}
               </tr>
@@ -104,6 +122,7 @@ function Properties({ onBack, onSelectProperty }) {
                       {p.name}
                     </span>
                   </td>
+                  <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.property_type || '—'}</td>
                   <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.address || '—'}</td>
                   <td style={{ padding: '12px 14px' }}>
                     <span style={{
@@ -131,9 +150,25 @@ function Properties({ onBack, onSelectProperty }) {
             <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 13 }}>اسم العقار</label>
             <input type="text" value={formName} onChange={e => setFormName(e.target.value)}
               style={{ width: '100%', padding: 10, marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box', fontSize: 14 }} placeholder="مثال: عمارة سلمان" />
+
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 13 }}>نوع العقار</label>
+            <select value={formType} onChange={e => setFormType(e.target.value)}
+              style={{ width: '100%', padding: 10, marginBottom: formType === OTHER_OPTION ? 10 : 15, borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
+              <option value="">— اختر النوع —</option>
+              {PROPERTY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              <option value={OTHER_OPTION}>{OTHER_OPTION} (اكتب النوع)</option>
+            </select>
+
+            {formType === OTHER_OPTION && (
+              <input type="text" value={formCustomType} onChange={e => setFormCustomType(e.target.value)}
+                style={{ width: '100%', padding: 10, marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box', fontSize: 14 }}
+                placeholder="اكتب نوع العقار (مثال: استراحة)" />
+            )}
+
             <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 13 }}>العنوان</label>
             <input type="text" value={formAddress} onChange={e => setFormAddress(e.target.value)}
               style={{ width: '100%', padding: 10, marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box', fontSize: 14 }} placeholder="اختياري" />
+
             {formError && <div style={{ color: '#c00', marginBottom: 15, fontSize: 14 }}>{formError}</div>}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowForm(false)} disabled={saving} style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>إلغاء</button>
