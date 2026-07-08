@@ -73,12 +73,13 @@ function getInstallmentPlan(paymentType) {
 }
 
 // قائمة مستأجرين قابلة للبحث بالكتابة (بدل قائمة منسدلة طويلة)
-function TenantSearchSelect({ tenants, value, onChange }) {
+// allowAll: يظهر خيار "كل المستأجرين" (يُستخدم بفلتر الجدول)، يُخفى عند استخدامه داخل فورم اختيار مستأجر واحد محدد
+function TenantSearchSelect({ tenants, value, onChange, allowAll = true }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
   const selectedTenant = tenants.find(t => t.id === value);
-  const displayValue = open ? query : (selectedTenant ? selectedTenant.name : (value === "الكل" ? "كل المستأجرين" : ""));
+  const displayValue = open ? query : (selectedTenant ? selectedTenant.name : (allowAll && value === "الكل" ? "كل المستأجرين" : ""));
 
   const filtered = query.trim() === ""
     ? tenants
@@ -107,13 +108,15 @@ function TenantSearchSelect({ tenants, value, onChange }) {
           background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, marginTop: 4,
           maxHeight: 260, overflowY: "auto", boxShadow: "0 6px 16px rgba(0,0,0,0.12)"
         }}>
-          <div
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => pick("الكل")}
-            style={{ padding: "8px 12px", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#1B4D7A", borderBottom: "1px solid #f0f0f0" }}
-          >
-            كل المستأجرين
-          </div>
+          {allowAll && (
+            <div
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pick("الكل")}
+              style={{ padding: "8px 12px", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#1B4D7A", borderBottom: "1px solid #f0f0f0" }}
+            >
+              كل المستأجرين
+            </div>
+          )}
           {filtered.length === 0 ? (
             <div style={{ padding: "10px 12px", color: "#9ca3af", fontSize: 13 }}>لا يوجد مستأجر مطابق</div>
           ) : (
@@ -454,6 +457,9 @@ export default function Leases({ onBack }) {
   const availableTenants = (tenantIdsInProperty ? tenants.filter(t => tenantIdsInProperty.has(t.id)) : tenants);
   const sortedTenants = [...availableTenants].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
 
+  // كل المستأجرين مرتّبين أبجدياً (تُستخدم داخل فورم إضافة/تعديل العقد، بدون فلترة بعقار معيّن)
+  const allTenantsSorted = [...tenants].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
+
   // لو غيّرنا العقار وصار المستأجر المختار مو تابع له، نرجّع الفلتر لـ"الكل" تلقائياً
   useEffect(() => {
     if (filterTenant !== "الكل" && tenantIdsInProperty && !tenantIdsInProperty.has(filterTenant)) {
@@ -609,11 +615,12 @@ export default function Leases({ onBack }) {
               )}
               <div style={{ gridColumn: "span 2" }}>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>المستأجر</label>
-                <select value={form.tenant_id} onChange={e => setForm({ ...form, tenant_id: e.target.value })}
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14 }}>
-                  <option value="">اختر المستأجر</option>
-                  {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
+                <TenantSearchSelect
+                  tenants={allTenantsSorted}
+                  value={form.tenant_id}
+                  onChange={(id) => setForm({ ...form, tenant_id: id })}
+                  allowAll={false}
+                />
               </div>
               <HijriPicker label="تاريخ البداية (هجري)" value={form.start_hijri} onChange={handleStartHijri} />
               <HijriPicker label="تاريخ النهاية (هجري)" value={form.end_hijri} onChange={handleEndHijri} />
