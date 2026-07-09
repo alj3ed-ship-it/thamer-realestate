@@ -1,6 +1,5 @@
 ﻿import { useState } from "react";
-
-const ADMIN_PASSWORD = "thamer511";
+import { supabase } from "./supabaseClient";
 
 function Logo() {
   return (
@@ -28,15 +27,33 @@ function Logo() {
 }
 
 export default function Login({ onLogin }) {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit() {
-    if (password === ADMIN_PASSWORD) {
-      localStorage.setItem("role", "admin");
+  async function handleSubmit() {
+    if (!email || !password) {
+      setError("الرجاء إدخال الإيميل وكلمة المرور");
+      return;
+    }
+    setLoading(true);
+    setError("");
+
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: password,
+    });
+
+    setLoading(false);
+
+    if (authError) {
+      setError("الإيميل أو كلمة المرور غير صحيحة");
+      return;
+    }
+
+    if (data?.session) {
       onLogin("admin");
-    } else {
-      setError("كلمة المرور غير صحيحة");
     }
   }
 
@@ -52,6 +69,18 @@ export default function Login({ onLogin }) {
         <Logo />
         <h2 style={{ color: "#1B4D7A", marginBottom: "24px", fontSize: "20px" }}>دخول المدير</h2>
         <input
+          type="email"
+          placeholder="الإيميل"
+          value={email}
+          onChange={e => { setEmail(e.target.value); setError(""); }}
+          onKeyDown={e => e.key === "Enter" && handleSubmit()}
+          style={{
+            width: "100%", padding: "12px 16px", borderRadius: "8px",
+            border: "1px solid #ccd6e0", fontSize: "16px", marginBottom: "12px",
+            textAlign: "center", boxSizing: "border-box"
+          }}
+        />
+        <input
           type="password"
           placeholder="كلمة المرور"
           value={password}
@@ -64,10 +93,11 @@ export default function Login({ onLogin }) {
           }}
         />
         {error && <p style={{ color: "red", marginBottom: "8px", fontSize: "14px" }}>{error}</p>}
-        <button onClick={handleSubmit} style={{
+        <button onClick={handleSubmit} disabled={loading} style={{
           width: "100%", padding: "12px", background: "#1B4D7A", color: "#fff",
-          border: "none", borderRadius: "8px", fontSize: "16px", cursor: "pointer"
-        }}>دخول</button>
+          border: "none", borderRadius: "8px", fontSize: "16px",
+          cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1
+        }}>{loading ? "جاري الدخول..." : "دخول"}</button>
       </div>
     </div>
   );
