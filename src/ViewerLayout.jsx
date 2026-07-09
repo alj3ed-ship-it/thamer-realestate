@@ -821,6 +821,8 @@ export default function ViewerLayout() {
                   <thead style={{ background: "#1B4D7A", color: "#fff" }}>
                     <tr>
                       <th style={{ padding: "12px" }}>العقار</th>
+                      <th style={{ padding: "12px" }}>المستأجر</th>
+                      <th style={{ padding: "12px" }}>النشاط</th>
                       <th style={{ padding: "12px" }}>الوحدة</th>
                       <th style={{ padding: "12px" }}>تاريخ البداية</th>
                       <th style={{ padding: "12px" }}>مبلغ العقد</th>
@@ -829,12 +831,15 @@ export default function ViewerLayout() {
                   </thead>
                   <tbody>
                     {filteredLeases.length === 0 ? (
-                      <tr><td colSpan="5" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج</td></tr>
+                      <tr><td colSpan="7" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج</td></tr>
                     ) : filteredLeases.map(l => {
                       const unitsList = l.lease_units?.map(lu => lu.units).filter(Boolean) || [];
+                      const tenantInfo = tenants.find(t => t.id === l.tenant_id);
                       return (
                         <tr key={l.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
                           <td style={{ padding: "12px" }}>{propertyBadge(l.properties?.name)}</td>
+                          <td style={{ padding: "12px" }}>{tenantBadge(tenantInfo?.name)}</td>
+                          <td style={{ padding: "12px" }}>{activityBadge(tenantInfo?.note)}</td>
                           <td style={{ padding: "12px" }}>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", justifyContent: "center" }}>
                               {unitsList.length === 0 ? "—" : unitsList.map((u, i) => <span key={i}>{unitTypeBadge(u.unit_type, u.unit_number)}</span>)}
