@@ -61,6 +61,28 @@ function paymentTypeLabel(totalInstallments) {
   return `كل ${intervalMonths} أشهر`;
 }
 
+// عرض عمود المبلغ: للجزئي نوضح الإجمالي/المدفوع/المتبقي بسطر واحد ملوّن بدون أي حساب على القارئ
+function amountDisplay(row) {
+  const due = Number(row.amount_due || 0);
+  const paid = Number(row.amount_paid || 0);
+  if (row.computedStatus === 'جزئي') {
+    const remaining = Math.max(due - paid, 0);
+    return (
+      <div style={{ whiteSpace: 'nowrap', fontSize: 13 }}>
+        <span style={{ color: '#e74c3c', fontWeight: 'bold' }}>{due.toLocaleString()}</span>
+        <span style={{ margin: '0 6px', color: '#ccc' }}>|</span>
+        <span style={{ color: '#27ae60', fontWeight: 'bold' }}>{paid.toLocaleString()}</span>
+        <span style={{ margin: '0 6px', color: '#ccc' }}>|</span>
+        <span style={{ color: '#f39c12', fontWeight: 'bold' }}>{remaining.toLocaleString()}</span>
+      </div>
+    );
+  }
+  if (row.computedStatus === 'مدفوع') {
+    return <span style={{ color: '#27ae60', fontWeight: 'bold' }}>{due.toLocaleString()}</span>;
+  }
+  return <span style={{ color: '#e74c3c', fontWeight: 'bold' }}>{due.toLocaleString()}</span>;
+}
+
 function Payments() {
   const [properties, setProperties] = useState([]);
   const [tenants, setTenants] = useState([]);
@@ -237,12 +259,11 @@ function Payments() {
     return a.sortNum - b.sortNum;
   });
 
+  // إجمالي المستحق = كل الأقساط. إجمالي المحصّل = كل الفلوس اللي فعلاً دخلت (سواء من مدفوع بالكامل أو جزء من الجزئي).
+  // إجمالي المتبقي = الفرق بينهم. هذا يغني عن كرت "جزئي" المنفصل ويمنع اللخبطة (نفس منطق صفحة الوالد).
   const totalDue = displayedPayments.reduce((sum, r) => sum + Number(r.amount_due || 0), 0);
   const totalPaidCash = displayedPayments.reduce((sum, r) => sum + Number(r.amount_paid || 0), 0);
-  const partialDue = displayedPayments
-    .filter((r) => r.computedStatus === 'جزئي')
-    .reduce((sum, r) => sum + Number(r.amount_due || 0), 0);
-  const remainingDue = totalDue - totalPaidCash;
+  const remainingDue = Math.max(totalDue - totalPaidCash, 0);
 
   const exportData = displayedPayments.map((row) => ({
     property: row.leases?.properties?.name || '—',
@@ -259,10 +280,9 @@ function Payments() {
   }));
 
   const exportStats = [
-    { label: 'مدفوع', value: `${totalPaidCash.toLocaleString()} ريال`, color: '#27ae60' },
-    { label: 'جزئي', value: `${partialDue.toLocaleString()} ريال`, color: '#f39c12' },
-    { label: 'متبقي', value: `${remainingDue.toLocaleString()} ريال`, color: '#e74c3c' },
-    { label: 'الإجمالي', value: `${totalDue.toLocaleString()} ريال`, color: '#1B4D7A' },
+    { label: 'إجمالي المحصّل', value: `${totalPaidCash.toLocaleString()} ريال`, color: '#27ae60' },
+    { label: 'إجمالي المتبقي', value: `${remainingDue.toLocaleString()} ريال`, color: '#e74c3c' },
+    { label: 'إجمالي المستحق', value: `${totalDue.toLocaleString()} ريال`, color: '#1B4D7A' },
   ];
 
   return (
@@ -338,19 +358,15 @@ function Payments() {
 
           <div style={styles.statsRow} className="no-print">
             <div style={{ ...styles.statBox, background: '#EAFAF1', border: '1px solid #A9DFBF' }}>
-              <div style={styles.statLabel}>مدفوع</div>
+              <div style={styles.statLabel}>إجمالي المحصّل</div>
               <div style={{ ...styles.statValue, color: '#27ae60' }}>{totalPaidCash.toLocaleString()} ريال</div>
             </div>
-            <div style={{ ...styles.statBox, background: '#FEF9E7', border: '1px solid #F9E79F' }}>
-              <div style={styles.statLabel}>جزئي</div>
-              <div style={{ ...styles.statValue, color: '#f39c12' }}>{partialDue.toLocaleString()} ريال</div>
-            </div>
             <div style={{ ...styles.statBox, background: '#FDEDEC', border: '1px solid #F1948A' }}>
-              <div style={styles.statLabel}>متبقي</div>
+              <div style={styles.statLabel}>إجمالي المتبقي</div>
               <div style={{ ...styles.statValue, color: '#e74c3c' }}>{remainingDue.toLocaleString()} ريال</div>
             </div>
             <div style={{ ...styles.statBox, background: '#EBF5FB', border: '1px solid #AED6F1' }}>
-              <div style={styles.statLabel}>الإجمالي</div>
+              <div style={styles.statLabel}>إجمالي المستحق</div>
               <div style={{ ...styles.statValue, color: '#1B4D7A' }}>{totalDue.toLocaleString()} ريال</div>
             </div>
           </div>
@@ -385,10 +401,7 @@ function Payments() {
                         {row.computedHijri && <span style={{ color: '#9ca3af', fontSize: 12 }}> ({row.computedHijri}هـ)</span>}
                       </td>
                       <td style={{ ...styles.td, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                        {row.computedStatus === 'جزئي' || row.computedStatus === 'مدفوع'
-                          ? `${Number(row.amount_paid).toLocaleString()}/${Number(row.amount_due).toLocaleString()}`
-                          : Number(row.amount_due).toLocaleString()}
-                        {' '}ريال
+                        {amountDisplay(row)}
                       </td>
                       <td style={styles.td}>
                         <span style={{ ...styles.badge, backgroundColor: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}>
