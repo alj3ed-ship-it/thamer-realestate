@@ -40,14 +40,41 @@ const NAV_ITEMS = [
 
 export default function App() {
   const [role, setRole] = useState(null);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [activePage, setActivePage] = useState("dashboard");
   const [selectedPropertyId, setSelectedPropertyId] = useState(null);
   const [stats, setStats] = useState({ properties: 0, units: 0, tenants: 0, leases: 0, payments: 0 });
 
   useEffect(() => {
-    const savedRole = localStorage.getItem("role");
-    if (savedRole === "admin") setRole("admin");
-    if (window.location.pathname === "/view") setRole("viewer");
+    if (window.location.pathname === "/view") {
+      setRole("viewer");
+      setCheckingSession(false);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      console.warn("انتهت مهلة التحقق من الجلسة — يبدو أن هناك بطء في اتصال Supabase.");
+      setCheckingSession(false);
+    }, 8000);
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(timeoutId);
+      if (session) setRole("admin");
+      setCheckingSession(false);
+    }).catch((err) => {
+      clearTimeout(timeoutId);
+      console.error("خطأ أثناء التحقق من الجلسة:", err);
+      setCheckingSession(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (window.location.pathname === "/view") return;
+      setRole(session ? "admin" : null);
+    });
+
+    return () => {
+      listener?.subscription?.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -77,9 +104,21 @@ export default function App() {
     fetchStats();
   }
 
-  function handleLogout() {
-    localStorage.removeItem("role");
+  async function handleLogout() {
+    await supabase.auth.signOut();
     setRole(null);
+  }
+
+  if (checkingSession) {
+    return (
+      <div style={{
+        minHeight: "100vh", display: "flex", alignItems: "center",
+        justifyContent: "center", background: "#f0f4f8", fontFamily: "Cairo, sans-serif",
+        color: "#1B4D7A", fontSize: "16px"
+      }}>
+        جاري التحقق من الجلسة...
+      </div>
+    );
   }
 
   if (role === "viewer") return <ViewerLayout />;
