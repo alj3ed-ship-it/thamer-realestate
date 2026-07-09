@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useMemo } from "react";
 import { supabase } from "./supabaseClient";
 import { getUnitTypeColor } from "./theme";
 
@@ -11,8 +11,9 @@ const HIJRI_MONTHS = [
 const UNIT_TYPE_ORDER = { "محل": 1, "شقة": 2, "ورشة": 3 };
 
 // ألوان ثابتة: لون واحد لكل "عقار" ولون واحد لكل "مستأجر" بكل الصفحات
-const PROPERTY_BADGE_COLOR = { bg: "#EBF5FB", color: "#1B4D7A", border: "#AED6F1" };
-const TENANT_BADGE_COLOR = { bg: "#F4ECF7", color: "#6C3483", border: "#D2B4DE" };
+const PROPERTY_BADGE_COLOR = { bg: "#EAF2F8", color: "#1B4D7A", border: "#AED6F1" };
+const TENANT_BADGE_COLOR = { bg: "#FEF9E7", color: "#9A7D0A", border: "#F7DC6F" };
+const ACTIVITY_BADGE_COLOR = { bg: "#E8F6F3", color: "#148F77", border: "#A2D9CE" };
 
 function parseHijri(dateStr) {
   if (!dateStr) return null;
@@ -80,6 +81,37 @@ function tenantBadge(name) {
   );
 }
 
+function activityBadge(text) {
+  if (!text || text === "—") return "—";
+  return (
+    <span style={{
+      background: ACTIVITY_BADGE_COLOR.bg, color: ACTIVITY_BADGE_COLOR.color,
+      border: `1px solid ${ACTIVITY_BADGE_COLOR.border}`,
+      padding: "4px 12px", borderRadius: "12px", fontSize: "13px", fontWeight: "bold", whiteSpace: "nowrap",
+    }}>
+      {text}
+    </span>
+  );
+}
+
+function leaseStatusBadge(status) {
+  const isActive = (status || "").toLowerCase() === "active";
+  const label = isActive ? "نشط ✓" : (status || "منتهي");
+  return (
+    <span style={{
+      background: isActive ? "#EAFAF1" : "#FDEDEC",
+      color: isActive ? "#27ae60" : "#e74c3c",
+      padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold", whiteSpace: "nowrap",
+    }}>
+      {label}
+    </span>
+  );
+}
+
+function leaseAmountDisplay(amount) {
+  return <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{Number(amount || 0).toLocaleString()} ر.س</span>;
+}
+
 function searchInput(value, onChange, placeholder) {
   return (
     <div style={{ marginBottom: "16px" }}>
@@ -114,12 +146,18 @@ export default function ViewerLayout() {
   const [entResults, setEntResults] = useState([]);
   const [entSearched, setEntSearched] = useState(false);
 
+  // فلتر العقار والمستأجر لتبويب الاستحقاقات
+  const [entSelectedProperties, setEntSelectedProperties] = useState([]); // فاضي = كل العقارات
+  const [showEntPropDropdown, setShowEntPropDropdown] = useState(false);
+  const [entSelectedTenants, setEntSelectedTenants] = useState([]); // فاضي = كل المستأجرين
+  const [showEntTenantDropdown, setShowEntTenantDropdown] = useState(false);
+  const [entTenantSearchText, setEntTenantSearchText] = useState("");
+
   // بحث نصي لكل تبويب
   const [searchProperties, setSearchProperties] = useState("");
   const [searchUnits, setSearchUnits] = useState("");
   const [searchTenants, setSearchTenants] = useState("");
   const [searchLeases, setSearchLeases] = useState("");
-  const [searchEntitlements, setSearchEntitlements] = useState("");
 
   useEffect(() => {
     supabase.from("properties").select("*").order("priority").then(({ data }) => setProperties(data || []));
@@ -277,13 +315,52 @@ export default function ViewerLayout() {
     return <span style={{ background: "#FDEDEC", color: "#e74c3c", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>لم يُسدَّد ✗</span>;
   }
 
+  // عرض عمود المبلغ: للجزئي نوضح الإجمالي/المدفوع/المتبقي بالكلمة والرقم بسطر واحد بدون أي حساب على القارئ
+  function amountDisplay(r) {
+    if (r.status === "partial") {
+      const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
+      return (
+        <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
+          <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
+          <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+          <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
+          <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+          <span style={{ color: "#f39c12", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
+        </div>
+      );
+    }
+    if (r.status === "paid") {
+      return <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+    }
+    return <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+  }
+
+  // قائمة أسماء المستأجرين الفريدة (من الدفعات) لبناء قائمة الفلتر القابلة للكتابة
+  const entUniqueTenants = useMemo(() => {
+    const names = new Set();
+    payments.forEach((p) => {
+      const name = p.leases?.tenants?.name;
+      if (name) names.add(name);
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "ar"));
+  }, [payments]);
+
+  const entFilteredTenantOptions = entUniqueTenants.filter((name) =>
+    name.toLowerCase().includes(entTenantSearchText.toLowerCase())
+  );
+
   function handleEntitlementsSearch() {
+    setShowEntPropDropdown(false);
+    setShowEntTenantDropdown(false);
     const filterYear = parseInt(selectedYear);
     const filterMonth = parseInt(selectedMonthNum);
     const found = [];
 
     for (const row of payments) {
       const lease = row.leases;
+      if (entSelectedProperties.length > 0 && !entSelectedProperties.includes(lease.property_id)) continue;
+      if (entSelectedTenants.length > 0 && !entSelectedTenants.includes(lease.tenants?.name)) continue;
+
       const hijri = computeInstallmentHijri(lease.start_date_hijri, row.total_installments, row.installment_number);
       if (!hijri || hijri.year !== filterYear || hijri.month !== filterMonth) continue;
 
@@ -296,6 +373,7 @@ export default function ViewerLayout() {
         property: lease.properties?.name || "",
         propertyPriority: lease.properties?.priority ?? 99,
         unit: unitsList.map((u) => `${u.unit_type} ${u.unit_number}`).join(" + ") || "—",
+        units: unitsList,
         amount: Number(row.amount_due || 0),
         paidAmount: Number(row.amount_paid || 0),
         status,
@@ -308,16 +386,11 @@ export default function ViewerLayout() {
     setEntSearched(true);
   }
 
-  const filteredEntResults = entResults.filter(r => {
-    const q = searchEntitlements.trim();
-    if (!q) return true;
-    return (r.property || "").includes(q) || (r.tenant || "").includes(q);
-  });
-
-  const totalAmount = filteredEntResults.reduce((s, r) => s + (r.amount || 0), 0);
-  const paidAmount = filteredEntResults.filter(r => r.status === "paid").reduce((s, r) => s + (r.amount || 0), 0);
-  const partialAmount = filteredEntResults.filter(r => r.status === "partial").reduce((s, r) => s + (r.amount || 0), 0);
-  const unpaidAmount = filteredEntResults.filter(r => r.status === "unpaid").reduce((s, r) => s + (r.amount || 0), 0);
+  // إجمالي المستحق = كل الأقساط. إجمالي المحصّل = كل الفلوس اللي فعلاً دخلت (سواء من مدفوع بالكامل أو جزء من الجزئي).
+  // إجمالي المتبقي = الفرق بينهم. هذا يغني عن تصنيف "جزئي" كرقم مستقل فوق ويمنع اللخبطة.
+  const totalAmount = entResults.reduce((s, r) => s + (r.amount || 0), 0);
+  const totalCollected = entResults.reduce((s, r) => s + (r.paidAmount || 0), 0);
+  const totalRemaining = Math.max(totalAmount - totalCollected, 0);
 
   return (
     <div style={{ minHeight: "100vh", background: "#f0f4f8", fontFamily: "Tahoma, Arial, sans-serif", direction: "rtl" }}>
@@ -409,8 +482,8 @@ export default function ViewerLayout() {
                         </div>
                       </td>
                       <td style={{ padding: "12px" }}>{l.start_date_hijri || l.start_date || "-"}</td>
-                      <td style={{ padding: "12px" }}>{Number(l.contract_value || l.rent_amount || 0).toLocaleString()} ر.س</td>
-                      <td style={{ padding: "12px" }}>{l.status}</td>
+                      <td style={{ padding: "12px" }}>{leaseAmountDisplay(l.contract_value || l.rent_amount)}</td>
+                      <td style={{ padding: "12px" }}>{leaseStatusBadge(l.status)}</td>
                     </tr>
                   );
                 })}
@@ -538,8 +611,8 @@ export default function ViewerLayout() {
                             </div>
                           </td>
                           <td style={{ padding: "12px" }}>{l.start_date_hijri || l.start_date || "-"}</td>
-                          <td style={{ padding: "12px" }}>{Number(l.contract_value || l.rent_amount || 0).toLocaleString()} ر.س</td>
-                          <td style={{ padding: "12px" }}>{l.status}</td>
+                          <td style={{ padding: "12px" }}>{leaseAmountDisplay(l.contract_value || l.rent_amount)}</td>
+                          <td style={{ padding: "12px" }}>{leaseStatusBadge(l.status)}</td>
                         </tr>
                       );
                     })}
@@ -566,36 +639,130 @@ export default function ViewerLayout() {
                       ))}
                     </select>
                   </div>
+
+                  <div style={{ position: "relative" }}>
+                    <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>العقار</label>
+                    <button
+                      type="button"
+                      onClick={() => { setShowEntPropDropdown(!showEntPropDropdown); setShowEntTenantDropdown(false); }}
+                      style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Tahoma, Arial, sans-serif", minWidth: "180px", background: "#fff", cursor: "pointer", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>
+                        {entSelectedProperties.length === 0
+                          ? "كل العقارات"
+                          : entSelectedProperties.length === 1
+                            ? (properties.find((p) => p.id === entSelectedProperties[0])?.name || "عقار واحد")
+                            : `${entSelectedProperties.length} عقارات محددة`}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "#999" }}>▾</span>
+                    </button>
+
+                    {showEntPropDropdown && (
+                      <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "#fff", border: "1px solid #ddd", borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", padding: "10px", zIndex: 20, minWidth: "220px", maxHeight: "280px", overflowY: "auto" }}>
+                        <div style={{ display: "flex", gap: "8px", marginBottom: "8px", paddingBottom: "8px", borderBottom: "1px solid #eee" }}>
+                          <button type="button" onClick={() => setEntSelectedProperties(properties.map((p) => p.id))}
+                            style={{ fontSize: "12px", color: "#1B4D7A", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>
+                            تحديد الكل
+                          </button>
+                          <button type="button" onClick={() => setEntSelectedProperties([])}
+                            style={{ fontSize: "12px", color: "#e74c3c", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>
+                            إلغاء الكل
+                          </button>
+                        </div>
+                        {properties.map((p) => (
+                          <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 4px", fontSize: "14px", cursor: "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={entSelectedProperties.includes(p.id)}
+                              onChange={() => {
+                                setEntSelectedProperties((prev) =>
+                                  prev.includes(p.id) ? prev.filter((id) => id !== p.id) : [...prev, p.id]
+                                );
+                              }}
+                            />
+                            {p.name}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ position: "relative" }}>
+                    <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>المستأجر</label>
+                    <button
+                      type="button"
+                      onClick={() => { setShowEntTenantDropdown(!showEntTenantDropdown); setShowEntPropDropdown(false); }}
+                      style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Tahoma, Arial, sans-serif", minWidth: "180px", background: "#fff", cursor: "pointer", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>
+                        {entSelectedTenants.length === 0
+                          ? "كل المستأجرين"
+                          : entSelectedTenants.length === 1
+                            ? entSelectedTenants[0]
+                            : `${entSelectedTenants.length} مستأجرين محددين`}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "#999" }}>▾</span>
+                    </button>
+
+                    {showEntTenantDropdown && (
+                      <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "#fff", border: "1px solid #ddd", borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", padding: "10px", zIndex: 20, minWidth: "240px", maxHeight: "320px", overflowY: "auto" }}>
+                        <input
+                          type="text"
+                          placeholder="اكتب اسم المستأجر..."
+                          value={entTenantSearchText}
+                          onChange={(e) => setEntTenantSearchText(e.target.value)}
+                          autoFocus
+                          style={{ width: "100%", boxSizing: "border-box", border: "1px solid #ddd", borderRadius: "6px", padding: "6px 10px", fontSize: "13px", fontFamily: "Tahoma, Arial, sans-serif", marginBottom: "8px" }}
+                        />
+                        <div style={{ display: "flex", gap: "8px", marginBottom: "8px", paddingBottom: "8px", borderBottom: "1px solid #eee" }}>
+                          <button type="button" onClick={() => setEntSelectedTenants(entFilteredTenantOptions)}
+                            style={{ fontSize: "12px", color: "#1B4D7A", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>
+                            تحديد الكل
+                          </button>
+                          <button type="button" onClick={() => setEntSelectedTenants([])}
+                            style={{ fontSize: "12px", color: "#e74c3c", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>
+                            إلغاء الكل
+                          </button>
+                        </div>
+                        {entFilteredTenantOptions.length === 0 && (
+                          <div style={{ fontSize: "13px", color: "#999", padding: "6px 4px" }}>لا يوجد مستأجر بهذا الاسم</div>
+                        )}
+                        {entFilteredTenantOptions.map((name) => (
+                          <label key={name} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 4px", fontSize: "14px", cursor: "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={entSelectedTenants.includes(name)}
+                              onChange={() => {
+                                setEntSelectedTenants((prev) =>
+                                  prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
+                                );
+                              }}
+                            />
+                            {name}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <button onClick={handleEntitlementsSearch}
                     style={{ background: "#1B4D7A", color: "#fff", padding: "9px 28px", borderRadius: "8px", border: "none", fontSize: "14px", fontFamily: "Tahoma, Arial, sans-serif", cursor: "pointer", fontWeight: "bold" }}>
                     بحث
                   </button>
                 </div>
 
-                {entSearched && (
-                  <div style={{ maxWidth: "320px" }}>
-                    {searchInput(searchEntitlements, setSearchEntitlements, "بحث بالعقار أو المستأجر...")}
-                  </div>
-                )}
-
-                {entSearched && filteredEntResults.length > 0 && (
+                {entSearched && entResults.length > 0 && (
                   <>
                     <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
-                      <div style={{ flex: 1, minWidth: "150px", background: "#EAFAF1", border: "1px solid #A9DFBF", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-                        <div style={{ fontSize: "13px", color: "#555" }}>مدفوع</div>
-                        <div style={{ fontWeight: "bold", color: "#27ae60", fontSize: "18px" }}>{paidAmount.toLocaleString()} ريال</div>
+                      <div style={{ flex: 1, minWidth: "150px", background: "#EBF5FB", border: "1px solid #AED6F1", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                        <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المستحق</div>
+                        <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>{totalAmount.toLocaleString()} ريال</div>
                       </div>
-                      <div style={{ flex: 1, minWidth: "150px", background: "#FEF9E7", border: "1px solid #F9E79F", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-                        <div style={{ fontSize: "13px", color: "#555" }}>جزئي</div>
-                        <div style={{ fontWeight: "bold", color: "#f39c12", fontSize: "18px" }}>{partialAmount.toLocaleString()} ريال</div>
+                      <div style={{ flex: 1, minWidth: "150px", background: "#EAFAF1", border: "1px solid #A9DFBF", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                        <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المحصّل</div>
+                        <div style={{ fontWeight: "bold", color: "#27ae60", fontSize: "18px" }}>{totalCollected.toLocaleString()} ريال</div>
                       </div>
                       <div style={{ flex: 1, minWidth: "150px", background: "#FDEDEC", border: "1px solid #F1948A", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-                        <div style={{ fontSize: "13px", color: "#555" }}>لم يُسدَّد</div>
-                        <div style={{ fontWeight: "bold", color: "#e74c3c", fontSize: "18px" }}>{unpaidAmount.toLocaleString()} ريال</div>
-                      </div>
-                      <div style={{ flex: 1, minWidth: "150px", background: "#EBF5FB", border: "1px solid #AED6F1", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-                        <div style={{ fontSize: "13px", color: "#555" }}>إجمالي الدفعات</div>
-                        <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>{totalAmount.toLocaleString()} ريال</div>
+                        <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المتبقي</div>
+                        <div style={{ fontWeight: "bold", color: "#e74c3c", fontSize: "18px" }}>{totalRemaining.toLocaleString()} ريال</div>
                       </div>
                     </div>
 
@@ -611,13 +778,17 @@ export default function ViewerLayout() {
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredEntResults.map((r, i) => (
+                        {entResults.map((r, i) => (
                           <tr key={i} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
                             <td style={{ padding: "12px" }}>{propertyBadge(r.property)}</td>
                             <td style={{ padding: "12px" }}>{tenantBadge(r.tenant)}</td>
-                            <td style={{ padding: "12px" }}>{r.activity}</td>
-                            <td style={{ padding: "12px" }}>{r.unit}</td>
-                            <td style={{ padding: "12px" }}>{r.amount.toLocaleString()} ر.س</td>
+                            <td style={{ padding: "12px" }}>{activityBadge(r.activity)}</td>
+                            <td style={{ padding: "12px" }}>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", justifyContent: "center" }}>
+                                {r.units.length === 0 ? "—" : r.units.map((u, i) => <span key={i}>{unitTypeBadge(u.unit_type, u.unit_number)}</span>)}
+                              </div>
+                            </td>
+                            <td style={{ padding: "12px" }}>{amountDisplay(r)}</td>
                             <td style={{ padding: "12px" }}>{statusBadge(r.status)}</td>
                           </tr>
                         ))}
@@ -626,7 +797,7 @@ export default function ViewerLayout() {
                   </>
                 )}
 
-                {entSearched && filteredEntResults.length === 0 && (
+                {entSearched && entResults.length === 0 && (
                   <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "48px", textAlign: "center", color: "#999" }}>
                     لا توجد نتائج مطابقة
                   </div>

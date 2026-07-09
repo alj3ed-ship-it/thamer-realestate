@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "./supabaseClient";
 import ExportToolbar from "./components/ExportToolbar";
 import { getUnitTypeColor } from "./theme";
@@ -46,6 +46,9 @@ export default function Entitlements() {
   const [selectedMonthNum, setSelectedMonthNum] = useState("1");
   const [selectedProperties, setSelectedProperties] = useState([]); // فاضي = كل العقارات
   const [showPropDropdown, setShowPropDropdown] = useState(false);
+  const [selectedTenants, setSelectedTenants] = useState([]); // فاضي = كل المستأجرين
+  const [showTenantDropdown, setShowTenantDropdown] = useState(false);
+  const [tenantSearchText, setTenantSearchText] = useState("");
   const [results, setResults] = useState([]);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -69,6 +72,19 @@ export default function Entitlements() {
     setLoading(false);
   }
 
+  const uniqueTenants = useMemo(() => {
+    const names = new Set();
+    payments.forEach((p) => {
+      const name = p.leases?.tenants?.name;
+      if (name) names.add(name);
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "ar"));
+  }, [payments]);
+
+  const filteredTenantOptions = uniqueTenants.filter((name) =>
+    name.toLowerCase().includes(tenantSearchText.toLowerCase())
+  );
+
   function computeStatus(row) {
     const due = Number(row.amount_due || 0);
     const paid = Number(row.amount_paid || 0);
@@ -85,6 +101,7 @@ export default function Entitlements() {
 
   function handleSearch() {
     setShowPropDropdown(false);
+    setShowTenantDropdown(false);
     const filterYear = parseInt(selectedYear);
     const filterMonth = parseInt(selectedMonthNum);
     const found = [];
@@ -92,6 +109,7 @@ export default function Entitlements() {
     for (const row of payments) {
       const lease = row.leases;
       if (selectedProperties.length > 0 && !selectedProperties.includes(lease.property_id)) continue;
+      if (selectedTenants.length > 0 && !selectedTenants.includes(lease.tenants?.name)) continue;
 
       const hijri = computeInstallmentHijri(lease.start_date_hijri, row.total_installments, row.installment_number);
       if (!hijri || hijri.year !== filterYear || hijri.month !== filterMonth) continue;
@@ -212,7 +230,7 @@ export default function Entitlements() {
           <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>العقار</label>
           <button
             type="button"
-            onClick={() => setShowPropDropdown(!showPropDropdown)}
+            onClick={() => { setShowPropDropdown(!showPropDropdown); setShowTenantDropdown(false); }}
             style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Cairo, sans-serif", minWidth: "180px", background: "#fff", cursor: "pointer", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span>
               {selectedProperties.length === 0
@@ -248,6 +266,63 @@ export default function Entitlements() {
                     }}
                   />
                   {p.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ position: "relative" }}>
+          <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>المستأجر</label>
+          <button
+            type="button"
+            onClick={() => { setShowTenantDropdown(!showTenantDropdown); setShowPropDropdown(false); }}
+            style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Cairo, sans-serif", minWidth: "180px", background: "#fff", cursor: "pointer", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>
+              {selectedTenants.length === 0
+                ? "كل المستأجرين"
+                : selectedTenants.length === 1
+                  ? selectedTenants[0]
+                  : `${selectedTenants.length} مستأجرين محددين`}
+            </span>
+            <span style={{ fontSize: "10px", color: "#999" }}>▾</span>
+          </button>
+
+          {showTenantDropdown && (
+            <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "#fff", border: "1px solid #ddd", borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", padding: "10px", zIndex: 20, minWidth: "240px", maxHeight: "320px", overflowY: "auto" }}>
+              <input
+                type="text"
+                placeholder="اكتب اسم المستأجر..."
+                value={tenantSearchText}
+                onChange={(e) => setTenantSearchText(e.target.value)}
+                autoFocus
+                style={{ width: "100%", boxSizing: "border-box", border: "1px solid #ddd", borderRadius: "6px", padding: "6px 10px", fontSize: "13px", fontFamily: "Cairo, sans-serif", marginBottom: "8px" }}
+              />
+              <div style={{ display: "flex", gap: "8px", marginBottom: "8px", paddingBottom: "8px", borderBottom: "1px solid #eee" }}>
+                <button type="button" onClick={() => setSelectedTenants(filteredTenantOptions)}
+                  style={{ fontSize: "12px", color: "#1B4D7A", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>
+                  تحديد الكل
+                </button>
+                <button type="button" onClick={() => setSelectedTenants([])}
+                  style={{ fontSize: "12px", color: "#e74c3c", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>
+                  إلغاء الكل
+                </button>
+              </div>
+              {filteredTenantOptions.length === 0 && (
+                <div style={{ fontSize: "13px", color: "#999", padding: "6px 4px" }}>لا يوجد مستأجر بهذا الاسم</div>
+              )}
+              {filteredTenantOptions.map((name) => (
+                <label key={name} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 4px", fontSize: "14px", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedTenants.includes(name)}
+                    onChange={() => {
+                      setSelectedTenants((prev) =>
+                        prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
+                      );
+                    }}
+                  />
+                  {name}
                 </label>
               ))}
             </div>
