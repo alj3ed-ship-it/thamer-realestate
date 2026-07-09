@@ -153,11 +153,23 @@ export default function ViewerLayout() {
   const [showEntTenantDropdown, setShowEntTenantDropdown] = useState(false);
   const [entTenantSearchText, setEntTenantSearchText] = useState("");
 
-  // بحث نصي لكل تبويب
-  const [searchProperties, setSearchProperties] = useState("");
-  const [searchUnits, setSearchUnits] = useState("");
-  const [searchTenants, setSearchTenants] = useState("");
-  const [searchLeases, setSearchLeases] = useState("");
+  // فلتر العقار لتبويب الوحدات
+  const [unitsSelectedProperties, setUnitsSelectedProperties] = useState([]);
+  const [showUnitsPropDropdown, setShowUnitsPropDropdown] = useState(false);
+
+  // فلتر العقار والمستأجر لتبويب المستأجرين
+  const [tenantsSelectedProperties, setTenantsSelectedProperties] = useState([]);
+  const [showTenantsPropDropdown, setShowTenantsPropDropdown] = useState(false);
+  const [tenantsSelectedTenants, setTenantsSelectedTenants] = useState([]);
+  const [showTenantsTenantDropdown, setShowTenantsTenantDropdown] = useState(false);
+  const [tenantsTenantSearchText, setTenantsTenantSearchText] = useState("");
+
+  // فلتر العقار والمستأجر لتبويب العقود
+  const [leasesSelectedProperties, setLeasesSelectedProperties] = useState([]);
+  const [showLeasesPropDropdown, setShowLeasesPropDropdown] = useState(false);
+  const [leasesSelectedTenants, setLeasesSelectedTenants] = useState([]);
+  const [showLeasesTenantDropdown, setShowLeasesTenantDropdown] = useState(false);
+  const [leasesTenantSearchText, setLeasesTenantSearchText] = useState("");
 
   useEffect(() => {
     supabase.from("properties").select("*").order("priority").then(({ data }) => setProperties(data || []));
@@ -189,7 +201,12 @@ export default function ViewerLayout() {
   const propertyUnits = selectedProperty
     ? units.filter(u => u.property_id === selectedProperty.id)
       .slice()
-      .sort((a, b) => (parseInt(a.unit_number) || 999) - (parseInt(b.unit_number) || 999))
+      .sort((a, b) => {
+        const ta = UNIT_TYPE_ORDER[(a.unit_type || "").trim()] || 4;
+        const tb = UNIT_TYPE_ORDER[(b.unit_type || "").trim()] || 4;
+        if (ta !== tb) return ta - tb;
+        return (parseInt(a.unit_number) || 999) - (parseInt(b.unit_number) || 999);
+      })
     : [];
   const tenantLeases = selectedTenant ? leases.filter(l => l.tenant_id === selectedTenant.id) : [];
 
@@ -268,31 +285,42 @@ export default function ViewerLayout() {
   });
 
   // ===== تطبيق البحث النصي على كل تبويب =====
-  const filteredProperties = properties.filter(p => {
-    const q = searchProperties.trim();
-    if (!q) return true;
-    return (p.name || "").includes(q) || (p.address || "").includes(q);
-  });
+  const filteredProperties = properties;
 
   const filteredUnits = sortedUnits.filter(u => {
-    const q = searchUnits.trim();
-    if (!q) return true;
-    const propName = properties.find(p => p.id === u.property_id)?.name || "";
-    return propName.includes(q) || String(u.unit_number || "").includes(q) || (u.unit_type || "").includes(q);
+    if (unitsSelectedProperties.length > 0 && !unitsSelectedProperties.includes(u.property_id)) return false;
+    return true;
   });
 
+  // قائمة أسماء كل المستأجرين (لبناء قوائم الفلتر القابلة للكتابة)
+  const allTenantNames = useMemo(() => {
+    return tenants.map((t) => t.name).filter(Boolean).sort((a, b) => a.localeCompare(b, "ar"));
+  }, [tenants]);
+
+  const leasesFilteredTenantOptions = allTenantNames.filter((name) =>
+    name.toLowerCase().includes(leasesTenantSearchText.toLowerCase())
+  );
+  const tenantsFilteredTenantOptions = allTenantNames.filter((name) =>
+    name.toLowerCase().includes(tenantsTenantSearchText.toLowerCase())
+  );
+
   const filteredTenants = sortedTenants.filter(t => {
-    const q = searchTenants.trim();
-    if (!q) return true;
-    return (t.name || "").includes(q) || (t.phone || "").includes(q);
+    if (tenantsSelectedTenants.length > 0 && !tenantsSelectedTenants.includes(t.name)) return false;
+    if (tenantsSelectedProperties.length > 0) {
+      const tLeases = leases.filter(l => l.tenant_id === t.id);
+      const matches = tLeases.some(l => tenantsSelectedProperties.includes(l.property_id));
+      if (!matches) return false;
+    }
+    return true;
   });
 
   const filteredLeases = sortedLeases.filter(l => {
-    const q = searchLeases.trim();
-    if (!q) return true;
-    const propName = l.properties?.name || "";
-    const tenantName = tenants.find(t => t.id === l.tenant_id)?.name || "";
-    return propName.includes(q) || tenantName.includes(q);
+    if (leasesSelectedProperties.length > 0 && !leasesSelectedProperties.includes(l.property_id)) return false;
+    if (leasesSelectedTenants.length > 0) {
+      const tenantName = tenants.find(t => t.id === l.tenant_id)?.name;
+      if (!leasesSelectedTenants.includes(tenantName)) return false;
+    }
+    return true;
   });
 
   function computeStatus(row) {
@@ -422,20 +450,16 @@ export default function ViewerLayout() {
                 <tr>
                   <th style={{ padding: "12px" }}>رقم الوحدة</th>
                   <th style={{ padding: "12px" }}>النوع</th>
-                  <th style={{ padding: "12px" }}>الدور</th>
-                  <th style={{ padding: "12px" }}>الإيجار الشهري</th>
                   <th style={{ padding: "12px" }}>الحالة</th>
                 </tr>
               </thead>
               <tbody>
                 {propertyUnits.length === 0 ? (
-                  <tr><td colSpan="5" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد وحدات</td></tr>
+                  <tr><td colSpan="3" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد وحدات</td></tr>
                 ) : propertyUnits.map(u => (
                   <tr key={u.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
                     <td style={{ padding: "12px" }}>{u.unit_number}</td>
                     <td style={{ padding: "12px" }}>{unitTypeBadge(u.unit_type, "")}</td>
-                    <td style={{ padding: "12px" }}>{u.floor}</td>
-                    <td style={{ padding: "12px" }}>{u.monthly_rent} ر.س</td>
                     <td style={{ padding: "12px" }}>
                       <span style={{
                         padding: "4px 12px", borderRadius: "20px", fontSize: "13px",
@@ -496,7 +520,6 @@ export default function ViewerLayout() {
           <>
             {activePage === "properties" && (
               <div>
-                {searchInput(searchProperties, setSearchProperties, "بحث بالاسم أو العنوان...")}
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
                   <thead style={{ background: "#1B4D7A", color: "#fff" }}>
                     <tr>
@@ -524,27 +547,66 @@ export default function ViewerLayout() {
 
             {activePage === "units" && (
               <div>
-                {searchInput(searchUnits, setSearchUnits, "بحث بالعقار أو رقم الوحدة أو النوع...")}
+                <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "16px 20px", marginBottom: "16px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                  <div style={{ position: "relative" }}>
+                    <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>العقار</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowUnitsPropDropdown(!showUnitsPropDropdown)}
+                      style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Tahoma, Arial, sans-serif", minWidth: "180px", background: "#fff", cursor: "pointer", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>
+                        {unitsSelectedProperties.length === 0
+                          ? "كل العقارات"
+                          : unitsSelectedProperties.length === 1
+                            ? (properties.find((p) => p.id === unitsSelectedProperties[0])?.name || "عقار واحد")
+                            : `${unitsSelectedProperties.length} عقارات محددة`}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "#999" }}>▾</span>
+                    </button>
+                    {showUnitsPropDropdown && (
+                      <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "#fff", border: "1px solid #ddd", borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", padding: "10px", zIndex: 20, minWidth: "220px", maxHeight: "280px", overflowY: "auto" }}>
+                        <div style={{ display: "flex", gap: "8px", marginBottom: "8px", paddingBottom: "8px", borderBottom: "1px solid #eee" }}>
+                          <button type="button" onClick={() => setUnitsSelectedProperties(properties.map((p) => p.id))}
+                            style={{ fontSize: "12px", color: "#1B4D7A", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>تحديد الكل</button>
+                          <button type="button" onClick={() => setUnitsSelectedProperties([])}
+                            style={{ fontSize: "12px", color: "#e74c3c", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>إلغاء الكل</button>
+                        </div>
+                        {properties.map((p) => (
+                          <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 4px", fontSize: "14px", cursor: "pointer" }}>
+                            <input type="checkbox" checked={unitsSelectedProperties.includes(p.id)}
+                              onChange={() => setUnitsSelectedProperties((prev) => prev.includes(p.id) ? prev.filter((id) => id !== p.id) : [...prev, p.id])} />
+                            {p.name}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
                   <thead style={{ background: "#1B4D7A", color: "#fff" }}>
                     <tr>
                       <th style={{ padding: "12px" }}>العقار</th>
                       <th style={{ padding: "12px" }}>رقم الوحدة</th>
                       <th style={{ padding: "12px" }}>النوع</th>
-                      <th style={{ padding: "12px" }}>الإيجار الشهري</th>
                       <th style={{ padding: "12px" }}>الحالة</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredUnits.length === 0 ? (
-                      <tr><td colSpan="5" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج</td></tr>
+                      <tr><td colSpan="4" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج</td></tr>
                     ) : filteredUnits.map(u => (
                       <tr key={u.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
                         <td style={{ padding: "12px" }}>{propertyBadge(getPropertyNameForUnit ? (properties.find(p => p.id === u.property_id)?.name) : null)}</td>
                         <td style={{ padding: "12px" }}>{u.unit_number}</td>
                         <td style={{ padding: "12px" }}>{unitTypeBadge(u.unit_type, "")}</td>
-                        <td style={{ padding: "12px" }}>{u.monthly_rent} ر.س</td>
-                        <td style={{ padding: "12px" }}>{u.status}</td>
+                        <td style={{ padding: "12px" }}>
+                          <span style={{
+                            padding: "4px 12px", borderRadius: "20px", fontSize: "13px",
+                            background: u.status === "مؤجرة" ? "#d4edda" : "#fff3cd",
+                            color: u.status === "مؤجرة" ? "#155724" : "#856404"
+                          }}>{u.status}</span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -554,7 +616,82 @@ export default function ViewerLayout() {
 
             {activePage === "tenants" && (
               <div>
-                {searchInput(searchTenants, setSearchTenants, "بحث بالاسم أو الجوال...")}
+                <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "16px 20px", marginBottom: "16px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                  <div style={{ position: "relative" }}>
+                    <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>العقار</label>
+                    <button
+                      type="button"
+                      onClick={() => { setShowTenantsPropDropdown(!showTenantsPropDropdown); setShowTenantsTenantDropdown(false); }}
+                      style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Tahoma, Arial, sans-serif", minWidth: "180px", background: "#fff", cursor: "pointer", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>
+                        {tenantsSelectedProperties.length === 0
+                          ? "كل العقارات"
+                          : tenantsSelectedProperties.length === 1
+                            ? (properties.find((p) => p.id === tenantsSelectedProperties[0])?.name || "عقار واحد")
+                            : `${tenantsSelectedProperties.length} عقارات محددة`}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "#999" }}>▾</span>
+                    </button>
+                    {showTenantsPropDropdown && (
+                      <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "#fff", border: "1px solid #ddd", borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", padding: "10px", zIndex: 20, minWidth: "220px", maxHeight: "280px", overflowY: "auto" }}>
+                        <div style={{ display: "flex", gap: "8px", marginBottom: "8px", paddingBottom: "8px", borderBottom: "1px solid #eee" }}>
+                          <button type="button" onClick={() => setTenantsSelectedProperties(properties.map((p) => p.id))}
+                            style={{ fontSize: "12px", color: "#1B4D7A", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>تحديد الكل</button>
+                          <button type="button" onClick={() => setTenantsSelectedProperties([])}
+                            style={{ fontSize: "12px", color: "#e74c3c", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>إلغاء الكل</button>
+                        </div>
+                        {properties.map((p) => (
+                          <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 4px", fontSize: "14px", cursor: "pointer" }}>
+                            <input type="checkbox" checked={tenantsSelectedProperties.includes(p.id)}
+                              onChange={() => setTenantsSelectedProperties((prev) => prev.includes(p.id) ? prev.filter((id) => id !== p.id) : [...prev, p.id])} />
+                            {p.name}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ position: "relative" }}>
+                    <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>المستأجر</label>
+                    <button
+                      type="button"
+                      onClick={() => { setShowTenantsTenantDropdown(!showTenantsTenantDropdown); setShowTenantsPropDropdown(false); }}
+                      style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Tahoma, Arial, sans-serif", minWidth: "180px", background: "#fff", cursor: "pointer", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>
+                        {tenantsSelectedTenants.length === 0
+                          ? "كل المستأجرين"
+                          : tenantsSelectedTenants.length === 1
+                            ? tenantsSelectedTenants[0]
+                            : `${tenantsSelectedTenants.length} مستأجرين محددين`}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "#999" }}>▾</span>
+                    </button>
+                    {showTenantsTenantDropdown && (
+                      <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "#fff", border: "1px solid #ddd", borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", padding: "10px", zIndex: 20, minWidth: "240px", maxHeight: "320px", overflowY: "auto" }}>
+                        <input type="text" placeholder="اكتب اسم المستأجر..." value={tenantsTenantSearchText}
+                          onChange={(e) => setTenantsTenantSearchText(e.target.value)} autoFocus
+                          style={{ width: "100%", boxSizing: "border-box", border: "1px solid #ddd", borderRadius: "6px", padding: "6px 10px", fontSize: "13px", fontFamily: "Tahoma, Arial, sans-serif", marginBottom: "8px" }} />
+                        <div style={{ display: "flex", gap: "8px", marginBottom: "8px", paddingBottom: "8px", borderBottom: "1px solid #eee" }}>
+                          <button type="button" onClick={() => setTenantsSelectedTenants(tenantsFilteredTenantOptions)}
+                            style={{ fontSize: "12px", color: "#1B4D7A", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>تحديد الكل</button>
+                          <button type="button" onClick={() => setTenantsSelectedTenants([])}
+                            style={{ fontSize: "12px", color: "#e74c3c", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>إلغاء الكل</button>
+                        </div>
+                        {tenantsFilteredTenantOptions.length === 0 && (
+                          <div style={{ fontSize: "13px", color: "#999", padding: "6px 4px" }}>لا يوجد مستأجر بهذا الاسم</div>
+                        )}
+                        {tenantsFilteredTenantOptions.map((name) => (
+                          <label key={name} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 4px", fontSize: "14px", cursor: "pointer" }}>
+                            <input type="checkbox" checked={tenantsSelectedTenants.includes(name)}
+                              onChange={() => setTenantsSelectedTenants((prev) => prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name])} />
+                            {name}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
                   <thead style={{ background: "#1B4D7A", color: "#fff" }}>
                     <tr>
@@ -586,7 +723,82 @@ export default function ViewerLayout() {
 
             {activePage === "leases" && (
               <div>
-                {searchInput(searchLeases, setSearchLeases, "بحث بالعقار أو المستأجر...")}
+                <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "16px 20px", marginBottom: "16px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                  <div style={{ position: "relative" }}>
+                    <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>العقار</label>
+                    <button
+                      type="button"
+                      onClick={() => { setShowLeasesPropDropdown(!showLeasesPropDropdown); setShowLeasesTenantDropdown(false); }}
+                      style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Tahoma, Arial, sans-serif", minWidth: "180px", background: "#fff", cursor: "pointer", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>
+                        {leasesSelectedProperties.length === 0
+                          ? "كل العقارات"
+                          : leasesSelectedProperties.length === 1
+                            ? (properties.find((p) => p.id === leasesSelectedProperties[0])?.name || "عقار واحد")
+                            : `${leasesSelectedProperties.length} عقارات محددة`}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "#999" }}>▾</span>
+                    </button>
+                    {showLeasesPropDropdown && (
+                      <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "#fff", border: "1px solid #ddd", borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", padding: "10px", zIndex: 20, minWidth: "220px", maxHeight: "280px", overflowY: "auto" }}>
+                        <div style={{ display: "flex", gap: "8px", marginBottom: "8px", paddingBottom: "8px", borderBottom: "1px solid #eee" }}>
+                          <button type="button" onClick={() => setLeasesSelectedProperties(properties.map((p) => p.id))}
+                            style={{ fontSize: "12px", color: "#1B4D7A", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>تحديد الكل</button>
+                          <button type="button" onClick={() => setLeasesSelectedProperties([])}
+                            style={{ fontSize: "12px", color: "#e74c3c", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>إلغاء الكل</button>
+                        </div>
+                        {properties.map((p) => (
+                          <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 4px", fontSize: "14px", cursor: "pointer" }}>
+                            <input type="checkbox" checked={leasesSelectedProperties.includes(p.id)}
+                              onChange={() => setLeasesSelectedProperties((prev) => prev.includes(p.id) ? prev.filter((id) => id !== p.id) : [...prev, p.id])} />
+                            {p.name}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ position: "relative" }}>
+                    <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>المستأجر</label>
+                    <button
+                      type="button"
+                      onClick={() => { setShowLeasesTenantDropdown(!showLeasesTenantDropdown); setShowLeasesPropDropdown(false); }}
+                      style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Tahoma, Arial, sans-serif", minWidth: "180px", background: "#fff", cursor: "pointer", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>
+                        {leasesSelectedTenants.length === 0
+                          ? "كل المستأجرين"
+                          : leasesSelectedTenants.length === 1
+                            ? leasesSelectedTenants[0]
+                            : `${leasesSelectedTenants.length} مستأجرين محددين`}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "#999" }}>▾</span>
+                    </button>
+                    {showLeasesTenantDropdown && (
+                      <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "#fff", border: "1px solid #ddd", borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", padding: "10px", zIndex: 20, minWidth: "240px", maxHeight: "320px", overflowY: "auto" }}>
+                        <input type="text" placeholder="اكتب اسم المستأجر..." value={leasesTenantSearchText}
+                          onChange={(e) => setLeasesTenantSearchText(e.target.value)} autoFocus
+                          style={{ width: "100%", boxSizing: "border-box", border: "1px solid #ddd", borderRadius: "6px", padding: "6px 10px", fontSize: "13px", fontFamily: "Tahoma, Arial, sans-serif", marginBottom: "8px" }} />
+                        <div style={{ display: "flex", gap: "8px", marginBottom: "8px", paddingBottom: "8px", borderBottom: "1px solid #eee" }}>
+                          <button type="button" onClick={() => setLeasesSelectedTenants(leasesFilteredTenantOptions)}
+                            style={{ fontSize: "12px", color: "#1B4D7A", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>تحديد الكل</button>
+                          <button type="button" onClick={() => setLeasesSelectedTenants([])}
+                            style={{ fontSize: "12px", color: "#e74c3c", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>إلغاء الكل</button>
+                        </div>
+                        {leasesFilteredTenantOptions.length === 0 && (
+                          <div style={{ fontSize: "13px", color: "#999", padding: "6px 4px" }}>لا يوجد مستأجر بهذا الاسم</div>
+                        )}
+                        {leasesFilteredTenantOptions.map((name) => (
+                          <label key={name} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 4px", fontSize: "14px", cursor: "pointer" }}>
+                            <input type="checkbox" checked={leasesSelectedTenants.includes(name)}
+                              onChange={() => setLeasesSelectedTenants((prev) => prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name])} />
+                            {name}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
                   <thead style={{ background: "#1B4D7A", color: "#fff" }}>
                     <tr>
