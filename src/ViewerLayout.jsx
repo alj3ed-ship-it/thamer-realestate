@@ -616,6 +616,12 @@ export default function ViewerLayout() {
 
             {activePage === "tenants" && (
               <div>
+                {(showTenantsPropDropdown || showTenantsTenantDropdown) && (
+                  <div
+                    onClick={() => { setShowTenantsPropDropdown(false); setShowTenantsTenantDropdown(false); }}
+                    style={{ position: "fixed", inset: 0, zIndex: 10 }}
+                  />
+                )}
                 <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "16px 20px", marginBottom: "16px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div style={{ position: "relative" }}>
                     <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>العقار</label>
