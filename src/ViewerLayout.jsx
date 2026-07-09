@@ -547,6 +547,12 @@ export default function ViewerLayout() {
 
             {activePage === "units" && (
               <div>
+                {showUnitsPropDropdown && (
+                  <div
+                    onClick={() => setShowUnitsPropDropdown(false)}
+                    style={{ position: "fixed", inset: 0, zIndex: 10 }}
+                  />
+                )}
                 <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "16px 20px", marginBottom: "16px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div style={{ position: "relative" }}>
                     <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>العقار</label>
@@ -729,6 +735,12 @@ export default function ViewerLayout() {
 
             {activePage === "leases" && (
               <div>
+                {(showLeasesPropDropdown || showLeasesTenantDropdown) && (
+                  <div
+                    onClick={() => { setShowLeasesPropDropdown(false); setShowLeasesTenantDropdown(false); }}
+                    style={{ position: "fixed", inset: 0, zIndex: 10 }}
+                  />
+                )}
                 <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "16px 20px", marginBottom: "16px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div style={{ position: "relative" }}>
                     <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>العقار</label>
@@ -841,6 +853,12 @@ export default function ViewerLayout() {
 
             {activePage === "entitlements" && (
               <div>
+                {(showEntPropDropdown || showEntTenantDropdown) && (
+                  <div
+                    onClick={() => { setShowEntPropDropdown(false); setShowEntTenantDropdown(false); }}
+                    style={{ position: "fixed", inset: 0, zIndex: 10 }}
+                  />
+                )}
                 <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "20px", marginBottom: "24px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div>
                     <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>السنة الهجرية</label>
@@ -970,10 +988,6 @@ export default function ViewerLayout() {
                 {entSearched && entResults.length > 0 && (
                   <>
                     <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
-                      <div style={{ flex: 1, minWidth: "150px", background: "#EBF5FB", border: "1px solid #AED6F1", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-                        <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المستحق</div>
-                        <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>{totalAmount.toLocaleString()} ريال</div>
-                      </div>
                       <div style={{ flex: 1, minWidth: "150px", background: "#EAFAF1", border: "1px solid #A9DFBF", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
                         <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المحصّل</div>
                         <div style={{ fontWeight: "bold", color: "#27ae60", fontSize: "18px" }}>{totalCollected.toLocaleString()} ريال</div>
@@ -981,6 +995,10 @@ export default function ViewerLayout() {
                       <div style={{ flex: 1, minWidth: "150px", background: "#FDEDEC", border: "1px solid #F1948A", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
                         <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المتبقي</div>
                         <div style={{ fontWeight: "bold", color: "#e74c3c", fontSize: "18px" }}>{totalRemaining.toLocaleString()} ريال</div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: "150px", background: "#EBF5FB", border: "1px solid #AED6F1", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                        <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المستحق</div>
+                        <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>{totalAmount.toLocaleString()} ريال</div>
                       </div>
                     </div>
 
