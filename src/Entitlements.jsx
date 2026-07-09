@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import ExportToolbar from "./components/ExportToolbar";
 import { getUnitTypeColor } from "./theme";
@@ -11,12 +11,54 @@ const HIJRI_MONTHS = [
 
 const UNIT_TYPE_ORDER = { "محل": 1, "شقة": 2, "ورشة": 3 };
 
+// نفس ألوان صفحة الوالد بالضبط: العقار كحلي، المستأجر خردلي ذهبي، النشاط تركوازي
+const PROPERTY_BADGE_COLOR = { bg: "#EAF2F8", color: "#1B4D7A", border: "#AED6F1" };
+const TENANT_BADGE_COLOR = { bg: "#FEF9E7", color: "#9A7D0A", border: "#F7DC6F" };
+const ACTIVITY_BADGE_COLOR = { bg: "#E8F6F3", color: "#148F77", border: "#A2D9CE" };
+
+function propertyBadge(name) {
+  if (!name) return "-";
+  return (
+    <span style={{
+      background: PROPERTY_BADGE_COLOR.bg, color: PROPERTY_BADGE_COLOR.color,
+      border: `1px solid ${PROPERTY_BADGE_COLOR.border}`,
+      padding: "4px 12px", borderRadius: "12px", fontSize: "13px", fontWeight: "bold", whiteSpace: "nowrap",
+    }}>
+      {name}
+    </span>
+  );
+}
+
+function tenantBadge(name) {
+  if (!name) return "-";
+  return (
+    <span style={{
+      background: TENANT_BADGE_COLOR.bg, color: TENANT_BADGE_COLOR.color,
+      border: `1px solid ${TENANT_BADGE_COLOR.border}`,
+      padding: "4px 12px", borderRadius: "12px", fontSize: "13px", fontWeight: "bold", whiteSpace: "nowrap",
+    }}>
+      {name}
+    </span>
+  );
+}
+
+function activityBadge(text) {
+  if (!text || text === "—") return "—";
+  return (
+    <span style={{
+      background: ACTIVITY_BADGE_COLOR.bg, color: ACTIVITY_BADGE_COLOR.color,
+      border: `1px solid ${ACTIVITY_BADGE_COLOR.border}`,
+      padding: "4px 12px", borderRadius: "12px", fontSize: "13px", fontWeight: "bold", whiteSpace: "nowrap",
+    }}>
+      {text}
+    </span>
+  );
+}
+
 function parseHijri(dateStr) {
   if (!dateStr) return null;
   const parts = dateStr.split("/").map((p) => parseInt(p));
   if (parts.length !== 3 || parts.some((p) => isNaN(p))) return null;
-  // يدعم صيغتين: يوم/شهر/سنة (مثل 1/2/1448) أو سنة/شهر/يوم (مثل 1448/02/01)
-  // نحدد أي رقم هو السنة بناءً على كونه أكبر من 1300
   if (parts[0] >= 1300) {
     return { year: parts[0], month: parts[1], day: parts[2] };
   }
@@ -44,16 +86,28 @@ export default function Entitlements() {
   const [payments, setPayments] = useState([]);
   const [selectedYear, setSelectedYear] = useState("1448");
   const [selectedMonthNum, setSelectedMonthNum] = useState("1");
-  const [selectedProperties, setSelectedProperties] = useState([]); // فاضي = كل العقارات
+  const [selectedProperties, setSelectedProperties] = useState([]);
   const [showPropDropdown, setShowPropDropdown] = useState(false);
-  const [selectedTenants, setSelectedTenants] = useState([]); // فاضي = كل المستأجرين
+  const [selectedTenants, setSelectedTenants] = useState([]);
   const [showTenantDropdown, setShowTenantDropdown] = useState(false);
   const [tenantSearchText, setTenantSearchText] = useState("");
   const [results, setResults] = useState([]);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(true);
+  const filterBoxRef = useRef(null);
 
   useEffect(() => { fetchData(); }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (filterBoxRef.current && !filterBoxRef.current.contains(e.target)) {
+        setShowPropDropdown(false);
+        setShowTenantDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   async function fetchData() {
     setLoading(true);
@@ -154,9 +208,8 @@ export default function Entitlements() {
   }
 
   const totalAmount = results.reduce((sum, r) => sum + (r.amount || 0), 0);
-  const paidAmount = results.filter(r => r.status === "paid").reduce((sum, r) => sum + (r.amount || 0), 0);
-  const partialAmount = results.filter(r => r.status === "partial").reduce((sum, r) => sum + (r.amount || 0), 0);
-  const unpaidAmount = results.filter(r => r.status === "unpaid").reduce((sum, r) => sum + (r.amount || 0), 0);
+  const totalCollected = results.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
+  const totalRemaining = Math.max(totalAmount - totalCollected, 0);
 
   function statusBadge(status) {
     if (status === "paid") return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
@@ -183,32 +236,32 @@ export default function Entitlements() {
     );
   }
 
-  function amountColor(status) {
-    if (status === "paid") return "#27ae60";
-    if (status === "partial") return "#f39c12";
-    return "#e74c3c";
-  }
-
   function amountDisplay(r) {
-    if (!r.amount) return "-";
-    if (r.status === "partial" && r.paidAmount > 0) {
+    if (r.status === "partial") {
+      const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
       return (
-        <span>
-          <span style={{ color: "#f39c12", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
-          <span style={{ color: "#999", fontSize: "12px" }}> / {r.amount.toLocaleString()} ريال</span>
-        </span>
+        <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
+          <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
+          <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+          <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
+          <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+          <span style={{ color: "#f39c12", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
+        </div>
       );
     }
-    return <span style={{ color: amountColor(r.status), fontWeight: "bold" }}>{r.amount.toLocaleString()} ريال</span>;
+    if (r.status === "paid") {
+      return <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+    }
+    return <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
   }
 
   if (loading) return <div style={{ padding: "32px", textAlign: "center" }}>جاري التحميل...</div>;
 
   return (
-    <div style={{ padding: "32px", fontFamily: "Cairo, sans-serif", direction: "rtl", maxWidth: "900px", margin: "0 auto" }}>
+    <div style={{ padding: "32px", fontFamily: "Cairo, sans-serif", direction: "rtl" }}>
       <h1 style={{ color: "#1B4D7A", marginBottom: "24px", fontSize: "24px" }}>جدول الاستحقاقات</h1>
 
-      <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "20px", marginBottom: "24px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }} className="no-print">
+      <div ref={filterBoxRef} style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "20px", marginBottom: "24px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }} className="no-print">
         <div>
           <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>السنة الهجرية</label>
           <input type="number" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}
@@ -350,28 +403,23 @@ export default function Entitlements() {
             ]}
             filename={`entitlements_${selectedYear}_${selectedMonthNum}`}
             stats={[
-              { label: "مدفوع", value: `${paidAmount.toLocaleString()} ريال`, color: "#27ae60" },
-              { label: "جزئي", value: `${partialAmount.toLocaleString()} ريال`, color: "#f39c12" },
-              { label: "لم يُسدَّد", value: `${unpaidAmount.toLocaleString()} ريال`, color: "#e74c3c" },
-              { label: "إجمالي الدفعات", value: `${totalAmount.toLocaleString()} ريال`, color: "#1B4D7A" },
+              { label: "إجمالي المحصّل", value: `${totalCollected.toLocaleString()} ريال`, color: "#27ae60" },
+              { label: "إجمالي المتبقي", value: `${totalRemaining.toLocaleString()} ريال`, color: "#e74c3c" },
+              { label: "إجمالي المستحق", value: `${totalAmount.toLocaleString()} ريال`, color: "#1B4D7A" },
             ]}
           />
 
           <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>
             <div style={{ flex: 1, background: "#EAFAF1", border: "1px solid #A9DFBF", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-              <div style={{ fontSize: "13px", color: "#555" }}>مدفوع</div>
-              <div style={{ fontWeight: "bold", color: "#27ae60", fontSize: "18px" }}>{paidAmount.toLocaleString()} ريال</div>
-            </div>
-            <div style={{ flex: 1, background: "#FEF9E7", border: "1px solid #F9E79F", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-              <div style={{ fontSize: "13px", color: "#555" }}>جزئي</div>
-              <div style={{ fontWeight: "bold", color: "#f39c12", fontSize: "18px" }}>{partialAmount.toLocaleString()} ريال</div>
+              <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المحصّل</div>
+              <div style={{ fontWeight: "bold", color: "#27ae60", fontSize: "18px" }}>{totalCollected.toLocaleString()} ريال</div>
             </div>
             <div style={{ flex: 1, background: "#FDEDEC", border: "1px solid #F1948A", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-              <div style={{ fontSize: "13px", color: "#555" }}>لم يُسدَّد</div>
-              <div style={{ fontWeight: "bold", color: "#e74c3c", fontSize: "18px" }}>{unpaidAmount.toLocaleString()} ريال</div>
+              <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المتبقي</div>
+              <div style={{ fontWeight: "bold", color: "#e74c3c", fontSize: "18px" }}>{totalRemaining.toLocaleString()} ريال</div>
             </div>
             <div style={{ flex: 1, background: "#EBF5FB", border: "1px solid #AED6F1", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-              <div style={{ fontSize: "13px", color: "#555" }}>إجمالي الدفعات</div>
+              <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المستحق</div>
               <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>{totalAmount.toLocaleString()} ريال</div>
             </div>
           </div>
@@ -391,9 +439,9 @@ export default function Entitlements() {
               <tbody>
                 {results.map((r, i) => (
                   <tr key={i} style={{ borderBottom: "1px solid #f0f0f0", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                    <td style={{ padding: "12px 16px", color: "#444" }}>{r.property}</td>
-                    <td style={{ padding: "12px 16px", fontWeight: "500" }}>{r.tenant}</td>
-                    <td style={{ padding: "12px 16px", color: "#777" }}>{r.activity}</td>
+                    <td style={{ padding: "12px 16px" }}>{propertyBadge(r.property)}</td>
+                    <td style={{ padding: "12px 16px" }}>{tenantBadge(r.tenant)}</td>
+                    <td style={{ padding: "12px 16px" }}>{activityBadge(r.activity)}</td>
                     <td style={{ padding: "12px 16px" }}>{unitBadges(r.units)}</td>
                     <td style={{ padding: "12px 16px" }}>{amountDisplay(r)}</td>
                     <td style={{ padding: "12px 16px" }}>{statusBadge(r.status)}</td>
