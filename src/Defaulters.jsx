@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
+import ExportToolbar from "./components/ExportToolbar";
 
 export default function Defaulters({ onBack }) {
   const [defaulters, setDefaulters] = useState([]);
@@ -112,9 +113,29 @@ export default function Defaulters({ onBack }) {
     fetchAll();
   }
 
+  const exportData = defaulters.map((d) => {
+    const tenant = getTenant(d.tenant_id);
+    const paid = getTotalPaid(d.id);
+    const remaining = getRemaining(d);
+    return {
+      tenant: tenant?.name || "—",
+      phone: tenant?.phone || "—",
+      total: `${Number(d.total_amount).toLocaleString()} ر.س`,
+      paid: `${paid.toLocaleString()} ر.س`,
+      remaining: `${remaining.toLocaleString()} ر.س`,
+      notes: d.notes || "—",
+    };
+  });
+
+  const exportStats = [
+    { label: "إجمالي المتعثر", value: `${totalDebt.toLocaleString()} ريال`, color: "#991b1b" },
+    { label: "إجمالي المحصّل", value: `${totalCollected.toLocaleString()} ريال`, color: "#166534" },
+    { label: "إجمالي الباقي", value: `${totalRemaining.toLocaleString()} ريال`, color: "#854d0e" },
+  ];
+
   return (
     <div dir="rtl" style={{ fontFamily: "Cairo, sans-serif", padding: "32px", maxWidth: "1100px", margin: "0 auto" }}>
-      <button onClick={onBack} style={{ padding: "8px 16px", marginBottom: "20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
+      <button onClick={onBack} className="no-print" style={{ padding: "8px 16px", marginBottom: "20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
         ← رجوع للوحة التحكم
       </button>
 
@@ -135,7 +156,7 @@ export default function Defaulters({ onBack }) {
         ))}
       </div>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+      <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 20 }}>
         <button onClick={openAddForm} style={{ padding: "10px 20px", cursor: "pointer", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: 8 }}>
           + إضافة متعثر
         </button>
@@ -154,84 +175,101 @@ export default function Defaulters({ onBack }) {
 
       {/* قائمة المتعثرين */}
       {!loading && defaulters.length > 0 && (
-        <div style={{ display: "grid", gap: 12, marginBottom: 32 }}>
-          {defaulters.map(d => {
-            const tenant = getTenant(d.tenant_id);
-            const paid = getTotalPaid(d.id);
-            const remaining = getRemaining(d);
-            const isSelected = selectedDefaulter?.id === d.id;
-            return (
-              <div key={d.id} style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden", border: isSelected ? "2px solid #1B4D7A" : "2px solid transparent" }}>
-                <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }}
-                  onClick={() => setSelectedDefaulter(isSelected ? null : d)}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, color: "#1B4D7A", fontSize: 16 }}>{tenant?.name || "—"}</div>
-                    <div style={{ color: "#6b7280", fontSize: 13, marginTop: 2 }}>{tenant?.phone || "—"}</div>
-                    {d.notes && <div style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>{d.notes}</div>}
-                  </div>
-                  <div style={{ textAlign: "center", minWidth: 100 }}>
-                    <div style={{ fontSize: 12, color: "#991b1b" }}>المتعثر</div>
-                    <div style={{ fontWeight: 700, color: "#991b1b" }}>{Number(d.total_amount).toLocaleString()} ر.س</div>
-                  </div>
-                  <div style={{ textAlign: "center", minWidth: 100 }}>
-                    <div style={{ fontSize: 12, color: "#166534" }}>المحصّل</div>
-                    <div style={{ fontWeight: 700, color: "#166534" }}>{paid.toLocaleString()} ر.س</div>
-                  </div>
-                  <div style={{ textAlign: "center", minWidth: 100 }}>
-                    <div style={{ fontSize: 12, color: "#854d0e" }}>الباقي</div>
-                    <div style={{ fontWeight: 700, color: "#854d0e" }}>{remaining.toLocaleString()} ر.س</div>
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={e => { e.stopPropagation(); openEditForm(d); }}
-                      style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer" }}>تعديل</button>
-                    <button onClick={e => { e.stopPropagation(); handleDelete(d.id); }} disabled={deletingId === d.id}
-                      style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>
-                      {deletingId === d.id ? "..." : "حذف"}
-                    </button>
-                  </div>
-                </div>
+        <div id="defaulters-table">
+          <ExportToolbar
+            data={exportData}
+            columns={[
+              { key: "tenant", label: "المستأجر" },
+              { key: "phone", label: "الجوال" },
+              { key: "total", label: "المتعثر" },
+              { key: "paid", label: "المحصّل" },
+              { key: "remaining", label: "الباقي" },
+              { key: "notes", label: "ملاحظات" },
+            ]}
+            filename="defaulters_report"
+            title="تقرير المتعثرين"
+            stats={exportStats}
+          />
 
-                {/* مدفوعات المتعثر */}
-                {isSelected && (
-                  <div style={{ borderTop: "1px solid #f3f4f6", padding: "16px 20px", background: "#f9fafb" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                      <h4 style={{ margin: 0, color: "#1B4D7A" }}>سجل المدفوعات</h4>
-                      <button onClick={() => { setShowPaymentForm(true); }}
-                        style={{ padding: "6px 14px", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>
-                        + إضافة دفعة
+          <div style={{ display: "grid", gap: 12, marginBottom: 32 }}>
+            {defaulters.map(d => {
+              const tenant = getTenant(d.tenant_id);
+              const paid = getTotalPaid(d.id);
+              const remaining = getRemaining(d);
+              const isSelected = selectedDefaulter?.id === d.id;
+              return (
+                <div key={d.id} style={{ background: "#fff", borderRadius: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.07)", overflow: "hidden", border: isSelected ? "2px solid #1B4D7A" : "2px solid transparent" }}>
+                  <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }}
+                    onClick={() => setSelectedDefaulter(isSelected ? null : d)}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, color: "#1B4D7A", fontSize: 16 }}>{tenant?.name || "—"}</div>
+                      <div style={{ color: "#6b7280", fontSize: 13, marginTop: 2 }}>{tenant?.phone || "—"}</div>
+                      {d.notes && <div style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>{d.notes}</div>}
+                    </div>
+                    <div style={{ textAlign: "center", minWidth: 100 }}>
+                      <div style={{ fontSize: 12, color: "#991b1b" }}>المتعثر</div>
+                      <div style={{ fontWeight: 700, color: "#991b1b" }}>{Number(d.total_amount).toLocaleString()} ر.س</div>
+                    </div>
+                    <div style={{ textAlign: "center", minWidth: 100 }}>
+                      <div style={{ fontSize: 12, color: "#166534" }}>المحصّل</div>
+                      <div style={{ fontWeight: 700, color: "#166534" }}>{paid.toLocaleString()} ر.س</div>
+                    </div>
+                    <div style={{ textAlign: "center", minWidth: 100 }}>
+                      <div style={{ fontSize: 12, color: "#854d0e" }}>الباقي</div>
+                      <div style={{ fontWeight: 700, color: "#854d0e" }}>{remaining.toLocaleString()} ر.س</div>
+                    </div>
+                    <div className="no-print" style={{ display: "flex", gap: 6 }}>
+                      <button onClick={e => { e.stopPropagation(); openEditForm(d); }}
+                        style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer" }}>تعديل</button>
+                      <button onClick={e => { e.stopPropagation(); handleDelete(d.id); }} disabled={deletingId === d.id}
+                        style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>
+                        {deletingId === d.id ? "..." : "حذف"}
                       </button>
                     </div>
-                    {getPaymentsForDefaulter(d.id).length === 0 ? (
-                      <p style={{ color: "#9ca3af", fontSize: 13 }}>لا توجد مدفوعات بعد</p>
-                    ) : (
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                        <thead>
-                          <tr style={{ textAlign: "right" }}>
-                            {["المبلغ", "التاريخ", "ملاحظات", ""].map(h => (
-                              <th key={h} style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", color: "#6b7280", fontWeight: 500 }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {getPaymentsForDefaulter(d.id).map(p => (
-                            <tr key={p.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                              <td style={{ padding: "8px 12px", fontWeight: 600, color: "#166534" }}>{Number(p.amount).toLocaleString()} ر.س</td>
-                              <td style={{ padding: "8px 12px", color: "#6b7280" }}>{p.payment_date || "—"}</td>
-                              <td style={{ padding: "8px 12px", color: "#9ca3af" }}>{p.notes || "—"}</td>
-                              <td style={{ padding: "8px 12px" }}>
-                                <button onClick={() => handleDeletePayment(p.id)}
-                                  style={{ padding: "3px 8px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>حذف</button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
+
+                  {/* مدفوعات المتعثر */}
+                  {isSelected && (
+                    <div className="no-print" style={{ borderTop: "1px solid #f3f4f6", padding: "16px 20px", background: "#f9fafb" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                        <h4 style={{ margin: 0, color: "#1B4D7A" }}>سجل المدفوعات</h4>
+                        <button onClick={() => { setShowPaymentForm(true); }}
+                          style={{ padding: "6px 14px", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>
+                          + إضافة دفعة
+                        </button>
+                      </div>
+                      {getPaymentsForDefaulter(d.id).length === 0 ? (
+                        <p style={{ color: "#9ca3af", fontSize: 13 }}>لا توجد مدفوعات بعد</p>
+                      ) : (
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ textAlign: "right" }}>
+                              {["المبلغ", "التاريخ", "ملاحظات", ""].map(h => (
+                                <th key={h} style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", color: "#6b7280", fontWeight: 500 }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {getPaymentsForDefaulter(d.id).map(p => (
+                              <tr key={p.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                                <td style={{ padding: "8px 12px", fontWeight: 600, color: "#166534" }}>{Number(p.amount).toLocaleString()} ر.س</td>
+                                <td style={{ padding: "8px 12px", color: "#6b7280" }}>{p.payment_date || "—"}</td>
+                                <td style={{ padding: "8px 12px", color: "#9ca3af" }}>{p.notes || "—"}</td>
+                                <td style={{ padding: "8px 12px" }}>
+                                  <button onClick={() => handleDeletePayment(p.id)}
+                                    style={{ padding: "3px 8px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>حذف</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
