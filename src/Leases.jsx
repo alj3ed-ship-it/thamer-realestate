@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
+import ExportToolbar from "./components/ExportToolbar";
 
 const PAYMENT_TYPES = [
   { label: "شهري", multiplier: 12 },
@@ -473,15 +474,37 @@ export default function Leases({ onBack }) {
 
   const total = getTotal();
 
+  const exportData = filteredLeases.map((l) => {
+    const tenant = tenants.find(t => t.id === l.tenant_id);
+    const property = properties.find(p => p.id === l.property_id);
+    return {
+      tenant: tenant?.name || "—",
+      property: property?.name || "—",
+      units: getLeaseUnitsDisplay(l.id),
+      paymentType: l.payment_type || "—",
+      amount: l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—",
+      installment1: getInstallmentDate(l.id, 1),
+      installment2: getInstallmentDate(l.id, 2),
+      installment3: getInstallmentDate(l.id, 3),
+      installment4: getInstallmentDate(l.id, 4),
+      notes: l.notes || "—",
+    };
+  });
+
+  const exportStats = [
+    { label: "عدد العقود", value: filteredLeases.length, color: "#1B4D7A" },
+    { label: "الإجمالي", value: `${totalAmount.toLocaleString()} ريال`, color: "#1d4ed8" },
+  ];
+
   return (
     <div dir="rtl" style={{ fontFamily: "Cairo, sans-serif", padding: "40px", maxWidth: "1200px", margin: "0 auto" }}>
-      <button onClick={onBack} style={{ padding: "8px 16px", marginBottom: "20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
+      <button onClick={onBack} className="no-print" style={{ padding: "8px 16px", marginBottom: "20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
         ← رجوع للوحة التحكم
       </button>
       <h1 style={{ margin: "0 0 4px" }}>العقود</h1>
       <p style={{ color: "#6b7280", margin: "0 0 24px" }}>إدارة عقود الإيجار</p>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+      <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
         <button onClick={openAddForm} style={{ padding: "10px 20px", cursor: "pointer", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: 8 }}>
           + إضافة عقد جديد
         </button>
@@ -497,7 +520,7 @@ export default function Leases({ onBack }) {
       </div>
 
       {!loading && (
-        <div style={{
+        <div className="no-print" style={{
           background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10,
           padding: "14px 20px", marginBottom: 20, display: "flex",
           justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8
@@ -520,53 +543,74 @@ export default function Leases({ onBack }) {
       )}
 
       {!loading && filteredLeases.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-            <thead>
-              <tr style={{ background: "#1B4D7A", textAlign: "right" }}>
-                {["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الملاحظات", ""].map(h => (
-                  <th key={h} style={{ padding: "12px", color: "#fff", fontWeight: 600, fontSize: 13 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredLeases.map((l, idx) => {
-                const tenant = tenants.find(t => t.id === l.tenant_id);
-                const property = properties.find(p => p.id === l.property_id);
-                return (
-                  <tr key={l.id} style={{ background: idx % 2 === 0 ? "#fff" : "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
-                    <td style={{ padding: "12px", fontWeight: 600, color: "#1B4D7A" }}>{tenant?.name || "—"}</td>
-                    <td style={{ padding: "12px", color: "#0e7490", fontWeight: 600 }}>{property?.name || "—"}</td>
-                    <td style={{ padding: "12px", color: "#7c3aed", fontWeight: 600 }}>{getLeaseUnitsDisplay(l.id)}</td>
-                    <td style={{ padding: "12px" }}>
-                      <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "3px 10px", borderRadius: 6, fontSize: 12, whiteSpace: "nowrap", display: "inline-block" }}>
-                        {l.payment_type || "—"}
-                      </span>
-                    </td>
-                    <td style={{ padding: "12px", fontWeight: 600 }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</td>
-                    <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 1)}</td>
-                    <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 2)}</td>
-                    <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 3)}</td>
-                    <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
-                      {getInstallmentDate(l.id, 4)}
-                      {getExtraInstallmentsCount(l.id) > 0 && (
-                        <div style={{ color: "#9ca3af", fontSize: 10, fontWeight: 400 }}>
-                          +{getExtraInstallmentsCount(l.id)} دفعة أخرى (بصفحة الدفعات)
-                        </div>
-                      )}
-                    </td>
-                    <td style={{ padding: "12px", color: "#6b7280", maxWidth: "160px", whiteSpace: "normal", wordBreak: "break-word" }}>{l.notes || "—"}</td>
-                    <td style={{ padding: "12px" }}>
-                      <button onClick={() => openEditForm(l)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer", marginLeft: 6 }}>تعديل</button>
-                      <button onClick={() => handleDelete(l)} disabled={deletingId === l.id} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>
-                        {deletingId === l.id ? "..." : "حذف"}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div id="leases-table">
+          <ExportToolbar
+            data={exportData}
+            columns={[
+              { key: "tenant", label: "المستأجر" },
+              { key: "property", label: "العقار" },
+              { key: "units", label: "الوحدات" },
+              { key: "paymentType", label: "نوع الدفع" },
+              { key: "amount", label: "المبلغ" },
+              { key: "installment1", label: "الدفعة 1" },
+              { key: "installment2", label: "الدفعة 2" },
+              { key: "installment3", label: "الدفعة 3" },
+              { key: "installment4", label: "الدفعة 4" },
+              { key: "notes", label: "الملاحظات" },
+            ]}
+            filename="leases_report"
+            title="تقرير العقود"
+            stats={exportStats}
+          />
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+              <thead>
+                <tr style={{ background: "#1B4D7A", textAlign: "right" }}>
+                  {["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الملاحظات", ""].map(h => (
+                    <th key={h} style={{ padding: "12px", color: "#fff", fontWeight: 600, fontSize: 13 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLeases.map((l, idx) => {
+                  const tenant = tenants.find(t => t.id === l.tenant_id);
+                  const property = properties.find(p => p.id === l.property_id);
+                  return (
+                    <tr key={l.id} style={{ background: idx % 2 === 0 ? "#fff" : "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                      <td style={{ padding: "12px", fontWeight: 600, color: "#1B4D7A" }}>{tenant?.name || "—"}</td>
+                      <td style={{ padding: "12px", color: "#0e7490", fontWeight: 600 }}>{property?.name || "—"}</td>
+                      <td style={{ padding: "12px", color: "#7c3aed", fontWeight: 600 }}>{getLeaseUnitsDisplay(l.id)}</td>
+                      <td style={{ padding: "12px" }}>
+                        <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "3px 10px", borderRadius: 6, fontSize: 12, whiteSpace: "nowrap", display: "inline-block" }}>
+                          {l.payment_type || "—"}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px", fontWeight: 600 }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</td>
+                      <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 1)}</td>
+                      <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 2)}</td>
+                      <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 3)}</td>
+                      <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
+                        {getInstallmentDate(l.id, 4)}
+                        {getExtraInstallmentsCount(l.id) > 0 && (
+                          <div style={{ color: "#9ca3af", fontSize: 10, fontWeight: 400 }}>
+                            +{getExtraInstallmentsCount(l.id)} دفعة أخرى (بصفحة الدفعات)
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px", color: "#6b7280", maxWidth: "160px", whiteSpace: "normal", wordBreak: "break-word" }}>{l.notes || "—"}</td>
+                      <td className="no-print" style={{ padding: "12px" }}>
+                        <button onClick={() => openEditForm(l)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer", marginLeft: 6 }}>تعديل</button>
+                        <button onClick={() => handleDelete(l)} disabled={deletingId === l.id} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>
+                          {deletingId === l.id ? "..." : "حذف"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import ExportToolbar from './components/ExportToolbar'
 
 const PROPERTY_TYPES = ['فيلا', 'أرض', 'عمارة', 'مجمع تجاري', 'عمارة سكنية']
 const OTHER_OPTION = 'أخرى'
@@ -97,15 +98,27 @@ function Properties({ onBack, onSelectProperty }) {
     fetchProperties()
   }
 
+  const exportData = sortedProperties.map((p) => ({
+    name: p.name || '—',
+    type: p.property_type || '—',
+    address: p.address || '—',
+    unitCount: unitCounts[p.id] || 0,
+  }))
+
+  const exportStats = [
+    { label: 'عدد العقارات', value: sortedProperties.length, color: '#1B4D7A' },
+    { label: 'إجمالي الوحدات', value: Object.values(unitCounts).reduce((a, b) => a + b, 0), color: '#166534' },
+  ]
+
   return (
     <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1050px', margin: '0 auto' }}>
-      <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff' }}>
+      <button onClick={onBack} className="no-print" style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff' }}>
         ← رجوع للوحة التحكم
       </button>
       <h1 style={{ margin: '0 0 4px', color: '#1B4D7A', fontSize: 26 }}>العقارات</h1>
       <p style={{ color: '#6b7280', margin: '0 0 24px', fontSize: 14 }}>إدارة قائمة العقارات</p>
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+      <div className="no-print" style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
         <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600 }}>
           + إضافة عقار جديد
         </button>
@@ -119,44 +132,59 @@ function Properties({ onBack, onSelectProperty }) {
       )}
 
       {status === 'success' && sortedProperties.length > 0 && (
-        <div style={{ overflowX: 'auto', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
-            <thead>
-              <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                {['اسم العقار', 'النوع', 'العنوان', 'عدد الوحدات', ''].map(h => (
-                  <th key={h} style={{ padding: '13px 14px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sortedProperties.map((p, idx) => (
-                <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #eef1f5' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#eef4fb'}
-                  onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : '#f8fafc'}>
-                  <td style={{ padding: '12px 14px' }}>
-                    <span onClick={() => onSelectProperty && onSelectProperty(p.id)}
-                      style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 700 }}>
-                      {p.name}
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.property_type || '—'}</td>
-                  <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.address || '—'}</td>
-                  <td style={{ padding: '12px 14px' }}>
-                    <span style={{
-                      background: '#eef4fb', color: '#1B4D7A', border: '1px solid #cfe0f2',
-                      padding: '3px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700
-                    }}>{unitCounts[p.id] || 0}</span>
-                  </td>
-                  <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                    <button onClick={() => openEditForm(p)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
-                    <button onClick={() => handleDelete(p)} disabled={deletingId === p.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
-                      {deletingId === p.id ? '...' : 'حذف'}
-                    </button>
-                  </td>
+        <div id="properties-table">
+          <ExportToolbar
+            data={exportData}
+            columns={[
+              { key: 'name', label: 'اسم العقار' },
+              { key: 'type', label: 'النوع' },
+              { key: 'address', label: 'العنوان' },
+              { key: 'unitCount', label: 'عدد الوحدات' },
+            ]}
+            filename="properties_report"
+            title="تقرير العقارات"
+            stats={exportStats}
+          />
+
+          <div style={{ overflowX: 'auto', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
+              <thead>
+                <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
+                  {['اسم العقار', 'النوع', 'العنوان', 'عدد الوحدات', ''].map(h => (
+                    <th key={h} style={{ padding: '13px 14px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sortedProperties.map((p, idx) => (
+                  <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #eef1f5' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#eef4fb'}
+                    onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : '#f8fafc'}>
+                    <td style={{ padding: '12px 14px' }}>
+                      <span onClick={() => onSelectProperty && onSelectProperty(p.id)}
+                        style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 700 }}>
+                        {p.name}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.property_type || '—'}</td>
+                    <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.address || '—'}</td>
+                    <td style={{ padding: '12px 14px' }}>
+                      <span style={{
+                        background: '#eef4fb', color: '#1B4D7A', border: '1px solid #cfe0f2',
+                        padding: '3px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700
+                      }}>{unitCounts[p.id] || 0}</span>
+                    </td>
+                    <td className="no-print" style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                      <button onClick={() => openEditForm(p)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
+                      <button onClick={() => handleDelete(p)} disabled={deletingId === p.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
+                        {deletingId === p.id ? '...' : 'حذف'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import { getUnitTypeColor } from './theme'
+import ExportToolbar from './components/ExportToolbar'
 
 function TenantDetail({ tenant, onBack }) {
   const [leases, setLeases] = useState([])
@@ -24,9 +25,17 @@ function TenantDetail({ tenant, onBack }) {
     return properties.find(p => p.id === pid)?.name || '—'
   }
 
+  const exportData = leases.map((l) => ({
+    property: getPropName(l.property_id),
+    startDate: l.start_date || '—',
+    endDate: l.end_date || '—',
+    rent: l.rent_amount ? Number(l.rent_amount).toLocaleString() + ' ريال' : '—',
+    status: l.status || '—',
+  }))
+
   return (
     <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '900px', margin: '0 auto' }}>
-      <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+      <button onClick={onBack} className="no-print" style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
         ← رجوع للمستأجرين
       </button>
       <h1 style={{ margin: '0 0 4px', color: '#1B4D7A' }}>{tenant.name}</h1>
@@ -44,26 +53,40 @@ function TenantDetail({ tenant, onBack }) {
         </div>
       )}
       {!loading && leases.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-          <thead>
-            <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-              {['العقار', 'من', 'إلى', 'الإيجار', 'الحالة'].map(h => (
-                <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {leases.map((l, idx) => (
-              <tr key={l.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                <td style={{ padding: '12px', fontWeight: 600, color: '#1B4D7A' }}>{getPropName(l.property_id)}</td>
-                <td style={{ padding: '12px', color: '#6b7280' }}>{l.start_date || '—'}</td>
-                <td style={{ padding: '12px', color: '#6b7280' }}>{l.end_date || '—'}</td>
-                <td style={{ padding: '12px', fontWeight: 600 }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + ' ريال' : '—'}</td>
-                <td style={{ padding: '12px' }}>{l.status || '—'}</td>
+        <div id="tenant-detail-table">
+          <ExportToolbar
+            data={exportData}
+            columns={[
+              { key: 'property', label: 'العقار' },
+              { key: 'startDate', label: 'من' },
+              { key: 'endDate', label: 'إلى' },
+              { key: 'rent', label: 'الإيجار' },
+              { key: 'status', label: 'الحالة' },
+            ]}
+            filename={`tenant_${tenant.name || 'report'}`}
+            title={`تقرير عقود ${tenant.name || ''}`}
+          />
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
+                {['العقار', 'من', 'إلى', 'الإيجار', 'الحالة'].map(h => (
+                  <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {leases.map((l, idx) => (
+                <tr key={l.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                  <td style={{ padding: '12px', fontWeight: 600, color: '#1B4D7A' }}>{getPropName(l.property_id)}</td>
+                  <td style={{ padding: '12px', color: '#6b7280' }}>{l.start_date || '—'}</td>
+                  <td style={{ padding: '12px', color: '#6b7280' }}>{l.end_date || '—'}</td>
+                  <td style={{ padding: '12px', fontWeight: 600 }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + ' ريال' : '—'}</td>
+                  <td style={{ padding: '12px' }}>{l.status || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
@@ -250,15 +273,27 @@ function Tenants({ onBack }) {
     )
   }
 
+  const exportData = filtered.map((t) => ({
+    name: t.name || '—',
+    property: getTenantPropertyDisplay(t),
+    units: getAllUnitNumbers(t.id).display,
+    phone: t.phone || '—',
+    notes: t.note || '—',
+  }))
+
+  const exportStats = [
+    { label: 'عدد المستأجرين', value: filtered.length, color: '#1B4D7A' },
+  ]
+
   return (
     <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1100px', margin: '0 auto' }}>
-      <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+      <button onClick={onBack} className="no-print" style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
         ← رجوع للوحة التحكم
       </button>
       <h1 style={{ margin: '0 0 4px' }}>المستأجرون</h1>
       <p style={{ color: '#6b7280', margin: '0 0 24px' }}>إدارة قائمة المستأجرين</p>
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="no-print" style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8 }}>
           + إضافة مستأجر جديد
         </button>
@@ -282,38 +317,54 @@ function Tenants({ onBack }) {
       )}
 
       {status === 'success' && filtered.length > 0 && (
-        <div style={{ overflowX: 'auto', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
-            <thead>
-              <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                {['المستأجر', 'العقار', 'الوحدات', 'الجوال', 'ملاحظات', ''].map(h => (
-                  <th key={h} style={{ padding: '14px 12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((t, idx) => (
-                <tr key={t.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                  <td style={{ padding: '12px' }}>
-                    <span onClick={() => setSelectedTenant(t)}
-                      style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 3 }}>
-                      {t.name}
-                    </span>
-                  </td>
-                  <td style={{ padding: '12px', color: '#6b7280', fontWeight: 500 }}>{getTenantPropertyDisplay(t)}</td>
-                  <td style={{ padding: '12px' }}>{unitBadges(t.id)}</td>
-                  <td style={{ padding: '12px', color: '#6b7280' }}>{t.phone || '—'}</td>
-                  <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{t.note || '—'}</td>
-                  <td style={{ padding: '12px' }}>
-                    <button onClick={() => openEditForm(t)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
-                    <button onClick={() => handleDelete(t)} disabled={deletingId === t.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
-                      {deletingId === t.id ? '...' : 'حذف'}
-                    </button>
-                  </td>
+        <div id="tenants-table">
+          <ExportToolbar
+            data={exportData}
+            columns={[
+              { key: 'name', label: 'المستأجر' },
+              { key: 'property', label: 'العقار' },
+              { key: 'units', label: 'الوحدات' },
+              { key: 'phone', label: 'الجوال' },
+              { key: 'notes', label: 'ملاحظات' },
+            ]}
+            filename="tenants_report"
+            title="تقرير المستأجرين"
+            stats={exportStats}
+          />
+
+          <div style={{ overflowX: 'auto', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
+              <thead>
+                <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
+                  {['المستأجر', 'العقار', 'الوحدات', 'الجوال', 'ملاحظات', ''].map(h => (
+                    <th key={h} style={{ padding: '14px 12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filtered.map((t, idx) => (
+                  <tr key={t.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '12px' }}>
+                      <span onClick={() => setSelectedTenant(t)}
+                        style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                        {t.name}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px', color: '#6b7280', fontWeight: 500 }}>{getTenantPropertyDisplay(t)}</td>
+                    <td style={{ padding: '12px' }}>{unitBadges(t.id)}</td>
+                    <td style={{ padding: '12px', color: '#6b7280' }}>{t.phone || '—'}</td>
+                    <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{t.note || '—'}</td>
+                    <td className="no-print" style={{ padding: '12px' }}>
+                      <button onClick={() => openEditForm(t)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
+                      <button onClick={() => handleDelete(t)} disabled={deletingId === t.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
+                        {deletingId === t.id ? '...' : 'حذف'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
