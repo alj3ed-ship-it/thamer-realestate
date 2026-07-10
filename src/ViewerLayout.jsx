@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useMemo } from "react";
 import { supabase } from "./supabaseClient";
 import { getUnitTypeColor } from "./theme";
+import ExportToolbar from "./components/ExportToolbar";
 
 const HIJRI_MONTHS = [
   "محرم", "صفر", "ربيع الأول", "ربيع الآخر",
@@ -136,6 +137,8 @@ export default function ViewerLayout() {
   const [tenants, setTenants] = useState([]);
   const [leases, setLeases] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [defaulters, setDefaulters] = useState([]);
+  const [defaulterPayments, setDefaulterPayments] = useState([]);
   const [activePage, setActivePage] = useState("properties");
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [selectedTenant, setSelectedTenant] = useState(null);
@@ -189,6 +192,8 @@ export default function ViewerLayout() {
         lease_units ( units ( unit_number, unit_type ) )
       )
     `).then(({ data }) => setPayments((data || []).filter((p) => p.leases)));
+    supabase.from("defaulters").select("*").order("created_at", { ascending: false }).then(({ data }) => setDefaulters(data || []));
+    supabase.from("defaulter_payments").select("*").then(({ data }) => setDefaulterPayments(data || []));
   }, []);
 
   const navStyle = (page) => ({
@@ -420,19 +425,102 @@ export default function ViewerLayout() {
   const totalCollected = entResults.reduce((s, r) => s + (r.paidAmount || 0), 0);
   const totalRemaining = Math.max(totalAmount - totalCollected, 0);
 
+  // ===== حسابات تبويب المتعثرين =====
+  function getDefaulterTenant(tenantId) {
+    return tenants.find((t) => t.id === tenantId);
+  }
+  function getDefaulterPaid(defaulterId) {
+    return defaulterPayments.filter((p) => p.defaulter_id === defaulterId).reduce((s, p) => s + Number(p.amount || 0), 0);
+  }
+  const defaultersTotalDebt = defaulters.reduce((s, d) => s + Number(d.total_amount || 0), 0);
+  const defaultersTotalCollected = defaulters.reduce((s, d) => s + getDefaulterPaid(d.id), 0);
+  const defaultersTotalRemaining = defaultersTotalDebt - defaultersTotalCollected;
+
+  // ===== بيانات التصدير لكل تبويب =====
+  const propertiesExportData = filteredProperties.map(p => ({
+    name: p.name || "—",
+    address: p.address || "—",
+    unitCount: p.total_units || "—",
+  }));
+
+  const unitsExportData = filteredUnits.map(u => ({
+    property: properties.find(p => p.id === u.property_id)?.name || "—",
+    unitNumber: u.unit_number || "—",
+    unitType: u.unit_type || "—",
+    status: u.status || "—",
+  }));
+
+  const tenantsExportData = filteredTenants.map(t => ({
+    name: t.name || "—",
+    phone: t.phone || "—",
+    units: t._sort.units.map(u => `${u.unit_type} ${u.unit_number}`).join(" + ") || "—",
+  }));
+
+  const leasesExportData = filteredLeases.map(l => {
+    const unitsList = l.lease_units?.map(lu => lu.units).filter(Boolean) || [];
+    const tenantInfo = tenants.find(t => t.id === l.tenant_id);
+    return {
+      property: l.properties?.name || "—",
+      tenant: tenantInfo?.name || "—",
+      activity: tenantInfo?.note || "—",
+      unit: unitsList.map(u => `${u.unit_type} ${u.unit_number}`).join(" + ") || "—",
+      startDate: l.start_date_hijri || l.start_date || "—",
+      amount: `${Number(l.contract_value || l.rent_amount || 0).toLocaleString()} ر.س`,
+      status: (l.status || "").toLowerCase() === "active" ? "نشط" : (l.status || "منتهي"),
+    };
+  });
+
+  const entExportData = entResults.map(r => ({
+    property: r.property || "—",
+    tenant: r.tenant || "—",
+    activity: r.activity || "—",
+    unit: r.unit || "—",
+    amount: r.status === "partial"
+      ? `${r.amount.toLocaleString()} / ${r.paidAmount.toLocaleString()} / ${Math.max(r.amount - r.paidAmount, 0).toLocaleString()}`
+      : `${r.amount.toLocaleString()} ر.س`,
+    status: r.statusLabel,
+  }));
+
+  const entExportStats = [
+    { label: "إجمالي المحصّل", value: `${totalCollected.toLocaleString()} ريال`, color: "#27ae60" },
+    { label: "إجمالي المتبقي", value: `${totalRemaining.toLocaleString()} ريال`, color: "#e74c3c" },
+    { label: "إجمالي المستحق", value: `${totalAmount.toLocaleString()} ريال`, color: "#1B4D7A" },
+  ];
+
+  const defaultersExportData = defaulters.map((d) => {
+    const tenant = getDefaulterTenant(d.tenant_id);
+    const paid = getDefaulterPaid(d.id);
+    const remaining = Number(d.total_amount || 0) - paid;
+    return {
+      tenant: tenant?.name || "—",
+      phone: tenant?.phone || "—",
+      total: `${Number(d.total_amount || 0).toLocaleString()} ر.س`,
+      paid: `${paid.toLocaleString()} ر.س`,
+      remaining: `${remaining.toLocaleString()} ر.س`,
+      notes: d.notes || "—",
+    };
+  });
+
+  const defaultersExportStats = [
+    { label: "إجمالي المتعثر", value: `${defaultersTotalDebt.toLocaleString()} ريال`, color: "#991b1b" },
+    { label: "إجمالي المحصّل", value: `${defaultersTotalCollected.toLocaleString()} ريال`, color: "#166534" },
+    { label: "إجمالي الباقي", value: `${defaultersTotalRemaining.toLocaleString()} ريال`, color: "#854d0e" },
+  ];
+
   return (
     <div style={{ minHeight: "100vh", background: "#f0f4f8", fontFamily: "Tahoma, Arial, sans-serif", direction: "rtl" }}>
-      <div style={{ background: "#1B4D7A", padding: "16px 32px", display: "flex", alignItems: "center", gap: "16px" }}>
+      <div className="no-print" style={{ background: "#1B4D7A", padding: "16px 32px", display: "flex", alignItems: "center", gap: "16px" }}>
         <img src="/logo_v6_wide.svg" alt="شعار" style={{ height: "40px" }} />
         <span style={{ color: "#F5D98C", fontSize: "18px", fontWeight: "bold" }}>مكتب ثامر بن سلمان العقاري — عرض</span>
       </div>
 
-      <div style={{ background: "#fff", padding: "12px 32px", display: "flex", gap: "8px", borderBottom: "1px solid #e0e7ef", flexWrap: "wrap" }}>
+      <div className="no-print" style={{ background: "#fff", padding: "12px 32px", display: "flex", gap: "8px", borderBottom: "1px solid #e0e7ef", flexWrap: "wrap" }}>
         <button style={navStyle("properties")} onClick={() => { setActivePage("properties"); setSelectedProperty(null); setSelectedTenant(null); }}>العقارات</button>
         <button style={navStyle("units")} onClick={() => { setActivePage("units"); setSelectedProperty(null); setSelectedTenant(null); }}>الوحدات</button>
         <button style={navStyle("tenants")} onClick={() => { setActivePage("tenants"); setSelectedProperty(null); setSelectedTenant(null); }}>المستأجرون</button>
         <button style={navStyle("leases")} onClick={() => { setActivePage("leases"); setSelectedProperty(null); setSelectedTenant(null); }}>العقود</button>
         <button style={navStyle("entitlements")} onClick={() => { setActivePage("entitlements"); setSelectedProperty(null); setSelectedTenant(null); }}>الاستحقاقات</button>
+        <button style={navStyle("defaulters")} onClick={() => { setActivePage("defaulters"); setSelectedProperty(null); setSelectedTenant(null); }}>المتعثرون</button>
       </div>
 
       <div style={{ padding: "32px" }}>
@@ -440,86 +528,131 @@ export default function ViewerLayout() {
         {/* تفاصيل عقار */}
         {selectedProperty && (
           <div>
-            <button onClick={() => setSelectedProperty(null)} style={{
+            <button onClick={() => setSelectedProperty(null)} className="no-print" style={{
               marginBottom: "16px", padding: "8px 20px", background: "#1B4D7A", color: "#fff",
               border: "none", borderRadius: "8px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif"
             }}>← رجوع للعقارات</button>
             <h3 style={{ color: "#1B4D7A", marginBottom: "16px" }}>{selectedProperty.name} — {selectedProperty.address}</h3>
-            <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
-              <thead style={{ background: "#1B4D7A", color: "#fff" }}>
-                <tr>
-                  <th style={{ padding: "12px" }}>رقم الوحدة</th>
-                  <th style={{ padding: "12px" }}>النوع</th>
-                  <th style={{ padding: "12px" }}>الحالة</th>
-                </tr>
-              </thead>
-              <tbody>
-                {propertyUnits.length === 0 ? (
-                  <tr><td colSpan="3" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد وحدات</td></tr>
-                ) : propertyUnits.map(u => (
-                  <tr key={u.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
-                    <td style={{ padding: "12px" }}>{u.unit_number}</td>
-                    <td style={{ padding: "12px" }}>{unitTypeBadge(u.unit_type, "")}</td>
-                    <td style={{ padding: "12px" }}>
-                      <span style={{
-                        padding: "4px 12px", borderRadius: "20px", fontSize: "13px",
-                        background: u.status === "مؤجرة" ? "#d4edda" : "#fff3cd",
-                        color: u.status === "مؤجرة" ? "#155724" : "#856404"
-                      }}>{u.status}</span>
-                    </td>
+            <div id="property-units-table">
+              <ExportToolbar
+                data={propertyUnits.map(u => ({ unitNumber: u.unit_number || "—", unitType: u.unit_type || "—", status: u.status || "—" }))}
+                columns={[
+                  { key: "unitNumber", label: "رقم الوحدة" },
+                  { key: "unitType", label: "النوع" },
+                  { key: "status", label: "الحالة" },
+                ]}
+                filename={`property_${selectedProperty.name || "units"}`}
+                title={`تقرير وحدات ${selectedProperty.name || ""}`}
+              />
+              <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
+                <thead style={{ background: "#1B4D7A", color: "#fff" }}>
+                  <tr>
+                    <th style={{ padding: "12px" }}>رقم الوحدة</th>
+                    <th style={{ padding: "12px" }}>النوع</th>
+                    <th style={{ padding: "12px" }}>الحالة</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {propertyUnits.length === 0 ? (
+                    <tr><td colSpan="3" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد وحدات</td></tr>
+                  ) : propertyUnits.map(u => (
+                    <tr key={u.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
+                      <td style={{ padding: "12px" }}>{u.unit_number}</td>
+                      <td style={{ padding: "12px" }}>{unitTypeBadge(u.unit_type, "")}</td>
+                      <td style={{ padding: "12px" }}>
+                        <span style={{
+                          padding: "4px 12px", borderRadius: "20px", fontSize: "13px",
+                          background: u.status === "مؤجرة" ? "#d4edda" : "#fff3cd",
+                          color: u.status === "مؤجرة" ? "#155724" : "#856404"
+                        }}>{u.status}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
         {/* تفاصيل مستأجر */}
         {selectedTenant && (
           <div>
-            <button onClick={() => setSelectedTenant(null)} style={{
+            <button onClick={() => setSelectedTenant(null)} className="no-print" style={{
               marginBottom: "16px", padding: "8px 20px", background: "#1B4D7A", color: "#fff",
               border: "none", borderRadius: "8px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif"
             }}>← رجوع للمستأجرين</button>
             <h3 style={{ color: "#1B4D7A", marginBottom: "16px" }}>{selectedTenant.name} — {selectedTenant.phone}</h3>
-            <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
-              <thead style={{ background: "#1B4D7A", color: "#fff" }}>
-                <tr>
-                  <th style={{ padding: "12px" }}>العقار</th>
-                  <th style={{ padding: "12px" }}>الوحدة</th>
-                  <th style={{ padding: "12px" }}>تاريخ البداية</th>
-                  <th style={{ padding: "12px" }}>مبلغ العقد</th>
-                  <th style={{ padding: "12px" }}>الحالة</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tenantLeases.length === 0 ? (
-                  <tr><td colSpan="5" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد عقود</td></tr>
-                ) : tenantLeases.map(l => {
+            <div id="tenant-leases-table">
+              <ExportToolbar
+                data={tenantLeases.map(l => {
                   const unitsList = l.lease_units?.map(lu => lu.units).filter(Boolean) || [];
-                  return (
-                    <tr key={l.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
-                      <td style={{ padding: "12px" }}>{propertyBadge(l.properties?.name)}</td>
-                      <td style={{ padding: "12px" }}>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", justifyContent: "center" }}>
-                          {unitsList.length === 0 ? "—" : unitsList.map((u, i) => <span key={i}>{unitTypeBadge(u.unit_type, u.unit_number)}</span>)}
-                        </div>
-                      </td>
-                      <td style={{ padding: "12px" }}>{l.start_date_hijri || l.start_date || "-"}</td>
-                      <td style={{ padding: "12px" }}>{leaseAmountDisplay(l.contract_value || l.rent_amount)}</td>
-                      <td style={{ padding: "12px" }}>{leaseStatusBadge(l.status)}</td>
-                    </tr>
-                  );
+                  return {
+                    property: l.properties?.name || "—",
+                    unit: unitsList.map(u => `${u.unit_type} ${u.unit_number}`).join(" + ") || "—",
+                    startDate: l.start_date_hijri || l.start_date || "—",
+                    amount: `${Number(l.contract_value || l.rent_amount || 0).toLocaleString()} ر.س`,
+                    status: (l.status || "").toLowerCase() === "active" ? "نشط" : (l.status || "منتهي"),
+                  };
                 })}
-              </tbody>
-            </table>
+                columns={[
+                  { key: "property", label: "العقار" },
+                  { key: "unit", label: "الوحدة" },
+                  { key: "startDate", label: "تاريخ البداية" },
+                  { key: "amount", label: "مبلغ العقد" },
+                  { key: "status", label: "الحالة" },
+                ]}
+                filename={`tenant_${selectedTenant.name || "leases"}`}
+                title={`تقرير عقود ${selectedTenant.name || ""}`}
+              />
+              <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
+                <thead style={{ background: "#1B4D7A", color: "#fff" }}>
+                  <tr>
+                    <th style={{ padding: "12px" }}>العقار</th>
+                    <th style={{ padding: "12px" }}>الوحدة</th>
+                    <th style={{ padding: "12px" }}>تاريخ البداية</th>
+                    <th style={{ padding: "12px" }}>مبلغ العقد</th>
+                    <th style={{ padding: "12px" }}>الحالة</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tenantLeases.length === 0 ? (
+                    <tr><td colSpan="5" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد عقود</td></tr>
+                  ) : tenantLeases.map(l => {
+                    const unitsList = l.lease_units?.map(lu => lu.units).filter(Boolean) || [];
+                    return (
+                      <tr key={l.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
+                        <td style={{ padding: "12px" }}>{propertyBadge(l.properties?.name)}</td>
+                        <td style={{ padding: "12px" }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", justifyContent: "center" }}>
+                            {unitsList.length === 0 ? "—" : unitsList.map((u, i) => <span key={i}>{unitTypeBadge(u.unit_type, u.unit_number)}</span>)}
+                          </div>
+                        </td>
+                        <td style={{ padding: "12px" }}>{l.start_date_hijri || l.start_date || "-"}</td>
+                        <td style={{ padding: "12px" }}>{leaseAmountDisplay(l.contract_value || l.rent_amount)}</td>
+                        <td style={{ padding: "12px" }}>{leaseStatusBadge(l.status)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
         {!selectedProperty && !selectedTenant && (
           <>
             {activePage === "properties" && (
-              <div>
+              <div id="properties-table">
+                <ExportToolbar
+                  data={propertiesExportData}
+                  columns={[
+                    { key: "name", label: "اسم العقار" },
+                    { key: "address", label: "العنوان" },
+                    { key: "unitCount", label: "عدد الوحدات" },
+                  ]}
+                  filename="properties_report"
+                  title="تقرير العقارات"
+                />
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
                   <thead style={{ background: "#1B4D7A", color: "#fff" }}>
                     <tr>
@@ -553,7 +686,7 @@ export default function ViewerLayout() {
                     style={{ position: "fixed", inset: 0, zIndex: 10 }}
                   />
                 )}
-                <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "16px 20px", marginBottom: "16px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div className="no-print" style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "16px 20px", marginBottom: "16px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div style={{ position: "relative" }}>
                     <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>العقار</label>
                     <button
@@ -589,34 +722,47 @@ export default function ViewerLayout() {
                   </div>
                 </div>
 
-                <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
-                  <thead style={{ background: "#1B4D7A", color: "#fff" }}>
-                    <tr>
-                      <th style={{ padding: "12px" }}>العقار</th>
-                      <th style={{ padding: "12px" }}>رقم الوحدة</th>
-                      <th style={{ padding: "12px" }}>النوع</th>
-                      <th style={{ padding: "12px" }}>الحالة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUnits.length === 0 ? (
-                      <tr><td colSpan="4" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج</td></tr>
-                    ) : filteredUnits.map(u => (
-                      <tr key={u.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
-                        <td style={{ padding: "12px" }}>{propertyBadge(getPropertyNameForUnit ? (properties.find(p => p.id === u.property_id)?.name) : null)}</td>
-                        <td style={{ padding: "12px" }}>{u.unit_number}</td>
-                        <td style={{ padding: "12px" }}>{unitTypeBadge(u.unit_type, "")}</td>
-                        <td style={{ padding: "12px" }}>
-                          <span style={{
-                            padding: "4px 12px", borderRadius: "20px", fontSize: "13px",
-                            background: u.status === "مؤجرة" ? "#d4edda" : "#fff3cd",
-                            color: u.status === "مؤجرة" ? "#155724" : "#856404"
-                          }}>{u.status}</span>
-                        </td>
+                <div id="units-table">
+                  <ExportToolbar
+                    data={unitsExportData}
+                    columns={[
+                      { key: "property", label: "العقار" },
+                      { key: "unitNumber", label: "رقم الوحدة" },
+                      { key: "unitType", label: "النوع" },
+                      { key: "status", label: "الحالة" },
+                    ]}
+                    filename="units_report"
+                    title="تقرير الوحدات"
+                  />
+                  <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
+                    <thead style={{ background: "#1B4D7A", color: "#fff" }}>
+                      <tr>
+                        <th style={{ padding: "12px" }}>العقار</th>
+                        <th style={{ padding: "12px" }}>رقم الوحدة</th>
+                        <th style={{ padding: "12px" }}>النوع</th>
+                        <th style={{ padding: "12px" }}>الحالة</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {filteredUnits.length === 0 ? (
+                        <tr><td colSpan="4" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج</td></tr>
+                      ) : filteredUnits.map(u => (
+                        <tr key={u.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
+                          <td style={{ padding: "12px" }}>{propertyBadge(getPropertyNameForUnit ? (properties.find(p => p.id === u.property_id)?.name) : null)}</td>
+                          <td style={{ padding: "12px" }}>{u.unit_number}</td>
+                          <td style={{ padding: "12px" }}>{unitTypeBadge(u.unit_type, "")}</td>
+                          <td style={{ padding: "12px" }}>
+                            <span style={{
+                              padding: "4px 12px", borderRadius: "20px", fontSize: "13px",
+                              background: u.status === "مؤجرة" ? "#d4edda" : "#fff3cd",
+                              color: u.status === "مؤجرة" ? "#155724" : "#856404"
+                            }}>{u.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -628,7 +774,7 @@ export default function ViewerLayout() {
                     style={{ position: "fixed", inset: 0, zIndex: 10 }}
                   />
                 )}
-                <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "16px 20px", marginBottom: "16px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div className="no-print" style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "16px 20px", marginBottom: "16px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div style={{ position: "relative" }}>
                     <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>العقار</label>
                     <button
@@ -704,32 +850,44 @@ export default function ViewerLayout() {
                   </div>
                 </div>
 
-                <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
-                  <thead style={{ background: "#1B4D7A", color: "#fff" }}>
-                    <tr>
-                      <th style={{ padding: "12px" }}>الاسم</th>
-                      <th style={{ padding: "12px" }}>الجوال</th>
-                      <th style={{ padding: "12px" }}>الوحدة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredTenants.length === 0 ? (
-                      <tr><td colSpan="3" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج</td></tr>
-                    ) : filteredTenants.map(t => (
-                      <tr key={t.id} onClick={() => setSelectedTenant(t)} style={rowStyle}
-                        onMouseEnter={e => e.currentTarget.style.background = "#f0f4f8"}
-                        onMouseLeave={e => e.currentTarget.style.background = ""}>
-                        <td style={{ padding: "12px" }}>{tenantBadge(t.name)}</td>
-                        <td style={{ padding: "12px" }}>{t.phone}</td>
-                        <td style={{ padding: "12px" }}>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", justifyContent: "center" }}>
-                            {t._sort.units.length === 0 ? "—" : t._sort.units.map((u, i) => <span key={i}>{unitTypeBadge(u.unit_type, u.unit_number)}</span>)}
-                          </div>
-                        </td>
+                <div id="tenants-table">
+                  <ExportToolbar
+                    data={tenantsExportData}
+                    columns={[
+                      { key: "name", label: "الاسم" },
+                      { key: "phone", label: "الجوال" },
+                      { key: "units", label: "الوحدة" },
+                    ]}
+                    filename="tenants_report"
+                    title="تقرير المستأجرين"
+                  />
+                  <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
+                    <thead style={{ background: "#1B4D7A", color: "#fff" }}>
+                      <tr>
+                        <th style={{ padding: "12px" }}>الاسم</th>
+                        <th style={{ padding: "12px" }}>الجوال</th>
+                        <th style={{ padding: "12px" }}>الوحدة</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {filteredTenants.length === 0 ? (
+                        <tr><td colSpan="3" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج</td></tr>
+                      ) : filteredTenants.map(t => (
+                        <tr key={t.id} onClick={() => setSelectedTenant(t)} style={rowStyle}
+                          onMouseEnter={e => e.currentTarget.style.background = "#f0f4f8"}
+                          onMouseLeave={e => e.currentTarget.style.background = ""}>
+                          <td style={{ padding: "12px" }}>{tenantBadge(t.name)}</td>
+                          <td style={{ padding: "12px" }}>{t.phone}</td>
+                          <td style={{ padding: "12px" }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", justifyContent: "center" }}>
+                              {t._sort.units.length === 0 ? "—" : t._sort.units.map((u, i) => <span key={i}>{unitTypeBadge(u.unit_type, u.unit_number)}</span>)}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -741,7 +899,7 @@ export default function ViewerLayout() {
                     style={{ position: "fixed", inset: 0, zIndex: 10 }}
                   />
                 )}
-                <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "16px 20px", marginBottom: "16px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div className="no-print" style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "16px 20px", marginBottom: "16px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div style={{ position: "relative" }}>
                     <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>العقار</label>
                     <button
@@ -817,42 +975,58 @@ export default function ViewerLayout() {
                   </div>
                 </div>
 
-                <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
-                  <thead style={{ background: "#1B4D7A", color: "#fff" }}>
-                    <tr>
-                      <th style={{ padding: "12px" }}>العقار</th>
-                      <th style={{ padding: "12px" }}>المستأجر</th>
-                      <th style={{ padding: "12px" }}>النشاط</th>
-                      <th style={{ padding: "12px" }}>الوحدة</th>
-                      <th style={{ padding: "12px" }}>تاريخ البداية</th>
-                      <th style={{ padding: "12px" }}>مبلغ العقد</th>
-                      <th style={{ padding: "12px" }}>الحالة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLeases.length === 0 ? (
-                      <tr><td colSpan="7" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج</td></tr>
-                    ) : filteredLeases.map(l => {
-                      const unitsList = l.lease_units?.map(lu => lu.units).filter(Boolean) || [];
-                      const tenantInfo = tenants.find(t => t.id === l.tenant_id);
-                      return (
-                        <tr key={l.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
-                          <td style={{ padding: "12px" }}>{propertyBadge(l.properties?.name)}</td>
-                          <td style={{ padding: "12px" }}>{tenantBadge(tenantInfo?.name)}</td>
-                          <td style={{ padding: "12px" }}>{activityBadge(tenantInfo?.note)}</td>
-                          <td style={{ padding: "12px" }}>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", justifyContent: "center" }}>
-                              {unitsList.length === 0 ? "—" : unitsList.map((u, i) => <span key={i}>{unitTypeBadge(u.unit_type, u.unit_number)}</span>)}
-                            </div>
-                          </td>
-                          <td style={{ padding: "12px" }}>{l.start_date_hijri || l.start_date || "-"}</td>
-                          <td style={{ padding: "12px" }}>{leaseAmountDisplay(l.contract_value || l.rent_amount)}</td>
-                          <td style={{ padding: "12px" }}>{leaseStatusBadge(l.status)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <div id="leases-table">
+                  <ExportToolbar
+                    data={leasesExportData}
+                    columns={[
+                      { key: "property", label: "العقار" },
+                      { key: "tenant", label: "المستأجر" },
+                      { key: "activity", label: "النشاط" },
+                      { key: "unit", label: "الوحدة" },
+                      { key: "startDate", label: "تاريخ البداية" },
+                      { key: "amount", label: "مبلغ العقد" },
+                      { key: "status", label: "الحالة" },
+                    ]}
+                    filename="leases_report"
+                    title="تقرير العقود"
+                  />
+                  <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
+                    <thead style={{ background: "#1B4D7A", color: "#fff" }}>
+                      <tr>
+                        <th style={{ padding: "12px" }}>العقار</th>
+                        <th style={{ padding: "12px" }}>المستأجر</th>
+                        <th style={{ padding: "12px" }}>النشاط</th>
+                        <th style={{ padding: "12px" }}>الوحدة</th>
+                        <th style={{ padding: "12px" }}>تاريخ البداية</th>
+                        <th style={{ padding: "12px" }}>مبلغ العقد</th>
+                        <th style={{ padding: "12px" }}>الحالة</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredLeases.length === 0 ? (
+                        <tr><td colSpan="7" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج</td></tr>
+                      ) : filteredLeases.map(l => {
+                        const unitsList = l.lease_units?.map(lu => lu.units).filter(Boolean) || [];
+                        const tenantInfo = tenants.find(t => t.id === l.tenant_id);
+                        return (
+                          <tr key={l.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
+                            <td style={{ padding: "12px" }}>{propertyBadge(l.properties?.name)}</td>
+                            <td style={{ padding: "12px" }}>{tenantBadge(tenantInfo?.name)}</td>
+                            <td style={{ padding: "12px" }}>{activityBadge(tenantInfo?.note)}</td>
+                            <td style={{ padding: "12px" }}>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", justifyContent: "center" }}>
+                                {unitsList.length === 0 ? "—" : unitsList.map((u, i) => <span key={i}>{unitTypeBadge(u.unit_type, u.unit_number)}</span>)}
+                              </div>
+                            </td>
+                            <td style={{ padding: "12px" }}>{l.start_date_hijri || l.start_date || "-"}</td>
+                            <td style={{ padding: "12px" }}>{leaseAmountDisplay(l.contract_value || l.rent_amount)}</td>
+                            <td style={{ padding: "12px" }}>{leaseStatusBadge(l.status)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -864,7 +1038,7 @@ export default function ViewerLayout() {
                     style={{ position: "fixed", inset: 0, zIndex: 10 }}
                   />
                 )}
-                <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "20px", marginBottom: "24px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div className="no-print" style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "20px", marginBottom: "24px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }}>
                   <div>
                     <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>السنة الهجرية</label>
                     <input type="number" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}
@@ -991,7 +1165,22 @@ export default function ViewerLayout() {
                 </div>
 
                 {entSearched && entResults.length > 0 && (
-                  <>
+                  <div id="entitlements-table">
+                    <ExportToolbar
+                      data={entExportData}
+                      columns={[
+                        { key: "property", label: "العقار" },
+                        { key: "tenant", label: "المستأجر" },
+                        { key: "activity", label: "النشاط" },
+                        { key: "unit", label: "الوحدة" },
+                        { key: "amount", label: "المبلغ" },
+                        { key: "status", label: "الحالة" },
+                      ]}
+                      filename="entitlements_report"
+                      title="تقرير الاستحقاقات"
+                      stats={entExportStats}
+                    />
+
                     <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
                       <div style={{ flex: 1, minWidth: "150px", background: "#EAFAF1", border: "1px solid #A9DFBF", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
                         <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المحصّل</div>
@@ -1035,7 +1224,7 @@ export default function ViewerLayout() {
                         ))}
                       </tbody>
                     </table>
-                  </>
+                  </div>
                 )}
 
                 {entSearched && entResults.length === 0 && (
@@ -1043,6 +1232,72 @@ export default function ViewerLayout() {
                     لا توجد نتائج مطابقة
                   </div>
                 )}
+              </div>
+            )}
+
+            {activePage === "defaulters" && (
+              <div id="defaulters-table">
+                <ExportToolbar
+                  data={defaultersExportData}
+                  columns={[
+                    { key: "tenant", label: "المستأجر" },
+                    { key: "phone", label: "الجوال" },
+                    { key: "total", label: "المتعثر" },
+                    { key: "paid", label: "المحصّل" },
+                    { key: "remaining", label: "الباقي" },
+                    { key: "notes", label: "ملاحظات" },
+                  ]}
+                  filename="defaulters_report"
+                  title="تقرير المتعثرين"
+                  stats={defaultersExportStats}
+                />
+
+                <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#FDEDEC", border: "1px solid #F1948A", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المتعثر</div>
+                    <div style={{ fontWeight: "bold", color: "#991b1b", fontSize: "18px" }}>{defaultersTotalDebt.toLocaleString()} ريال</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#EAFAF1", border: "1px solid #A9DFBF", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المحصّل</div>
+                    <div style={{ fontWeight: "bold", color: "#166534", fontSize: "18px" }}>{defaultersTotalCollected.toLocaleString()} ريال</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#FEF9E7", border: "1px solid #F7DC6F", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>إجمالي الباقي</div>
+                    <div style={{ fontWeight: "bold", color: "#854d0e", fontSize: "18px" }}>{defaultersTotalRemaining.toLocaleString()} ريال</div>
+                  </div>
+                </div>
+
+                <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
+                  <thead style={{ background: "#1B4D7A", color: "#fff" }}>
+                    <tr>
+                      <th style={{ padding: "12px" }}>المستأجر</th>
+                      <th style={{ padding: "12px" }}>الجوال</th>
+                      <th style={{ padding: "12px" }}>المتعثر</th>
+                      <th style={{ padding: "12px" }}>المحصّل</th>
+                      <th style={{ padding: "12px" }}>الباقي</th>
+                      <th style={{ padding: "12px" }}>ملاحظات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {defaulters.length === 0 ? (
+                      <tr><td colSpan="6" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا يوجد متعثرون مسجّلون</td></tr>
+                    ) : defaulters.map((d) => {
+                      const tenant = getDefaulterTenant(d.tenant_id);
+                      const paid = getDefaulterPaid(d.id);
+                      const remaining = Number(d.total_amount || 0) - paid;
+                      return (
+                        <tr key={d.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
+                          <td style={{ padding: "12px" }}>{tenantBadge(tenant?.name)}</td>
+                          <td style={{ padding: "12px" }}>{tenant?.phone || "—"}</td>
+                          <td style={{ padding: "12px", color: "#991b1b", fontWeight: "bold" }}>{Number(d.total_amount || 0).toLocaleString()} ر.س</td>
+                          <td style={{ padding: "12px", color: "#166534", fontWeight: "bold" }}>{paid.toLocaleString()} ر.س</td>
+                          <td style={{ padding: "12px", color: "#854d0e", fontWeight: "bold" }}>{remaining.toLocaleString()} ر.س</td>
+                          <td style={{ padding: "12px", color: "#9ca3af", fontSize: "13px" }}>{d.notes || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </>
