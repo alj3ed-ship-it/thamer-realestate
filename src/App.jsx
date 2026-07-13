@@ -30,8 +30,7 @@ const T = {
 
 const NAV_ITEMS = [
   { key: "dashboard", label: T.dashboard, icon: "\uD83C\uDFE0" },
-  { key: "projects", label: T.projects, icon: "\uD83D\uDEE0\uFE0F" },
-  { key: "properties", label: T.properties, icon: "\uD83C\uDFE2\uD83C\uDFE2\uD83C\uDFE2" },
+  { key: "properties", label: T.properties, icon: "\uD83C\uDFE2" },
   { key: "units", label: T.units, icon: "\uD83D\uDEAA" },
   { key: "tenants", label: T.tenants, icon: "\uD83D\uDC64" },
   { key: "leases", label: T.leases, icon: "\uD83D\uDCC4" },
@@ -39,6 +38,7 @@ const NAV_ITEMS = [
   { key: "entitlements", label: T.entitlements, icon: "\uD83D\uDCC5" },
   { key: "reports", label: T.reports, icon: "\uD83D\uDCCA" },
   { key: "defaulters", label: T.defaulters, icon: "\u26A0\uFE0F" },
+  { key: "projects", label: T.projects, icon: "\uD83D\uDEE0\uFE0F" },
 ];
 
 export default function App() {
@@ -166,7 +166,7 @@ export default function App() {
             <h2 style={{ color: "#1B4D7A", marginBottom: "12px", fontSize: "20px" }}>{T.dashboard}</h2>
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
               {[
-                { label: T.properties, value: stats.properties, icon: "\uD83C\uDFE2\uD83C\uDFE2\uD83C\uDFE2", color: "#2E6394", page: "properties" },
+                { label: T.properties, value: stats.properties, icon: "\uD83C\uDFE2", color: "#2E6394", page: "properties" },
                 { label: T.units, value: stats.units, icon: "\uD83D\uDEAA\uD83D\uDEAA\uD83D\uDEAA", color: "#27ae60", page: "units" },
                 { label: T.tenants, value: stats.tenants, icon: "\uD83D\uDC64", color: "#8e44ad", page: "tenants" },
                 { label: T.leases, value: stats.leases, icon: "\uD83D\uDCC4", color: "#e67e22", page: "leases" },
