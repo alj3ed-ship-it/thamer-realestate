@@ -378,6 +378,30 @@ export default function Leases({ onBack }) {
     return { annual: amount, installment, count: type?.multiplier || 1 };
   }
 
+  // تحديث تلقائي لمبلغ الأقساط غير المدفوعة عند تعديل إيجار عقد موجود
+  // - يحافظ على مبلغ أي قسط سبق سداده كما هو (تاريخي، ما يتغيّر)
+  // - يوزّع المبلغ الجديد بالتساوي على عدد الأقساط الأصلي لنفس العقد
+  async function syncUnpaidInstallments(leaseId, newRentAmount) {
+    const { data: existingPayments, error } = await supabase
+      .from("payments")
+      .select("id, total_installments, amount_paid")
+      .eq("lease_id", leaseId);
+
+    if (error || !existingPayments || existingPayments.length === 0) return;
+
+    const totalInstallments = existingPayments[0].total_installments || existingPayments.length;
+    const newInstallmentAmount = Math.round(Number(newRentAmount) / totalInstallments);
+
+    for (const p of existingPayments) {
+      if (Number(p.amount_paid) === 0) {
+        await supabase
+          .from("payments")
+          .update({ amount_due: newInstallmentAmount, amount: newInstallmentAmount })
+          .eq("id", p.id);
+      }
+    }
+  }
+
   async function handleSave() {
     if (!form.tenant_id || !form.rent_amount || form.selected_unit_ids.length === 0) return;
     setSaving(true);
@@ -400,6 +424,8 @@ export default function Leases({ onBack }) {
       for (const uid of oldUnitIds) await supabase.from("units").update({ status: "شاغرة" }).eq("id", uid);
       await supabase.from("lease_units").delete().eq("lease_id", editingId);
       await supabase.from("leases").update(payload).eq("id", editingId);
+      // تحديث تلقائي لأقساط الدفعات غير المدفوعة بنفس المبلغ الجديد
+      await syncUnpaidInstallments(editingId, form.rent_amount);
     } else {
       const { data } = await supabase.from("leases").insert([payload]).select("id");
       leaseId = data?.[0]?.id;
@@ -719,8 +745,8 @@ export default function Leases({ onBack }) {
             )}
 
             {editingId && (
-              <div style={{ margin: "12px 0", fontSize: 12, color: "#9ca3af", background: "#f9fafb", padding: 10, borderRadius: 8 }}>
-                ملاحظة: تعديل العقد هنا لا يغيّر جدول الدفعات المسجّل مسبقاً — لتعديل دفعة معينة استخدم صفحة "الدفعات".
+              <div style={{ margin: "12px 0", fontSize: 12, color: "#0e7490", background: "#f0f9ff", padding: 10, borderRadius: 8, border: "1px solid #bae6fd" }}>
+                ملاحظة: تعديل المبلغ هنا سيحدّث تلقائياً كل الأقساط <strong>غير المدفوعة</strong> بنفس المبلغ الجديد موزّعاً بالتساوي على عدد الدفعات الأصلي. أي دفعة سبق سدادها تبقى بمبلغها التاريخي كما هو.
               </div>
             )}
 
