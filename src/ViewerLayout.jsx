@@ -139,6 +139,7 @@ export default function ViewerLayout() {
   const [payments, setPayments] = useState([]);
   const [defaulters, setDefaulters] = useState([]);
   const [defaulterPayments, setDefaulterPayments] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [activePage, setActivePage] = useState("properties");
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [selectedTenant, setSelectedTenant] = useState(null);
@@ -194,6 +195,7 @@ export default function ViewerLayout() {
     `).then(({ data }) => setPayments((data || []).filter((p) => p.leases)));
     supabase.from("defaulters").select("*").order("created_at", { ascending: false }).then(({ data }) => setDefaulters(data || []));
     supabase.from("defaulter_payments").select("*").then(({ data }) => setDefaulterPayments(data || []));
+    supabase.from("projects").select("*").order("date_created", { ascending: false }).then(({ data }) => setProjects(data || []));
   }, []);
 
   const navStyle = (page) => ({
@@ -521,6 +523,7 @@ export default function ViewerLayout() {
         <button style={navStyle("leases")} onClick={() => { setActivePage("leases"); setSelectedProperty(null); setSelectedTenant(null); }}>العقود</button>
         <button style={navStyle("entitlements")} onClick={() => { setActivePage("entitlements"); setSelectedProperty(null); setSelectedTenant(null); }}>الاستحقاقات</button>
         <button style={navStyle("defaulters")} onClick={() => { setActivePage("defaulters"); setSelectedProperty(null); setSelectedTenant(null); }}>المتعثرون</button>
+        <button style={navStyle("projects")} onClick={() => { setActivePage("projects"); setSelectedProperty(null); setSelectedTenant(null); }}>المشاريع</button>
       </div>
 
       <div style={{ padding: "32px" }}>
@@ -1293,6 +1296,100 @@ export default function ViewerLayout() {
                           <td style={{ padding: "12px", color: "#166534", fontWeight: "bold" }}>{paid.toLocaleString()} ر.س</td>
                           <td style={{ padding: "12px", color: "#854d0e", fontWeight: "bold" }}>{remaining.toLocaleString()} ر.س</td>
                           <td style={{ padding: "12px", color: "#9ca3af", fontSize: "13px" }}>{d.notes || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {activePage === "projects" && (
+              <div id="viewer-projects-table">
+                <ExportToolbar
+                  data={projects.map(p => ({
+                    name: p.name || "—",
+                    description: p.description || "—",
+                    date: p.date_created || "—",
+                    status: p.status || "—",
+                    expenses: `${Number(p.expenses || 0).toLocaleString()} ريال`,
+                    revenues: `${Number(p.revenues || 0).toLocaleString()} ريال`,
+                    balance: `${(Number(p.revenues || 0) - Number(p.expenses || 0)).toLocaleString()} ريال`,
+                    notes: p.notes || "—",
+                  }))}
+                  columns={[
+                    { key: "name", label: "اسم المشروع" },
+                    { key: "description", label: "الوصف" },
+                    { key: "date", label: "التاريخ" },
+                    { key: "status", label: "الحالة" },
+                    { key: "expenses", label: "المصروفات" },
+                    { key: "revenues", label: "الإيرادات" },
+                    { key: "balance", label: "الرصيد" },
+                    { key: "notes", label: "ملاحظات" },
+                  ]}
+                  filename="projects_report"
+                  title="تقرير المشاريع"
+                />
+
+                <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#FDEDEC", border: "1px solid #F1948A", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المصروفات</div>
+                    <div style={{ fontWeight: "bold", color: "#e74c3c", fontSize: "18px" }}>
+                      {projects.reduce((s, p) => s + (Number(p.expenses) || 0), 0).toLocaleString()} ريال
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#EAFAF1", border: "1px solid #A9DFBF", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>إجمالي الإيرادات</div>
+                    <div style={{ fontWeight: "bold", color: "#27ae60", fontSize: "18px" }}>
+                      {projects.reduce((s, p) => s + (Number(p.revenues) || 0), 0).toLocaleString()} ريال
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#EBF5FB", border: "1px solid #AED6F1", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>الرصيد الكلي</div>
+                    <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>
+                      {(projects.reduce((s, p) => s + (Number(p.revenues) || 0), 0) - projects.reduce((s, p) => s + (Number(p.expenses) || 0), 0)).toLocaleString()} ريال
+                    </div>
+                  </div>
+                </div>
+
+                <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
+                  <thead style={{ background: "#1B4D7A", color: "#fff" }}>
+                    <tr>
+                      <th style={{ padding: "12px" }}>اسم المشروع</th>
+                      <th style={{ padding: "12px" }}>الوصف</th>
+                      <th style={{ padding: "12px" }}>التاريخ</th>
+                      <th style={{ padding: "12px" }}>الحالة</th>
+                      <th style={{ padding: "12px" }}>المصروفات</th>
+                      <th style={{ padding: "12px" }}>الإيرادات</th>
+                      <th style={{ padding: "12px" }}>الرصيد</th>
+                      <th style={{ padding: "12px" }}>ملاحظات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projects.length === 0 ? (
+                      <tr><td colSpan="8" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد مشاريع مسجّلة</td></tr>
+                    ) : projects.map((p) => {
+                      const bal = (Number(p.revenues) || 0) - (Number(p.expenses) || 0);
+                      return (
+                        <tr key={p.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
+                          <td style={{ padding: "12px", fontWeight: "bold", color: "#1B4D7A" }}>{p.name}</td>
+                          <td style={{ padding: "12px", fontSize: "13px", color: "#6b7280" }}>
+                            {p.description ? p.description.substring(0, 50) + (p.description.length > 50 ? "..." : "") : "—"}
+                          </td>
+                          <td style={{ padding: "12px", color: "#6b7280", whiteSpace: "nowrap" }}>{p.date_created || "—"}</td>
+                          <td style={{ padding: "12px" }}>
+                            <span style={{
+                              padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold",
+                              background: p.status === "منتهي" ? "#dcfce7" : "#dbeafe",
+                              color: p.status === "منتهي" ? "#15803d" : "#0c4a6e",
+                            }}>{p.status}</span>
+                          </td>
+                          <td style={{ padding: "12px", color: "#e74c3c", fontWeight: "bold" }}>{Number(p.expenses || 0).toLocaleString()} ريال</td>
+                          <td style={{ padding: "12px", color: "#27ae60", fontWeight: "bold" }}>{Number(p.revenues || 0).toLocaleString()} ريال</td>
+                          <td style={{ padding: "12px", color: bal >= 0 ? "#27ae60" : "#e74c3c", fontWeight: "bold" }}>{bal.toLocaleString()} ريال</td>
+                          <td style={{ padding: "12px", fontSize: "13px", color: "#9ca3af" }}>
+                            {p.notes ? p.notes.substring(0, 30) + (p.notes.length > 30 ? "..." : "") : "—"}
+                          </td>
                         </tr>
                       );
                     })}
