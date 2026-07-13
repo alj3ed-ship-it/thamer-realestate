@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import ExportToolbar from './components/ExportToolbar';
 
@@ -30,11 +30,13 @@ function Projects() {
     setLoading(true);
     const { data, error } = await supabase
       .from('projects')
-      .select('*')
-      .order('date_created', { ascending: false });
-    
+      .select('*');
+
     if (!error && data) {
       setProjects(data);
+    }
+    if (error) {
+      console.error('Projects load error:', error);
     }
     setLoading(false);
   };
@@ -77,12 +79,11 @@ function Projects() {
     };
 
     if (editingId) {
-      // تحديث المشروع
       const { error } = await supabase
         .from('projects')
         .update(projectData)
         .eq('id', editingId);
-      
+
       if (!error) {
         loadProjects();
         resetForm();
@@ -90,11 +91,10 @@ function Projects() {
         alert('حصل خطأ: ' + error.message);
       }
     } else {
-      // إضافة مشروع جديد
       const { error } = await supabase
         .from('projects')
         .insert([projectData]);
-      
+
       if (!error) {
         loadProjects();
         resetForm();
@@ -124,7 +124,7 @@ function Projects() {
         .from('projects')
         .delete()
         .eq('id', id);
-      
+
       if (!error) {
         loadProjects();
       } else {
@@ -133,12 +133,10 @@ function Projects() {
     }
   };
 
-  // إحصائيات
   const totalExpenses = projects.reduce((sum, p) => sum + (Number(p.expenses) || 0), 0);
   const totalRevenues = projects.reduce((sum, p) => sum + (Number(p.revenues) || 0), 0);
   const balance = totalRevenues - totalExpenses;
 
-  // بيانات التصدير
   const exportData = projects.map(p => ({
     name: p.name,
     description: p.description || '—',
@@ -180,7 +178,7 @@ function Projects() {
           {showForm && (
             <div style={styles.formBox}>
               <h3 style={styles.formTitle}>{editingId ? 'تعديل المشروع' : 'مشروع جديد'}</h3>
-              
+
               <div style={styles.formGrid}>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>اسم المشروع *</label>
