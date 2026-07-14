@@ -1,412 +1,450 @@
-﻿import { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
-import ExportToolbar from './components/ExportToolbar';
+﻿import { useState, useEffect } from 'react'
+import { supabase } from './supabaseClient'
 
-const STATUS_COLORS = {
-  'جاري': { bg: '#dbeafe', text: '#0c4a6e', border: '#0284c7' },
-  'منتهي': { bg: '#dcfce7', text: '#15803d', border: '#86efac' }
-};
-
-function Projects() {
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState(null);
-  const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    date_created: new Date().toISOString().slice(0, 10),
-    status: 'جاري',
-    expenses: '',
-    revenues: '',
-    notes: ''
-  });
-
-  useEffect(() => {
-    loadProjects();
-  }, []);
-
-  const loadProjects = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .order('date_created', { ascending: false });
-    
-    if (!error && data) {
-      setProjects(data);
-    }
-    setLoading(false);
-  };
-
-  const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      description: '',
-      date_created: new Date().toISOString().slice(0, 10),
-      status: 'جاري',
-      expenses: '',
-      revenues: '',
-      notes: ''
-    });
-    setEditingId(null);
-    setShowForm(false);
-  };
-
-  const saveProject = async () => {
-    if (!formData.name.trim()) {
-      alert('أدخل اسم المشروع');
-      return;
-    }
-
-    const projectData = {
-      name: formData.name,
-      description: formData.description,
-      date_created: formData.date_created,
-      status: formData.status,
-      expenses: Number(formData.expenses) || 0,
-      revenues: Number(formData.revenues) || 0,
-      notes: formData.notes
-    };
-
-    if (editingId) {
-      // تحديث المشروع
-      const { error } = await supabase
-        .from('projects')
-        .update(projectData)
-        .eq('id', editingId);
-      
-      if (!error) {
-        loadProjects();
-        resetForm();
-      } else {
-        alert('حصل خطأ: ' + error.message);
-      }
-    } else {
-      // إضافة مشروع جديد
-      const { error } = await supabase
-        .from('projects')
-        .insert([projectData]);
-      
-      if (!error) {
-        loadProjects();
-        resetForm();
-      } else {
-        alert('حصل خطأ: ' + error.message);
-      }
-    }
-  };
-
-  const startEdit = (project) => {
-    setFormData({
-      name: project.name,
-      description: project.description || '',
-      date_created: project.date_created,
-      status: project.status,
-      expenses: project.expenses || '',
-      revenues: project.revenues || '',
-      notes: project.notes || ''
-    });
-    setEditingId(project.id);
-    setShowForm(true);
-  };
-
-  const deleteProject = async (id) => {
-    if (confirm('هل أنت متأكد من حذف هذا المشروع؟')) {
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', id);
-      
-      if (!error) {
-        loadProjects();
-      } else {
-        alert('حصل خطأ: ' + error.message);
-      }
-    }
-  };
-
-  // إحصائيات
-  const totalExpenses = projects.reduce((sum, p) => sum + (Number(p.expenses) || 0), 0);
-  const totalRevenues = projects.reduce((sum, p) => sum + (Number(p.revenues) || 0), 0);
-  const balance = totalRevenues - totalExpenses;
-
-  // بيانات التصدير
-  const exportData = projects.map(p => ({
-    name: p.name,
-    description: p.description || '—',
-    date: p.date_created,
-    status: p.status,
-    expenses: `${Number(p.expenses || 0).toLocaleString()} ريال`,
-    revenues: `${Number(p.revenues || 0).toLocaleString()} ريال`,
-    balance: `${(Number(p.revenues || 0) - Number(p.expenses || 0)).toLocaleString()} ريال`,
-    notes: p.notes || '—'
-  }));
-
-  const exportStats = [
-    { label: 'إجمالي المصروفات', value: `${totalExpenses.toLocaleString()} ريال`, color: '#e74c3c' },
-    { label: 'إجمالي الإيرادات', value: `${totalRevenues.toLocaleString()} ريال`, color: '#27ae60' },
-    { label: 'الرصيد الكلي', value: `${balance.toLocaleString()} ريال`, color: balance >= 0 ? '#27ae60' : '#e74c3c' }
-  ];
-
-  return (
-    <div style={styles.page}>
-      <h2 style={styles.title}>المشاريع والصيانة</h2>
-      <p style={styles.subtitle}>سجل المشاريع والمصروفات والإيرادات</p>
-
-      {loading ? (
-        <p style={styles.loading}>جارِ التحميل...</p>
-      ) : (
-        <>
-          <div className="no-print" style={styles.buttonRow}>
-            {!showForm ? (
-              <button onClick={() => setShowForm(true)} style={styles.addBtn}>
-                + إضافة مشروع جديد
-              </button>
-            ) : (
-              <button onClick={resetForm} style={styles.cancelBtn}>
-                إلغاء
-              </button>
-            )}
-          </div>
-
-          {showForm && (
-            <div style={styles.formBox}>
-              <h3 style={styles.formTitle}>{editingId ? 'تعديل المشروع' : 'مشروع جديد'}</h3>
-              
-              <div style={styles.formGrid}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>اسم المشروع *</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
-                    style={styles.input}
-                    placeholder="مثال: صيانة الاستراحات الخمس"
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>التاريخ</label>
-                  <input
-                    type="date"
-                    value={formData.date_created}
-                    onChange={(e) => handleInputChange('date_created', e.target.value)}
-                    style={styles.input}
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>الحالة</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => handleInputChange('status', e.target.value)}
-                    style={styles.input}
-                  >
-                    <option value="جاري">جاري</option>
-                    <option value="منتهي">منتهي</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style={styles.formGrid}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>المصروفات (ريال)</label>
-                  <input
-                    type="number"
-                    value={formData.expenses}
-                    onChange={(e) => handleInputChange('expenses', e.target.value)}
-                    style={styles.input}
-                    placeholder="0"
-                  />
-                </div>
-
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>الإيرادات (ريال)</label>
-                  <input
-                    type="number"
-                    value={formData.revenues}
-                    onChange={(e) => handleInputChange('revenues', e.target.value)}
-                    style={styles.input}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>الوصف التفصيلي</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
-                  style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
-                  placeholder="حداد: 250، سباك: 1000، كهربائي: 700..."
-                />
-              </div>
-
-              <div style={styles.formGroup}>
-                <label style={styles.label}>ملاحظات</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => handleInputChange('notes', e.target.value)}
-                  style={{ ...styles.input, minHeight: '60px', resize: 'vertical' }}
-                  placeholder="ملاحظات إضافية..."
-                />
-              </div>
-
-              <div style={styles.formButtonRow}>
-                <button onClick={saveProject} style={styles.saveBtn}>
-                  {editingId ? 'تحديث' : 'إضافة'}
-                </button>
-                <button onClick={resetForm} style={styles.cancelBtn}>
-                  إلغاء
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div id="projects-table">
-            <ExportToolbar
-              data={exportData}
-              columns={[
-                { key: 'name', label: 'اسم المشروع' },
-                { key: 'description', label: 'الوصف' },
-                { key: 'date', label: 'التاريخ' },
-                { key: 'status', label: 'الحالة' },
-                { key: 'expenses', label: 'المصروفات' },
-                { key: 'revenues', label: 'الإيرادات' },
-                { key: 'balance', label: 'الرصيد' },
-                { key: 'notes', label: 'ملاحظات' }
-              ]}
-              filename="projects_report"
-              title="تقرير المشاريع"
-              stats={exportStats}
-            />
-
-            <div className="no-print" style={{ marginBottom: 14, fontSize: 13, color: '#374151' }}>
-              إجمالي المشاريع: {projects.length}
-            </div>
-
-            <div style={styles.statsRow} className="no-print">
-              <div style={{ ...styles.statBox, background: '#FDEDEC', border: '1px solid #F1948A' }}>
-                <div style={styles.statLabel}>إجمالي المصروفات</div>
-                <div style={{ ...styles.statValue, color: '#e74c3c' }}>{totalExpenses.toLocaleString()} ريال</div>
-              </div>
-              <div style={{ ...styles.statBox, background: '#EAFAF1', border: '1px solid #A9DFBF' }}>
-                <div style={styles.statLabel}>إجمالي الإيرادات</div>
-                <div style={{ ...styles.statValue, color: '#27ae60' }}>{totalRevenues.toLocaleString()} ريال</div>
-              </div>
-              <div style={{
-                ...styles.statBox,
-                background: balance >= 0 ? '#EAFAF1' : '#FDEDEC',
-                border: balance >= 0 ? '1px solid #A9DFBF' : '1px solid #F1948A'
-              }}>
-                <div style={styles.statLabel}>الرصيد الكلي</div>
-                <div style={{ ...styles.statValue, color: balance >= 0 ? '#27ae60' : '#e74c3c' }}>
-                  {balance.toLocaleString()} ريال
-                </div>
-              </div>
-            </div>
-
-            <div style={styles.tableWrap}>
-              <table style={styles.table}>
-                <thead>
-                  <tr style={styles.headRow}>
-                    {['اسم المشروع', 'الوصف', 'التاريخ', 'الحالة', 'المصروفات', 'الإيرادات', 'الرصيد', 'ملاحظات', ''].map((h) => (
-                      <th key={h} style={styles.th}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {projects.map((project, idx) => {
-                    const colors = STATUS_COLORS[project.status];
-                    const projectBalance = (Number(project.revenues) || 0) - (Number(project.expenses) || 0);
-                    return (
-                      <tr key={project.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                        <td style={{ ...styles.td, fontWeight: 600, color: '#1B4D7A' }}>{project.name}</td>
-                        <td style={{ ...styles.td, fontSize: 13, color: '#6b7280' }}>
-                          {project.description ? project.description.substring(0, 50) + (project.description.length > 50 ? '...' : '') : '—'}
-                        </td>
-                        <td style={{ ...styles.td, color: '#6b7280', whiteSpace: 'nowrap' }}>{project.date_created || '—'}</td>
-                        <td style={styles.td}>
-                          <span style={{ ...styles.badge, backgroundColor: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}>
-                            {project.status}
-                          </span>
-                        </td>
-                        <td style={{ ...styles.td, color: '#e74c3c', fontWeight: 600 }}>
-                          {Number(project.expenses || 0).toLocaleString()} ريال
-                        </td>
-                        <td style={{ ...styles.td, color: '#27ae60', fontWeight: 600 }}>
-                          {Number(project.revenues || 0).toLocaleString()} ريال
-                        </td>
-                        <td style={{
-                          ...styles.td,
-                          color: projectBalance >= 0 ? '#27ae60' : '#e74c3c',
-                          fontWeight: 600
-                        }}>
-                          {projectBalance.toLocaleString()} ريال
-                        </td>
-                        <td style={{ ...styles.td, fontSize: 13, color: '#9ca3af' }}>
-                          {project.notes ? project.notes.substring(0, 30) + (project.notes.length > 30 ? '...' : '') : '—'}
-                        </td>
-                        <td className="no-print" style={styles.td}>
-                          <div style={styles.actionsBox}>
-                            <button onClick={() => startEdit(project)} style={styles.editBtn}>تعديل</button>
-                            <button onClick={() => deleteProject(project.id)} style={styles.deleteBtn}>حذف</button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
+const FREQUENCY_MAP = {
+  'سنوي': 1,
+  'نصف سنوي': 2,
+  'ربع سنوي': 4,
+  'كل 4 أشهر': 3,
+  'شهري': 12,
 }
 
-const styles = {
-  page: { padding: '24px' },
-  title: { margin: 0, fontSize: '24px', fontWeight: 'bold', color: '#111827' },
-  subtitle: { color: '#6b7280', fontSize: '14px', marginTop: '4px', marginBottom: '20px' },
-  loading: { textAlign: 'center', color: '#6b7280', padding: '40px 0' },
+const PAYMENT_METHODS = ['تحويل بنكي', 'نقداً', 'شيك']
 
-  buttonRow: { marginBottom: '20px', display: 'flex', gap: '10px' },
-  addBtn: { padding: '10px 16px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' },
-  cancelBtn: { padding: '10px 16px', backgroundColor: '#e5e7eb', color: '#374151', border: 'none', borderRadius: '8px', fontSize: '14px', cursor: 'pointer' },
+const HIJRI_MONTHS = [
+  "محرم","صفر","ربيع الأول","ربيع الثاني",
+  "جمادى الأولى","جمادى الثانية","رجب","شعبان",
+  "رمضان","شوال","ذو القعدة","ذو الحجة"
+]
+const HIJRI_YEARS = Array.from({ length: 21 }, (_, i) => 1445 + i)
+const HIJRI_DAYS = Array.from({ length: 30 }, (_, i) => i + 1)
 
-  formBox: { background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '20px', marginBottom: '20px' },
-  formTitle: { margin: '0 0 16px 0', fontSize: '16px', fontWeight: 600, color: '#111827' },
-  formGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '16px' },
-  formGroup: { display: 'flex', flexDirection: 'column', gap: '6px' },
-  label: { fontSize: '13px', fontWeight: 600, color: '#374151' },
-  input: { padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', fontFamily: 'inherit' },
-  formButtonRow: { display: 'flex', gap: '10px', marginTop: '20px' },
-  saveBtn: { padding: '10px 20px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' },
+const STATUS_OPTIONS = ['مدفوع', 'جزئي', 'unpaid']
 
-  statsRow: { display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' },
-  statBox: { flex: '1 1 150px', borderRadius: '10px', padding: '14px 20px', textAlign: 'center' },
-  statLabel: { fontSize: '13px', color: '#555' },
-  statValue: { fontWeight: 'bold', fontSize: '18px', marginTop: '2px' },
+function hijriToGregorian(hy, hm, hd) {
+  try {
+    const jd = Math.floor((11 * hy + 3) / 30) + 354 * hy + 30 * hm -
+      Math.floor((hm - 1) / 2) + hd + 1948440 - 385
+    let l = jd + 68569
+    const n = Math.floor((4 * l) / 146097)
+    l = l - Math.floor((146097 * n + 3) / 4)
+    const i = Math.floor((4000 * (l + 1)) / 1461001)
+    l = l - Math.floor((1461 * i) / 4) + 31
+    const j = Math.floor((80 * l) / 2447)
+    const day = l - Math.floor((2447 * j) / 80)
+    l = Math.floor(j / 11)
+    const month = j + 2 - 12 * l
+    const year = 100 * (n - 49) + i + l
+    return { year, month, day }
+  } catch { return null }
+}
 
-  tableWrap: { overflowX: 'auto', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: '14px', background: '#fff' },
-  headRow: { background: '#1B4D7A', textAlign: 'right' },
-  th: { padding: '14px 12px', color: '#fff', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' },
-  td: { padding: '12px' },
-  badge: { padding: '4px 10px', borderRadius: '16px', fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap' },
-  actionsBox: { display: 'flex', gap: '6px' },
-  editBtn: { padding: '5px 10px', backgroundColor: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' },
-  deleteBtn: { padding: '5px 10px', backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }
-};
+function hijriPartsToGregorian(hy, hm, hd) {
+  if (!hy || !hm || !hd) return null
+  const g = hijriToGregorian(hy, hm, hd)
+  if (!g) return null
+  const mm = String(g.month).padStart(2, '0')
+  const dd = String(g.day).padStart(2, '0')
+  return `${g.year}-${mm}-${dd}`
+}
 
-export default Projects;
+function hijriPartsToText(hy, hm, hd) {
+  if (!hy || !hm || !hd) return null
+  return `${hy}/${String(hm).padStart(2,'0')}/${String(hd).padStart(2,'0')}`
+}
+
+function parseHijriText(text) {
+  if (!text) return { year: '', month: '', day: '' }
+  const parts = text.split('/')
+  if (parts.length !== 3) return { year: '', month: '', day: '' }
+  return { year: Number(parts[0]), month: Number(parts[1]), day: Number(parts[2]) }
+}
+
+function HijriPicker({ label, value, onChange }) {
+  return (
+    <div>
+      <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>{label}</label>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <select value={value.year || ''} onChange={e => onChange({ ...value, year: Number(e.target.value) })}
+          style={{ flex: 2, padding: '8px 6px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: 'Cairo, sans-serif' }}>
+          <option value="">السنة</option>
+          {HIJRI_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <select value={value.month || ''} onChange={e => onChange({ ...value, month: Number(e.target.value) })}
+          style={{ flex: 3, padding: '8px 6px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: 'Cairo, sans-serif' }}>
+          <option value="">الشهر</option>
+          {HIJRI_MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m} ({i+1})</option>)}
+        </select>
+        <select value={value.day || ''} onChange={e => onChange({ ...value, day: Number(e.target.value) })}
+          style={{ flex: 2, padding: '8px 6px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: 'Cairo, sans-serif' }}>
+          <option value="">اليوم</option>
+          {HIJRI_DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+      </div>
+      {value.year && value.month && value.day && (
+        <div style={{ fontSize: 11, color: '#059669', marginTop: 3 }}>
+          هجري: {hijriPartsToText(value.year, value.month, value.day)} ← ميلادي: {hijriPartsToGregorian(value.year, value.month, value.day)}
+        </div>
+      )}
+      {(value.year || value.month || value.day) && !(value.year && value.month && value.day) && (
+        <div style={{ fontSize: 11, color: '#c0392b', marginTop: 3, fontWeight: 700 }}>
+          ⚠ يرجى تحديد السنة والشهر واليوم معاً قبل الحفظ
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Payments({ onBack }) {
+  const [payments, setPayments] = useState([])
+  const [leases, setLeases] = useState([])
+  const [tenants, setTenants] = useState([])
+  const [properties, setProperties] = useState([])
+  const [units, setUnits] = useState([])
+  const [leaseUnits, setLeaseUnits] = useState([])
+  const [status, setStatus] = useState('loading')
+  const [showForm, setShowForm] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [filterProperty, setFilterProperty] = useState('الكل')
+  const [filterTenant, setFilterTenant] = useState('الكل')
+  const [form, setForm] = useState({
+    lease_id: '', amount: '', amount_paid: '', status: 'مدفوع',
+    payment_date: '', payment_date_hijri: '',
+    payment_hijri: { year: '', month: '', day: '' },
+    payment_method: '', notes: ''
+  })
+  const [formError, setFormError] = useState('')
+
+  async function fetchAll() {
+    setStatus('loading')
+    const [pay, lea, ten, pro, uni, lu] = await Promise.all([
+      supabase.from('payments').select('*').order('payment_date', { ascending: true }),
+      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id'),
+      supabase.from('tenants').select('id, name'),
+      supabase.from('properties').select('id, name').order('name'),
+      supabase.from('units').select('id, unit_number'),
+      supabase.from('lease_units').select('lease_id, unit_id'),
+    ])
+    setPayments(pay.data || [])
+    setLeases(lea.data || [])
+    setTenants(ten.data || [])
+    setProperties(pro.data || [])
+    setUnits(uni.data || [])
+    setLeaseUnits(lu.data || [])
+    setStatus('success')
+  }
+
+  useEffect(() => { fetchAll() }, [])
+
+  function getTenantName(leaseId) {
+    const lease = leases.find(l => l.id === leaseId)
+    return tenants.find(t => t.id === lease?.tenant_id)?.name || '—'
+  }
+
+  function getPropertyName(leaseId) {
+    const lease = leases.find(l => l.id === leaseId)
+    return properties.find(p => p.id === lease?.property_id)?.name || '—'
+  }
+
+  function getPropertyId(leaseId) {
+    return leases.find(l => l.id === leaseId)?.property_id || null
+  }
+
+  function getUnitNumbers(leaseId) {
+    const lease = leases.find(l => l.id === leaseId)
+    if (!lease) return '—'
+    const unitIds = leaseUnits.filter(lu => lu.lease_id === leaseId).map(lu => lu.unit_id)
+    if (lease.unit_id && !unitIds.includes(lease.unit_id)) unitIds.push(lease.unit_id)
+    const nums = unitIds.map(uid => units.find(u => u.id === uid)?.unit_number).filter(Boolean)
+    return nums.sort((a, b) => Number(a) - Number(b)).join('، ') || '—'
+  }
+
+  function getInstallmentAmount(leaseId) {
+    const lease = leases.find(l => l.id === leaseId)
+    if (!lease || !lease.rent_amount) return ''
+    const freq = FREQUENCY_MAP[lease.payment_type] || FREQUENCY_MAP[lease.payment_frequency] || 1
+    return Math.round(lease.rent_amount / freq)
+  }
+
+  function getTotalInstallments(leaseId) {
+    const lease = leases.find(l => l.id === leaseId)
+    if (!lease) return null
+    return FREQUENCY_MAP[lease.payment_type] || FREQUENCY_MAP[lease.payment_frequency] || null
+  }
+
+  function hijriSortKey(hijriText) {
+    if (!hijriText) return 99999999
+    const parts = hijriText.split('/')
+    if (parts.length !== 3) return 99999999
+    const y = parseInt(parts[0]) || 0
+    const m = parseInt(parts[1]) || 0
+    const d = parseInt(parts[2]) || 0
+    return y * 10000 + m * 100 + d
+  }
+
+  function getPaymentIndex(payment) {
+    const leasePayments = payments
+      .filter(p => p.lease_id === payment.lease_id)
+      .sort((a, b) => hijriSortKey(a.payment_date_hijri) - hijriSortKey(b.payment_date_hijri))
+    const idx = leasePayments.findIndex(p => p.id === payment.id)
+    return idx + 1
+  }
+
+  function openAdd() {
+    setEditingId(null)
+    setForm({
+      lease_id: '', amount: '', amount_paid: '', status: 'مدفوع',
+      payment_date: '', payment_date_hijri: '',
+      payment_hijri: { year: '', month: '', day: '' },
+      payment_method: '', notes: ''
+    })
+    setFormError('')
+    setShowForm(true)
+  }
+
+  function openEdit(p) {
+    setEditingId(p.id)
+    // تحميل التاريخ الهجري الموجود في الـ dropdown
+    const hijriParts = parseHijriText(p.payment_date_hijri)
+    setForm({
+      lease_id: p.lease_id || '',
+      amount: p.amount || '',
+      amount_paid: p.amount_paid || '',
+      status: p.status || 'مدفوع',
+      payment_date: p.payment_date || '',
+      payment_date_hijri: p.payment_date_hijri || '',
+      payment_hijri: hijriParts,
+      payment_method: p.payment_method || '',
+      notes: p.notes || ''
+    })
+    setFormError('')
+    setShowForm(true)
+  }
+
+  function handleLeaseChange(leaseId) {
+    const amt = getInstallmentAmount(leaseId)
+    setForm(f => ({ ...f, lease_id: leaseId, amount: amt ? String(amt) : f.amount }))
+  }
+
+  function handleHijriChange(val) {
+    // لا نحدّث التاريخ إلا إذا الثلاثة حقول مكتملة بنفس اللحظة
+    if (val.year && val.month && val.day) {
+      const g = hijriPartsToGregorian(val.year, val.month, val.day)
+      const h = hijriPartsToText(val.year, val.month, val.day)
+      setForm(f => ({ ...f, payment_hijri: val, payment_date: g || f.payment_date, payment_date_hijri: h || f.payment_date_hijri }))
+    } else {
+      // حقل ناقص - نحدّث القيمة المعروضة فقط بدون حساب تاريخ خاطئ
+      setForm(f => ({ ...f, payment_hijri: val }))
+    }
+  }
+
+  async function handleSave() {
+    if (!form.lease_id || !form.amount) { setFormError('يرجى ملء الحقول المطلوبة'); return }
+    // تحقق: إذا بدأ المستخدم يعدل التاريخ الهجري، لازم يكتمل الثلاثة حقول
+    const h = form.payment_hijri
+    const hijriPartial = (h.year || h.month || h.day) && !(h.year && h.month && h.day)
+    if (hijriPartial) { setFormError('التاريخ الهجري غير مكتمل — يرجى تحديد السنة والشهر واليوم'); return }
+
+    let paymentDate = form.payment_date
+    if (!paymentDate && form.payment_hijri.year && form.payment_hijri.month && form.payment_hijri.day) {
+      paymentDate = hijriPartsToGregorian(form.payment_hijri.year, form.payment_hijri.month, form.payment_hijri.day)
+    }
+    if (!paymentDate) { setFormError('يرجى تحديد تاريخ الدفع'); return }
+
+    setSaving(true); setFormError('')
+    const payload = {
+      lease_id: form.lease_id,
+      amount: Number(form.amount),
+      amount_paid: form.amount_paid ? Number(form.amount_paid) : Number(form.amount),
+      status: form.status || 'مدفوع',
+      payment_date: paymentDate,
+      payment_date_hijri: form.payment_date_hijri || null,
+      payment_method: form.payment_method || null,
+      notes: form.notes || null
+    }
+    let error
+    if (editingId) { const res = await supabase.from('payments').update(payload).eq('id', editingId); error = res.error }
+    else { const res = await supabase.from('payments').insert([payload]); error = res.error }
+    setSaving(false)
+    if (error) { setFormError(error.message); return }
+    setShowForm(false); fetchAll()
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm('حذف هذه الدفعة؟')) return
+    setDeletingId(id)
+    await supabase.from('payments').delete().eq('id', id)
+    setDeletingId(null); fetchAll()
+  }
+
+  function getTenantId(leaseId) {
+    return leases.find(l => l.id === leaseId)?.tenant_id || null
+  }
+
+  const filteredPayments = (filterProperty === 'الكل'
+    ? payments
+    : payments.filter(p => getPropertyId(p.lease_id) === filterProperty)
+  )
+    .filter(p => filterTenant === 'الكل' || getTenantId(p.lease_id) === filterTenant)
+    .sort((a, b) => hijriSortKey(a.payment_date_hijri) - hijriSortKey(b.payment_date_hijri))
+
+  const totalFiltered = filteredPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
+
+  function statusBadge(st) {
+    if (st === 'مدفوع' || st === 'paid') return <span style={{ background: '#EAFAF1', color: '#27ae60', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>مدفوع ✓</span>
+    if (st === 'جزئي' || st === 'partial') return <span style={{ background: '#FEF9E7', color: '#f39c12', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>جزئي ⚠</span>
+    return <span style={{ background: '#FDEDEC', color: '#e74c3c', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>غير مدفوع ✗</span>
+  }
+
+  return (
+    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
+      <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+        ← رجوع للوحة التحكم
+      </button>
+      <h1 style={{ margin: '0 0 4px' }}>الدفعات</h1>
+      <p style={{ color: '#6b7280', margin: '0 0 24px' }}>سجل الدفعات وتتبعها</p>
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button onClick={openAdd} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8 }}>
+          + تسجيل دفعة
+        </button>
+        <button onClick={fetchAll} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
+        <select value={filterProperty} onChange={e => { setFilterProperty(e.target.value); setFilterTenant('الكل') }}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
+          <option value="الكل">كل العقارات</option>
+          {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select value={filterTenant} onChange={e => setFilterTenant(e.target.value)}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif', marginRight: 'auto' }}>
+          <option value="الكل">كل المستأجرين</option>
+          {tenants
+            .filter(t => filterProperty === 'الكل' || leases.some(l => l.tenant_id === t.id && l.property_id === filterProperty))
+            .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <div style={{ background: '#e8f5e9', padding: '8px 16px', borderRadius: 8, fontWeight: 700, color: '#27ae60', fontSize: 15 }}>
+          المجموع: {totalFiltered.toLocaleString()} ريال
+        </div>
+      </div>
+
+      {status === 'loading' && <p>جاري التحميل...</p>}
+
+      {status === 'success' && filteredPayments.length === 0 && (
+        <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>لا توجد دفعات.</div>
+      )}
+
+      {status === 'success' && filteredPayments.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
+                {['المستأجر', 'العقار', 'الوحدة', 'الدفعة', 'المبلغ', 'الحالة', 'التاريخ', 'طريقة الدفع', 'ملاحظات', ''].map(h => (
+                  <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredPayments.map((p, idx) => {
+                const total = getTotalInstallments(p.lease_id)
+                const index = getPaymentIndex(p)
+                return (
+                  <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '12px', fontWeight: 700, color: '#1B4D7A' }}>{getTenantName(p.lease_id)}</td>
+                    <td style={{ padding: '12px', color: '#6b7280' }}>{getPropertyName(p.lease_id)}</td>
+                    <td style={{ padding: '12px', color: '#6b7280', fontSize: 13 }}>{getUnitNumbers(p.lease_id)}</td>
+                    <td style={{ padding: '12px', textAlign: 'center' }}>
+                      <span style={{ background: '#eff6ff', color: '#1B4D7A', padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
+                        {total ? `${index} / ${total}` : `${index}`}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px', fontWeight: 700, color: '#27ae60' }}>{Number(p.amount).toLocaleString()} ريال</td>
+                    <td style={{ padding: '12px' }}>{statusBadge(p.status)}</td>
+                    <td style={{ padding: '12px', color: '#6b7280' }}>
+                      <div style={{ fontWeight: 600 }}>{p.payment_date_hijri ? p.payment_date_hijri + ' هـ' : '—'}</div>
+                      <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.payment_date}</div>
+                    </td>
+                    <td style={{ padding: '12px', color: '#6b7280' }}>{p.payment_method || '—'}</td>
+                    <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{p.notes || '—'}</td>
+                    <td style={{ padding: '12px' }}>
+                      <button onClick={() => openEdit(p)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
+                      <button onClick={() => handleDelete(p.id)} disabled={deletingId === p.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
+                        {deletingId === p.id ? '...' : 'حذف'}
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showForm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: '#fff', padding: '30px', borderRadius: 12, width: 480, maxWidth: '90%', direction: 'rtl', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h2 style={{ marginTop: 0 }}>{editingId ? 'تعديل دفعة' : 'تسجيل دفعة جديدة'}</h2>
+
+            <label style={{ fontSize: 13, color: '#444', display: 'block', marginBottom: 4 }}>العقد</label>
+            <select value={form.lease_id} onChange={e => handleLeaseChange(e.target.value)}
+              style={{ width: '100%', padding: 10, marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
+              <option value="">اختر عقداً</option>
+              {leases.map(l => {
+                const tname = tenants.find(t => t.id === l.tenant_id)?.name || ''
+                const pname = properties.find(p => p.id === l.property_id)?.name || ''
+                return <option key={l.id} value={l.id}>{tname} — {pname}</option>
+              })}
+            </select>
+
+            <label style={{ fontSize: 13, color: '#444', display: 'block', marginBottom: 4 }}>المبلغ الكلي (ريال)</label>
+            <input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+              placeholder="مثال: 5000"
+              style={{ width: '100%', padding: '8px 10px', marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+
+            <label style={{ fontSize: 13, color: '#444', display: 'block', marginBottom: 4 }}>المبلغ المدفوع (اتركه فارغاً إذا كامل)</label>
+            <input type="number" value={form.amount_paid} onChange={e => setForm(f => ({ ...f, amount_paid: e.target.value }))}
+              placeholder="اتركه فارغاً إذا مدفوع كامل"
+              style={{ width: '100%', padding: '8px 10px', marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+
+            <label style={{ fontSize: 13, color: '#444', display: 'block', marginBottom: 4 }}>حالة الدفعة</label>
+            <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+              style={{ width: '100%', padding: '8px 10px', marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
+              <option value="مدفوع">مدفوع ✓</option>
+              <option value="جزئي">جزئي ⚠</option>
+              <option value="unpaid">غير مدفوع ✗</option>
+            </select>
+
+            <div style={{ marginBottom: 15 }}>
+              <HijriPicker label="تاريخ الدفع (هجري)" value={form.payment_hijri} onChange={handleHijriChange} />
+            </div>
+
+            <div style={{ marginTop: 15 }}>
+              <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>طريقة الدفع</label>
+              <select value={form.payment_method} onChange={e => setForm({ ...form, payment_method: e.target.value })}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14 }}>
+                <option value="">اختياري</option>
+                {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+
+            <div style={{ marginTop: 15 }}>
+              <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>ملاحظات</label>
+              <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box', resize: 'vertical' }} />
+            </div>
+
+            {formError && <div style={{ color: '#c00', marginTop: 10, fontSize: 14 }}>{formError}</div>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
+              <button onClick={() => setShowForm(false)} disabled={saving} style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>إلغاء</button>
+              <button onClick={handleSave} disabled={saving} style={{ padding: '8px 20px', borderRadius: 8, background: '#1B4D7A', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                {saving ? 'جاري الحفظ...' : editingId ? 'حفظ التعديل' : 'تسجيل الدفعة'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default Payments
