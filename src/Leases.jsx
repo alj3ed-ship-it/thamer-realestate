@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import ExportToolbar from "./components/ExportToolbar";
 
@@ -188,7 +188,10 @@ export default function Leases({ onBack }) {
   const [editingId, setEditingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [filterProperty, setFilterProperty] = useState("الكل");
-  const [filterTenant, setFilterTenant] = useState("الكل");
+  const [filterTenants, setFilterTenants] = useState([]);
+  const [showTenantDropdown, setShowTenantDropdown] = useState(false);
+  const [tenantSearchText, setTenantSearchText] = useState("");
+  const tenantBoxRef = useRef(null);
   const [form, setForm] = useState({
     property_id: "", selected_unit_ids: [], tenant_id: "",
     start_hijri: { year: "", month: "", day: "" },
@@ -200,6 +203,16 @@ export default function Leases({ onBack }) {
   });
 
   useEffect(() => { fetchAll(); }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (tenantBoxRef.current && !tenantBoxRef.current.contains(e.target)) {
+        setShowTenantDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   async function fetchAll() {
     setLoading(true);
@@ -473,7 +486,7 @@ export default function Leases({ onBack }) {
   // فلترة بالعقار + المستأجر مع بعض
   const filteredLeases = leases.filter(l => {
     const matchProperty = filterProperty === "الكل" || l.property_id === filterProperty;
-    const matchTenant = filterTenant === "الكل" || l.tenant_id === filterTenant;
+    const matchTenant = filterTenants.length === 0 || filterTenants.includes(l.tenant_id);
     return matchProperty && matchTenant;
   });
 
@@ -483,14 +496,15 @@ export default function Leases({ onBack }) {
     : new Set(leases.filter(l => l.property_id === filterProperty).map(l => l.tenant_id));
   const availableTenants = (tenantIdsInProperty ? tenants.filter(t => tenantIdsInProperty.has(t.id)) : tenants);
   const sortedTenants = [...availableTenants].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
+  const filteredTenantOptions = sortedTenants.filter(t => (t.name || "").toLowerCase().includes(tenantSearchText.toLowerCase()));
 
   // كل المستأجرين مرتّبين أبجدياً (تُستخدم داخل فورم إضافة/تعديل العقد، بدون فلترة بعقار معيّن)
   const allTenantsSorted = [...tenants].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
 
-  // لو غيّرنا العقار وصار المستأجر المختار مو تابع له، نرجّع الفلتر لـ"الكل" تلقائياً
+  // لو غيّرنا العقار وصار فيه مستأجرين محددين مو تابعين له، ننضّف الفلتر من غير التابعين تلقائياً
   useEffect(() => {
-    if (filterTenant !== "الكل" && tenantIdsInProperty && !tenantIdsInProperty.has(filterTenant)) {
-      setFilterTenant("الكل");
+    if (filterTenants.length > 0 && tenantIdsInProperty) {
+      setFilterTenants(prev => prev.filter(id => tenantIdsInProperty.has(id)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterProperty]);
@@ -537,7 +551,61 @@ export default function Leases({ onBack }) {
         <button onClick={fetchAll} style={{ padding: "10px 20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
           تحديث
         </button>
-        <TenantSearchSelect tenants={sortedTenants} value={filterTenant} onChange={setFilterTenant} />
+        <div ref={tenantBoxRef} style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setShowTenantDropdown(!showTenantDropdown)}
+            style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 12px", fontSize: 14, fontFamily: "Cairo, sans-serif", minWidth: 200, background: "#fff", cursor: "pointer", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <span>
+              {filterTenants.length === 0
+                ? "كل المستأجرين"
+                : filterTenants.length === 1
+                  ? (sortedTenants.find(t => t.id === filterTenants[0])?.name || "مستأجر واحد")
+                  : `${filterTenants.length} مستأجرين محددين`}
+            </span>
+            <span style={{ fontSize: 10, color: "#999" }}>▾</span>
+          </button>
+
+          {showTenantDropdown && (
+            <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: "#fff", border: "1px solid #ddd", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", padding: 10, zIndex: 20, minWidth: 240, maxHeight: 320, overflowY: "auto" }}>
+              <input
+                type="text"
+                placeholder="اكتب اسم المستأجر..."
+                value={tenantSearchText}
+                onChange={(e) => setTenantSearchText(e.target.value)}
+                autoFocus
+                style={{ width: "100%", boxSizing: "border-box", border: "1px solid #ddd", borderRadius: 6, padding: "6px 10px", fontSize: 13, fontFamily: "Cairo, sans-serif", marginBottom: 8 }}
+              />
+              <div style={{ display: "flex", gap: 8, marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #eee" }}>
+                <button type="button" onClick={() => setFilterTenants(filteredTenantOptions.map(t => t.id))}
+                  style={{ fontSize: 12, color: "#1B4D7A", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>
+                  تحديد الكل
+                </button>
+                <button type="button" onClick={() => setFilterTenants([])}
+                  style={{ fontSize: 12, color: "#e74c3c", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>
+                  إلغاء الكل
+                </button>
+              </div>
+              {filteredTenantOptions.length === 0 && (
+                <div style={{ fontSize: 13, color: "#999", padding: "6px 4px" }}>لا يوجد مستأجر بهذا الاسم</div>
+              )}
+              {filteredTenantOptions.map(t => (
+                <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px", fontSize: 14, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={filterTenants.includes(t.id)}
+                    onChange={() => {
+                      setFilterTenants(prev =>
+                        prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                      );
+                    }}
+                  />
+                  {t.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
         <select value={filterProperty} onChange={e => setFilterProperty(e.target.value)}
           style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, fontFamily: "Cairo, sans-serif", marginRight: "auto" }}>
           <option value="الكل">كل العقارات</option>

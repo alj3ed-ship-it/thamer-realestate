@@ -81,6 +81,25 @@ function computeInstallmentHijri(startDateHijri, totalInstallments, installmentN
   return addHijriMonths(start, Math.round(monthsToAdd));
 }
 
+// تحويل هجري إلى ميلادي (نفس الخوارزمية المستخدمة في صفحة الدفعات)
+function hijriToGregorian(hy, hm, hd) {
+  try {
+    const jd = Math.floor((11 * hy + 3) / 30) + 354 * hy + 30 * hm -
+      Math.floor((hm - 1) / 2) + hd + 1948440 - 385;
+    let l = jd + 68569;
+    const n = Math.floor((4 * l) / 146097);
+    l = l - Math.floor((146097 * n + 3) / 4);
+    const i = Math.floor((4000 * (l + 1)) / 1461001);
+    l = l - Math.floor((1461 * i) / 4) + 31;
+    const j = Math.floor((80 * l) / 2447);
+    const day = l - Math.floor((2447 * j) / 80);
+    l = Math.floor(j / 11);
+    const month = j + 2 - 12 * l;
+    const year = 100 * (n - 49) + i + l;
+    return new Date(year, month - 1, day);
+  } catch { return null; }
+}
+
 export default function Entitlements() {
   const [properties, setProperties] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -139,18 +158,31 @@ export default function Entitlements() {
     name.toLowerCase().includes(tenantSearchText.toLowerCase())
   );
 
-  function computeStatus(row) {
+  // status الآن: "paid" | "partial" | "overdue" (متأخر) | "not_due" (غير مستحق بعد)
+  function computeStatus(row, hijri) {
     const due = Number(row.amount_due || 0);
     const paid = Number(row.amount_paid || 0);
-    if (paid <= 0) return "unpaid";
-    if (paid >= due && due > 0) return "paid";
-    return "partial";
+    if (paid > 0 && paid >= due && due > 0) return "paid";
+    if (paid > 0) return "partial";
+
+    // لم يُدفع شيء بعد — نحدد إذا كان متأخراً أو لسا ما جاء وقته
+    if (hijri) {
+      const dueDate = hijriToGregorian(hijri.year, hijri.month, hijri.day);
+      if (dueDate) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        dueDate.setHours(0, 0, 0, 0);
+        return dueDate < today ? "overdue" : "not_due";
+      }
+    }
+    return "overdue"; // احتياطي إذا تعذر حساب التاريخ
   }
 
   function statusToArabic(status) {
     if (status === "paid") return "مدفوع";
     if (status === "partial") return "جزئي";
-    return "لم يُسدَّد";
+    if (status === "not_due") return "غير مستحق بعد";
+    return "متأخر";
   }
 
   function handleSearch() {
@@ -180,7 +212,7 @@ export default function Entitlements() {
         }
       });
 
-      const status = computeStatus(row);
+      const status = computeStatus(row, hijri);
 
       found.push({
         tenant: lease.tenants?.name || "",
@@ -214,7 +246,8 @@ export default function Entitlements() {
   function statusBadge(status) {
     if (status === "paid") return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
     if (status === "partial") return <span style={{ background: "#FEF9E7", color: "#f39c12", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>جزئي ⚠</span>;
-    return <span style={{ background: "#FDEDEC", color: "#e74c3c", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>لم يُسدَّد ✗</span>;
+    if (status === "not_due") return <span style={{ background: "#F4F6F7", color: "#7f8c8d", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>غير مستحق بعد ⏳</span>;
+    return <span style={{ background: "#FDEDEC", color: "#e74c3c", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>متأخر ⏰</span>;
   }
 
   function unitBadges(units) {
@@ -251,6 +284,9 @@ export default function Entitlements() {
     }
     if (r.status === "paid") {
       return <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+    }
+    if (r.status === "not_due") {
+      return <span style={{ color: "#7f8c8d", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
     }
     return <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
   }

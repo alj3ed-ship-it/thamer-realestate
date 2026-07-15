@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 
 const FREQUENCY_MAP = {
@@ -53,11 +53,64 @@ function hijriPartsToText(hy, hm, hd) {
   return `${hy}/${String(hm).padStart(2,'0')}/${String(hd).padStart(2,'0')}`
 }
 
+function gregorianToHijri(gregorianDateStr) {
+  if (!gregorianDateStr) return null
+  try {
+    const d = new Date(gregorianDateStr)
+    if (isNaN(d.getTime())) return null
+    const gy = d.getFullYear(), gm = d.getMonth() + 1, gd = d.getDate()
+    const jd = Math.floor((1461 * (gy + 4800 + Math.floor((gm - 14) / 12))) / 4) +
+      Math.floor((367 * (gm - 2 - 12 * Math.floor((gm - 14) / 12))) / 12) -
+      Math.floor((3 * Math.floor((gy + 4900 + Math.floor((gm - 14) / 12)) / 100)) / 4) +
+      gd - 32075
+    let l = jd - 1948440 + 10632
+    const n = Math.floor((l - 1) / 10631)
+    l = l - 10631 * n + 354
+    const j = Math.floor((10985 - l) / 5316) * Math.floor((50 * l) / 17719) +
+      Math.floor(l / 5670) * Math.floor((43 * l) / 15238)
+    l = l - Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) -
+      Math.floor(j / 16) * Math.floor((15238 * j) / 43) + 29
+    const month = Math.floor((24 * l) / 709)
+    const day = l - Math.floor((709 * month) / 24)
+    const year = 30 * n + j - 30
+    return { year, month, day }
+  } catch { return null }
+}
+
 function parseHijriText(text) {
   if (!text) return { year: '', month: '', day: '' }
   const parts = text.split('/')
   if (parts.length !== 3) return { year: '', month: '', day: '' }
   return { year: Number(parts[0]), month: Number(parts[1]), day: Number(parts[2]) }
+}
+
+// تحليل تاريخ بداية العقد الهجري — يتعرف تلقائياً على موقع السنة
+// (قد يكون محفوظاً بصيغة سنة/شهر/يوم أو يوم/شهر/سنة)
+function parseHijriParts(dateStr) {
+  if (!dateStr) return null
+  const parts = dateStr.split('/').map(p => parseInt(p))
+  if (parts.length !== 3 || parts.some(p => isNaN(p))) return null
+  if (parts[0] >= 1300) {
+    return { year: parts[0], month: parts[1], day: parts[2] }
+  }
+  if (parts[2] >= 1300) {
+    return { day: parts[0], month: parts[1], year: parts[2] }
+  }
+  return null
+}
+
+function addHijriMonths(date, months) {
+  const totalMonths = date.year * 12 + (date.month - 1) + months
+  return { year: Math.floor(totalMonths / 12), month: (totalMonths % 12) + 1, day: date.day }
+}
+
+// حساب تاريخ استحقاق قسط معيّن بناءً على تاريخ بداية العقد وعدد الأقساط ورقم القسط
+function computeInstallmentHijri(startDateHijri, totalInstallments, installmentNumber) {
+  const start = parseHijriParts(startDateHijri)
+  if (!start || !totalInstallments) return null
+  const intervalMonths = 12 / totalInstallments
+  const monthsToAdd = (Number(installmentNumber || 1) - 1) * intervalMonths
+  return addHijriMonths(start, Math.round(monthsToAdd))
 }
 
 function HijriPicker({ label, value, onChange }) {
@@ -108,7 +161,10 @@ function Payments({ onBack }) {
   const [deletingId, setDeletingId] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [filterProperty, setFilterProperty] = useState('الكل')
-  const [filterTenant, setFilterTenant] = useState('الكل')
+  const [filterTenants, setFilterTenants] = useState([])
+  const [showTenantDropdown, setShowTenantDropdown] = useState(false)
+  const [tenantSearchText, setTenantSearchText] = useState('')
+  const tenantBoxRef = useRef(null)
   const [form, setForm] = useState({
     lease_id: '', amount: '', amount_paid: '', status: 'مدفوع',
     payment_date: '', payment_date_hijri: '',
@@ -121,7 +177,7 @@ function Payments({ onBack }) {
     setStatus('loading')
     const [pay, lea, ten, pro, uni, lu] = await Promise.all([
       supabase.from('payments').select('*').order('payment_date', { ascending: true }),
-      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id'),
+      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id, start_date_hijri'),
       supabase.from('tenants').select('id, name'),
       supabase.from('properties').select('id, name').order('name'),
       supabase.from('units').select('id, unit_number'),
@@ -137,6 +193,16 @@ function Payments({ onBack }) {
   }
 
   useEffect(() => { fetchAll() }, [])
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (tenantBoxRef.current && !tenantBoxRef.current.contains(e.target)) {
+        setShowTenantDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   function getTenantName(leaseId) {
     const lease = leases.find(l => l.id === leaseId)
@@ -192,6 +258,26 @@ function Payments({ onBack }) {
     return idx + 1
   }
 
+  // يحسب تاريخ الاستحقاق المتوقع لدفعة غير مسددة، ويحدد هل هي متأخرة أو لسا ما جا وقتها
+  function getUnpaidDueInfo(p) {
+    const lease = leases.find(l => l.id === p.lease_id)
+    if (!lease || !lease.start_date_hijri) return { hijriText: null, subStatus: 'overdue' }
+    const total = p.total_installments || getTotalInstallments(p.lease_id)
+    const instNum = p.installment_number || getPaymentIndex(p)
+    const hijri = computeInstallmentHijri(lease.start_date_hijri, total, instNum)
+    if (!hijri) return { hijriText: null, subStatus: 'overdue' }
+    const g = hijriToGregorian(hijri.year, hijri.month, hijri.day)
+    if (!g) return { hijriText: hijriPartsToText(hijri.year, hijri.month, hijri.day), subStatus: 'overdue' }
+    const dueDate = new Date(g.year, g.month - 1, g.day)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    dueDate.setHours(0, 0, 0, 0)
+    return {
+      hijriText: hijriPartsToText(hijri.year, hijri.month, hijri.day),
+      subStatus: dueDate < today ? 'overdue' : 'not_due'
+    }
+  }
+
   function openAdd() {
     setEditingId(null)
     setForm({
@@ -206,7 +292,6 @@ function Payments({ onBack }) {
 
   function openEdit(p) {
     setEditingId(p.id)
-    // تحميل التاريخ الهجري الموجود في الـ dropdown
     const hijriParts = parseHijriText(p.payment_date_hijri)
     setForm({
       lease_id: p.lease_id || '',
@@ -229,20 +314,17 @@ function Payments({ onBack }) {
   }
 
   function handleHijriChange(val) {
-    // لا نحدّث التاريخ إلا إذا الثلاثة حقول مكتملة بنفس اللحظة
     if (val.year && val.month && val.day) {
       const g = hijriPartsToGregorian(val.year, val.month, val.day)
       const h = hijriPartsToText(val.year, val.month, val.day)
       setForm(f => ({ ...f, payment_hijri: val, payment_date: g || f.payment_date, payment_date_hijri: h || f.payment_date_hijri }))
     } else {
-      // حقل ناقص - نحدّث القيمة المعروضة فقط بدون حساب تاريخ خاطئ
       setForm(f => ({ ...f, payment_hijri: val }))
     }
   }
 
   async function handleSave() {
     if (!form.lease_id || !form.amount) { setFormError('يرجى ملء الحقول المطلوبة'); return }
-    // تحقق: إذا بدأ المستخدم يعدل التاريخ الهجري، لازم يكتمل الثلاثة حقول
     const h = form.payment_hijri
     const hijriPartial = (h.year || h.month || h.day) && !(h.year && h.month && h.day)
     if (hijriPartial) { setFormError('التاريخ الهجري غير مكتمل — يرجى تحديد السنة والشهر واليوم'); return }
@@ -287,15 +369,28 @@ function Payments({ onBack }) {
     ? payments
     : payments.filter(p => getPropertyId(p.lease_id) === filterProperty)
   )
-    .filter(p => filterTenant === 'الكل' || getTenantId(p.lease_id) === filterTenant)
+    .filter(p => filterTenants.length === 0 || filterTenants.includes(getTenantId(p.lease_id)))
     .sort((a, b) => hijriSortKey(a.payment_date_hijri) - hijriSortKey(b.payment_date_hijri))
+
+  // قائمة المستأجرين المرتبطين فعلياً بالعقار المختار (أو الكل لو ما فيه فلتر عقار)، مرتبة أبجدياً
+  const availableTenants = tenants
+    .filter(t => filterProperty === 'الكل' || leases.some(l => l.tenant_id === t.id && l.property_id === filterProperty))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'))
+
+  const filteredTenantOptions = availableTenants.filter(t =>
+    (t.name || '').toLowerCase().includes(tenantSearchText.toLowerCase())
+  )
 
   const totalFiltered = filteredPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
 
-  function statusBadge(st) {
+  // الشارة الآن تفرّق بين: مدفوع / جزئي / متأخر / غير مستحق بعد
+  function statusBadge(p) {
+    const st = p.status
     if (st === 'مدفوع' || st === 'paid') return <span style={{ background: '#EAFAF1', color: '#27ae60', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>مدفوع ✓</span>
     if (st === 'جزئي' || st === 'partial') return <span style={{ background: '#FEF9E7', color: '#f39c12', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>جزئي ⚠</span>
-    return <span style={{ background: '#FDEDEC', color: '#e74c3c', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>غير مدفوع ✗</span>
+    const { subStatus } = getUnpaidDueInfo(p)
+    if (subStatus === 'not_due') return <span style={{ background: '#F4F6F7', color: '#7f8c8d', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>غير مستحق بعد ⏳</span>
+    return <span style={{ background: '#FDEDEC', color: '#e74c3c', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>متأخر ⏰</span>
   }
 
   return (
@@ -311,18 +406,67 @@ function Payments({ onBack }) {
           + تسجيل دفعة
         </button>
         <button onClick={fetchAll} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
-        <select value={filterProperty} onChange={e => { setFilterProperty(e.target.value); setFilterTenant('الكل') }}
+        <select value={filterProperty} onChange={e => { setFilterProperty(e.target.value); setFilterTenants([]) }}
           style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
           <option value="الكل">كل العقارات</option>
           {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-        <select value={filterTenant} onChange={e => setFilterTenant(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif', marginRight: 'auto' }}>
-          <option value="الكل">كل المستأجرين</option>
-          {tenants
-            .filter(t => filterProperty === 'الكل' || leases.some(l => l.tenant_id === t.id && l.property_id === filterProperty))
-            .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+
+        <div ref={tenantBoxRef} style={{ position: 'relative', marginRight: 'auto' }}>
+          <button
+            type="button"
+            onClick={() => setShowTenantDropdown(!showTenantDropdown)}
+            style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontFamily: 'Cairo, sans-serif', minWidth: 180, background: '#fff', cursor: 'pointer', textAlign: 'right', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <span>
+              {filterTenants.length === 0
+                ? 'كل المستأجرين'
+                : filterTenants.length === 1
+                  ? (availableTenants.find(t => t.id === filterTenants[0])?.name || 'مستأجر واحد')
+                  : `${filterTenants.length} مستأجرين محددين`}
+            </span>
+            <span style={{ fontSize: 10, color: '#999' }}>▾</span>
+          </button>
+
+          {showTenantDropdown && (
+            <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff', border: '1px solid #ddd', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 10, zIndex: 20, minWidth: 240, maxHeight: 320, overflowY: 'auto' }}>
+              <input
+                type="text"
+                placeholder="اكتب اسم المستأجر..."
+                value={tenantSearchText}
+                onChange={(e) => setTenantSearchText(e.target.value)}
+                autoFocus
+                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #ddd', borderRadius: 6, padding: '6px 10px', fontSize: 13, fontFamily: 'Cairo, sans-serif', marginBottom: 8 }}
+              />
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #eee' }}>
+                <button type="button" onClick={() => setFilterTenants(filteredTenantOptions.map(t => t.id))}
+                  style={{ fontSize: 12, color: '#1B4D7A', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
+                  تحديد الكل
+                </button>
+                <button type="button" onClick={() => setFilterTenants([])}
+                  style={{ fontSize: 12, color: '#e74c3c', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
+                  إلغاء الكل
+                </button>
+              </div>
+              {filteredTenantOptions.length === 0 && (
+                <div style={{ fontSize: 13, color: '#999', padding: '6px 4px' }}>لا يوجد مستأجر بهذا الاسم</div>
+              )}
+              {filteredTenantOptions.map(t => (
+                <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', fontSize: 14, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={filterTenants.includes(t.id)}
+                    onChange={() => {
+                      setFilterTenants(prev =>
+                        prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                      )
+                    }}
+                  />
+                  {t.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
         <div style={{ background: '#e8f5e9', padding: '8px 16px', borderRadius: 8, fontWeight: 700, color: '#27ae60', fontSize: 15 }}>
           المجموع: {totalFiltered.toLocaleString()} ريال
         </div>
@@ -346,8 +490,22 @@ function Payments({ onBack }) {
             </thead>
             <tbody>
               {filteredPayments.map((p, idx) => {
-                const total = getTotalInstallments(p.lease_id)
-                const index = getPaymentIndex(p)
+                // نفضّل الرقم الحقيقي المحفوظ بقاعدة البيانات (نفس المستخدم في صفحة الاستحقاقات)
+                // ونرجع للتخمين بالفرز فقط لو الرقم الحقيقي غير موجود
+                const total = p.total_installments || getTotalInstallments(p.lease_id)
+                const index = p.installment_number || getPaymentIndex(p)
+                const isUnpaid = !(p.status === 'مدفوع' || p.status === 'paid' || p.status === 'جزئي' || p.status === 'partial')
+
+                let hijriText = p.payment_date_hijri
+                let isEstimated = false
+                if (!hijriText && p.payment_date) {
+                  const h = gregorianToHijri(p.payment_date)
+                  if (h) hijriText = hijriPartsToText(h.year, h.month, h.day)
+                } else if (!hijriText && !p.payment_date && isUnpaid) {
+                  const { hijriText: estText } = getUnpaidDueInfo(p)
+                  if (estText) { hijriText = estText; isEstimated = true }
+                }
+
                 return (
                   <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
                     <td style={{ padding: '12px', fontWeight: 700, color: '#1B4D7A' }}>{getTenantName(p.lease_id)}</td>
@@ -359,10 +517,10 @@ function Payments({ onBack }) {
                       </span>
                     </td>
                     <td style={{ padding: '12px', fontWeight: 700, color: '#27ae60' }}>{Number(p.amount).toLocaleString()} ريال</td>
-                    <td style={{ padding: '12px' }}>{statusBadge(p.status)}</td>
+                    <td style={{ padding: '12px' }}>{statusBadge(p)}</td>
                     <td style={{ padding: '12px', color: '#6b7280' }}>
-                      <div style={{ fontWeight: 600 }}>{p.payment_date_hijri ? p.payment_date_hijri + ' هـ' : '—'}</div>
-                      <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.payment_date}</div>
+                      <div style={{ fontWeight: 600 }}>{hijriText ? hijriText + ' هـ' : '—'}</div>
+                      <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.payment_date || (isEstimated ? 'متوقع' : '—')}</div>
                     </td>
                     <td style={{ padding: '12px', color: '#6b7280' }}>{p.payment_method || '—'}</td>
                     <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{p.notes || '—'}</td>
