@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient'
 import ExportToolbar from './components/ExportToolbar'
 
 const UNIT_STATUS = ['مؤجرة', 'شاغرة', 'صيانة']
-const UNIT_TYPES = ['شقة', 'محل', 'مستودع', 'غرفة', 'فيلا', 'أرض']
+const UNIT_TYPES = ['شقة', 'محل', 'مستودع', 'غرفة', 'فيلا', 'أرض', 'عمارة', 'مجمع', 'برج']
 
 const TYPE_ORDER = { 'محل': 1, 'شقة': 2, 'ورشة': 3 }
 
