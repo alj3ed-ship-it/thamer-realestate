@@ -7,6 +7,7 @@ import Payments from "./Payments";
 import Reports from "./Reports";
 import Defaulters from "./Defaulters";
 import Projects from "./Projects";
+import Bookings from "./Bookings";
 import Login from "./Login";
 import ViewerLayout from "./ViewerLayout";
 import PropertyDetail from "./PropertyDetail";
@@ -25,6 +26,7 @@ const T = {
   units: "\u0627\u0644\u0648\u062D\u062F\u0627\u062A",
   entitlements: "\u0627\u0644\u0627\u0633\u062A\u062D\u0642\u0627\u0642\u0627\u062A",
   projects: "\u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639",
+  bookings: "\u0642\u0627\u0639\u0629 \u0645\u0630\u0647\u0644\u0629",
   logout: "\u062E\u0631\u0648\u062C",
 };
 
@@ -39,6 +41,7 @@ const NAV_ITEMS = [
   { key: "reports", label: T.reports, icon: "\uD83D\uDCCA" },
   { key: "defaulters", label: T.defaulters, icon: "\u26A0\uFE0F" },
   { key: "projects", label: T.projects, icon: "\uD83D\uDEE0\uFE0F" },
+  { key: "bookings", label: T.bookings, icon: "\uD83C\uDF89" },
 ];
 
 export default function App() {
@@ -183,6 +186,7 @@ export default function App() {
           </div>
         )}
         {activePage === "projects" && <Projects onBack={goBack} />}
+        {activePage === "bookings" && <Bookings onBack={goBack} />}
         {activePage === "properties" && !selectedPropertyId && (
           <Properties onBack={goBack} onSelectProperty={(id) => setSelectedPropertyId(id)} />
         )}
