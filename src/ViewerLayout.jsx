@@ -11,6 +11,12 @@ const HIJRI_MONTHS = [
 
 const UNIT_TYPE_ORDER = { "محل": 1, "شقة": 2, "ورشة": 3 };
 
+const BOOKING_STATUS_COLORS = {
+  "مستلم": { bg: "#E8F8F0", text: "#1E8449", label: "🟢 مستلم" },
+  "جزئي": { bg: "#FEF9E7", text: "#9A7D0A", label: "🟡 جزئي" },
+  "غير مستلم": { bg: "#FDEDEC", text: "#C0392B", label: "🔴 غير مستلم" },
+};
+
 const PROPERTY_BADGE_COLOR = { bg: "#EAF2F8", color: "#1B4D7A", border: "#AED6F1" };
 const TENANT_BADGE_COLOR = { bg: "#FEF9E7", color: "#9A7D0A", border: "#F7DC6F" };
 const ACTIVITY_BADGE_COLOR = { bg: "#E8F6F3", color: "#148F77", border: "#A2D9CE" };
@@ -137,6 +143,7 @@ export default function ViewerLayout() {
   const [defaulters, setDefaulters] = useState([]);
   const [defaulterPayments, setDefaulterPayments] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [bookings, setBookings] = useState([]);
   const [activePage, setActivePage] = useState("properties");
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [selectedTenant, setSelectedTenant] = useState(null);
@@ -191,6 +198,20 @@ export default function ViewerLayout() {
     supabase.from("defaulters").select("*").order("created_at", { ascending: false }).then(({ data }) => setDefaulters(data || []));
     supabase.from("defaulter_payments").select("*").then(({ data }) => setDefaulterPayments(data || []));
     supabase.from("projects").select("*").order("date_created", { ascending: false }).then(({ data }) => setProjects(data || []));
+    supabase.from("properties").select("id").eq("name", "قاعة مذهلة").single().then(({ data: hall }) => {
+      if (hall?.id) {
+        supabase.from("bookings").select("*").eq("property_id", hall.id).then(({ data }) => {
+          const sorted = (data || []).slice().sort((a, b) => {
+            const pa = (a.event_date_hijri || "").split("/").map(Number);
+            const pb = (b.event_date_hijri || "").split("/").map(Number);
+            if ((pa[2] || 0) !== (pb[2] || 0)) return (pa[2] || 0) - (pb[2] || 0);
+            if ((pa[1] || 0) !== (pb[1] || 0)) return (pa[1] || 0) - (pb[1] || 0);
+            return (pa[0] || 0) - (pb[0] || 0);
+          });
+          setBookings(sorted);
+        });
+      }
+    });
   }, []);
 
   const navStyle = (page) => ({
@@ -283,7 +304,7 @@ export default function ViewerLayout() {
     return ka.num - kb.num;
   });
 
-  const filteredProperties = properties;
+  const filteredProperties = properties.filter(p => p.name !== "قاعة مذهلة");
 
   const filteredUnits = sortedUnits.filter(u => {
     if (unitsSelectedProperties.length > 0 && !unitsSelectedProperties.includes(u.property_id)) return false;
@@ -524,6 +545,7 @@ export default function ViewerLayout() {
         <button style={navStyle("entitlements")} onClick={() => { setActivePage("entitlements"); setSelectedProperty(null); setSelectedTenant(null); }}>الاستحقاقات</button>
         <button style={navStyle("defaulters")} onClick={() => { setActivePage("defaulters"); setSelectedProperty(null); setSelectedTenant(null); }}>المتعثرون</button>
         <button style={navStyle("projects")} onClick={() => { setActivePage("projects"); setSelectedProperty(null); setSelectedTenant(null); }}>المشاريع</button>
+        <button style={navStyle("bookings")} onClick={() => { setActivePage("bookings"); setSelectedProperty(null); setSelectedTenant(null); }}>قاعة مذهلة</button>
       </div>
 
       <div style={{ padding: "32px" }}>
@@ -1430,6 +1452,95 @@ export default function ViewerLayout() {
                               </span>
                             )}
                           </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {activePage === "bookings" && (
+              <div id="viewer-bookings-table">
+                <ExportToolbar
+                  data={bookings.map(b => ({
+                    date: b.event_date_hijri ? `${b.event_date_hijri} هـ` : "—",
+                    type: b.event_type || "—",
+                    client: b.client_name || "—",
+                    total: `${Number(b.total_amount || 0).toLocaleString()} ر.س`,
+                    deposit: `${Number(b.deposit_amount || 0).toLocaleString()} ر.س`,
+                    remaining: `${Number(b.remaining_amount || 0).toLocaleString()} ر.س`,
+                    status: b.remaining_status || "—",
+                    finalReceiver: b.remaining_receiver_final || "—",
+                  }))}
+                  columns={[
+                    { key: "date", label: "التاريخ الهجري" },
+                    { key: "type", label: "النوع" },
+                    { key: "client", label: "العميل" },
+                    { key: "total", label: "الإجمالي" },
+                    { key: "deposit", label: "العربون" },
+                    { key: "remaining", label: "الباقي" },
+                    { key: "status", label: "حالة الباقي" },
+                    { key: "finalReceiver", label: "الاستلام النهائي (باقي)" },
+                  ]}
+                  filename="bookings_report"
+                  title="تقرير حجوزات قاعة مذهلة"
+                />
+
+                <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #1B4D7A", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>عدد الحجوزات</div>
+                    <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>{bookings.length}</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #148F77", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>إجمالي قيمة الحجوزات</div>
+                    <div style={{ fontWeight: "bold", color: "#148F77", fontSize: "18px" }}>
+                      {bookings.reduce((s, b) => s + Number(b.total_amount || 0), 0).toLocaleString()} ر.س
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #C0392B", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>مبالغ لسا ما استُلمت نهائياً</div>
+                    <div style={{ fontWeight: "bold", color: "#C0392B", fontSize: "18px" }}>
+                      {bookings.filter(b => b.remaining_status !== "مستلم").reduce((s, b) => s + Number(b.remaining_amount || 0), 0).toLocaleString()} ر.س
+                    </div>
+                  </div>
+                </div>
+
+                <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
+                  <thead style={{ background: "#1B4D7A", color: "#fff" }}>
+                    <tr>
+                      <th style={{ padding: "12px" }}>التاريخ الهجري</th>
+                      <th style={{ padding: "12px" }}>النوع</th>
+                      <th style={{ padding: "12px" }}>العميل</th>
+                      <th style={{ padding: "12px" }}>الإجمالي</th>
+                      <th style={{ padding: "12px" }}>العربون</th>
+                      <th style={{ padding: "12px" }}>الباقي</th>
+                      <th style={{ padding: "12px" }}>حالة الباقي</th>
+                      <th style={{ padding: "12px" }}>الاستلام النهائي (باقي)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bookings.length === 0 ? (
+                      <tr><td colSpan="8" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا يوجد حجوزات حالياً</td></tr>
+                    ) : bookings.map((b) => {
+                      const statusStyle = BOOKING_STATUS_COLORS[b.remaining_status] || BOOKING_STATUS_COLORS["جزئي"];
+                      return (
+                        <tr key={b.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
+                          <td style={{ padding: "12px" }}>{b.event_date_hijri} هـ</td>
+                          <td style={{ padding: "12px" }}>{b.event_type}</td>
+                          <td style={{ padding: "12px" }}>{b.client_name}</td>
+                          <td style={{ padding: "12px" }}>{Number(b.total_amount || 0).toLocaleString()} ر.س</td>
+                          <td style={{ padding: "12px" }}>{Number(b.deposit_amount || 0).toLocaleString()} ر.س</td>
+                          <td style={{ padding: "12px" }}>{Number(b.remaining_amount || 0).toLocaleString()} ر.س</td>
+                          <td style={{ padding: "12px" }}>
+                            <span style={{
+                              background: statusStyle.bg, color: statusStyle.text,
+                              padding: "4px 10px", borderRadius: "6px", fontSize: "13px",
+                            }}>
+                              {statusStyle.label}
+                            </span>
+                          </td>
+                          <td style={{ padding: "12px" }}>{b.remaining_receiver_final || "—"}</td>
                         </tr>
                       );
                     })}
