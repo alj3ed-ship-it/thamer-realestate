@@ -384,13 +384,22 @@ function Payments({ onBack }) {
 
   const totalFiltered = filteredPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
 
+  // تحديد الحالة الفعلية تلقائياً من المبلغ المدفوع مقابل المستحق (بدل الاعتماد فقط على حقل status اليدوي)
+  function computePaymentStatus(p) {
+    const due = Number(p.amount || 0)
+    const paid = Number(p.amount_paid || 0)
+    if (paid > 0 && paid >= due && due > 0) return 'paid'
+    if (paid > 0) return 'partial'
+    const { subStatus } = getUnpaidDueInfo(p)
+    return subStatus // 'overdue' أو 'not_due'
+  }
+
   // الشارة الآن تفرّق بين: مدفوع / جزئي / متأخر / غير مستحق بعد
   function statusBadge(p) {
-    const st = p.status
-    if (st === 'مدفوع' || st === 'paid') return <span style={{ background: '#EAFAF1', color: '#27ae60', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>مدفوع ✓</span>
-    if (st === 'جزئي' || st === 'partial') return <span style={{ background: '#FEF9E7', color: '#f39c12', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>جزئي ⚠</span>
-    const { subStatus } = getUnpaidDueInfo(p)
-    if (subStatus === 'not_due') return <span style={{ background: '#F4F6F7', color: '#7f8c8d', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>غير مستحق بعد ⏳</span>
+    const computed = computePaymentStatus(p)
+    if (computed === 'paid') return <span style={{ background: '#EAFAF1', color: '#27ae60', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>مدفوع ✓</span>
+    if (computed === 'partial') return <span style={{ background: '#FEF9E7', color: '#f39c12', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>جزئي ⚠</span>
+    if (computed === 'not_due') return <span style={{ background: '#F4F6F7', color: '#7f8c8d', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>غير مستحق بعد ⏳</span>
     return <span style={{ background: '#FDEDEC', color: '#e74c3c', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>متأخر ⏰</span>
   }
 
@@ -495,7 +504,8 @@ function Payments({ onBack }) {
                 // ونرجع للتخمين بالفرز فقط لو الرقم الحقيقي غير موجود
                 const total = p.total_installments || getTotalInstallments(p.lease_id)
                 const index = p.installment_number || getPaymentIndex(p)
-                const isUnpaid = !(p.status === 'مدفوع' || p.status === 'paid' || p.status === 'جزئي' || p.status === 'partial')
+                const computedStatus = computePaymentStatus(p)
+                const isUnpaid = computedStatus === 'overdue' || computedStatus === 'not_due'
 
                 let hijriText = p.payment_date_hijri
                 let isEstimated = false
