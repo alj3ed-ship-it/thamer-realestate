@@ -10,6 +10,7 @@ import Projects from "./Projects";
 import Bookings from "./Bookings";
 import Login from "./Login";
 import ViewerLayout from "./ViewerLayout";
+import ViewerLimited from "./ViewerLimited";
 import PropertyDetail from "./PropertyDetail";
 import Units from "./Units";
 import Entitlements from "./Entitlements";
@@ -54,6 +55,11 @@ export default function App() {
   useEffect(() => {
     if (window.location.pathname === "/view") {
       setRole("viewer");
+      setCheckingSession(false);
+      return;
+    }
+    if (window.location.pathname === "/view2") {
+      setRole("viewer2");
       setCheckingSession(false);
       return;
     }
@@ -128,6 +134,7 @@ export default function App() {
   }
 
   if (role === "viewer") return <ViewerLayout />;
+   if (role === "viewer2") return <ViewerLimited />;
   if (!role) return <Login onLogin={(r) => setRole(r)} />;
 
  const cardStyle = {
