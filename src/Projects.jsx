@@ -168,9 +168,7 @@ function Projects() {
   }));
 
   const exportStats = [
-    { label: 'إجمالي المصروفات', value: `${totalExpenses.toLocaleString()} ريال`, color: '#e74c3c' },
-    { label: 'إجمالي الإيرادات', value: `${totalRevenues.toLocaleString()} ريال`, color: '#27ae60' },
-    { label: 'الرصيد الكلي', value: `${balance.toLocaleString()} ريال`, color: balance >= 0 ? '#27ae60' : '#e74c3c' }
+    { label: 'إجمالي المصروفات', value: `${totalExpenses.toLocaleString()} ريال`, color: '#e74c3c' }
   ];
 
   return (
@@ -315,20 +313,6 @@ function Projects() {
               <div style={{ ...styles.statBox, background: '#FDEDEC', border: '1px solid #F1948A' }}>
                 <div style={styles.statLabel}>إجمالي المصروفات</div>
                 <div style={{ ...styles.statValue, color: '#e74c3c' }}>{totalExpenses.toLocaleString()} ريال</div>
-              </div>
-              <div style={{ ...styles.statBox, background: '#EAFAF1', border: '1px solid #A9DFBF' }}>
-                <div style={styles.statLabel}>إجمالي الإيرادات</div>
-                <div style={{ ...styles.statValue, color: '#27ae60' }}>{totalRevenues.toLocaleString()} ريال</div>
-              </div>
-              <div style={{
-                ...styles.statBox,
-                background: balance >= 0 ? '#EAFAF1' : '#FDEDEC',
-                border: balance >= 0 ? '1px solid #A9DFBF' : '1px solid #F1948A'
-              }}>
-                <div style={styles.statLabel}>الرصيد الكلي</div>
-                <div style={{ ...styles.statValue, color: balance >= 0 ? '#27ae60' : '#e74c3c' }}>
-                  {balance.toLocaleString()} ريال
-                </div>
               </div>
             </div>
 
