@@ -1358,18 +1358,6 @@ export default function ViewerLayout() {
                       {projects.reduce((s, p) => s + (Number(p.expenses) || 0), 0).toLocaleString()} ريال
                     </div>
                   </div>
-                  <div style={{ flex: 1, minWidth: "150px", background: "#EAFAF1", border: "1px solid #A9DFBF", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-                    <div style={{ fontSize: "13px", color: "#555" }}>إجمالي الإيرادات</div>
-                    <div style={{ fontWeight: "bold", color: "#27ae60", fontSize: "18px" }}>
-                      {projects.reduce((s, p) => s + (Number(p.revenues) || 0), 0).toLocaleString()} ريال
-                    </div>
-                  </div>
-                  <div style={{ flex: 1, minWidth: "150px", background: "#EBF5FB", border: "1px solid #AED6F1", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-                    <div style={{ fontSize: "13px", color: "#555" }}>الرصيد الكلي</div>
-                    <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>
-                      {(projects.reduce((s, p) => s + (Number(p.revenues) || 0), 0) - projects.reduce((s, p) => s + (Number(p.expenses) || 0), 0)).toLocaleString()} ريال
-                    </div>
-                  </div>
                 </div>
 
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
