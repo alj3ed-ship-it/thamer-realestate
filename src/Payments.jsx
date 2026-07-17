@@ -274,7 +274,6 @@ function Payments({ onBack }) {
     dueDate.setHours(0, 0, 0, 0)
     return {
       hijriText: hijriPartsToText(hijri.year, hijri.month, hijri.day),
-      // يوم الاستحقاق نفسه يُعتبر مستحقاً (متأخر) وليس "غير مستحق بعد"
       subStatus: dueDate <= today ? 'overdue' : 'not_due'
     }
   }
@@ -373,7 +372,6 @@ function Payments({ onBack }) {
     .filter(p => filterTenants.length === 0 || filterTenants.includes(getTenantId(p.lease_id)))
     .sort((a, b) => hijriSortKey(a.payment_date_hijri) - hijriSortKey(b.payment_date_hijri))
 
-  // قائمة المستأجرين المرتبطين فعلياً بالعقار المختار (أو الكل لو ما فيه فلتر عقار)، مرتبة أبجدياً
   const availableTenants = tenants
     .filter(t => filterProperty === 'الكل' || leases.some(l => l.tenant_id === t.id && l.property_id === filterProperty))
     .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'))
@@ -384,23 +382,41 @@ function Payments({ onBack }) {
 
   const totalFiltered = filteredPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
 
-  // تحديد الحالة الفعلية تلقائياً من المبلغ المدفوع مقابل المستحق (بدل الاعتماد فقط على حقل status اليدوي)
   function computePaymentStatus(p) {
     const due = Number(p.amount || 0)
     const paid = Number(p.amount_paid || 0)
     if (paid > 0 && paid >= due && due > 0) return 'paid'
     if (paid > 0) return 'partial'
     const { subStatus } = getUnpaidDueInfo(p)
-    return subStatus // 'overdue' أو 'not_due'
+    return subStatus
   }
 
-  // الشارة الآن تفرّق بين: مدفوع / جزئي / متأخر / غير مستحق بعد
   function statusBadge(p) {
     const computed = computePaymentStatus(p)
     if (computed === 'paid') return <span style={{ background: '#EAFAF1', color: '#27ae60', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>مدفوع ✓</span>
     if (computed === 'partial') return <span style={{ background: '#FEF9E7', color: '#f39c12', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>جزئي ⚠</span>
     if (computed === 'not_due') return <span style={{ background: '#F4F6F7', color: '#7f8c8d', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>غير مستحق بعد ⏳</span>
     return <span style={{ background: '#FDEDEC', color: '#e74c3c', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>متأخر ⏰</span>
+  }
+
+  // عرض عمود المبلغ: نفس أسلوب صفحة الاستحقاقات (مدفوع | متبقي | إجمالي) عند الدفع الجزئي
+  function amountCell(p) {
+    const computed = computePaymentStatus(p)
+    const due = Number(p.amount || 0)
+    const paid = Number(p.amount_paid || 0)
+    if (computed === 'partial') {
+      const remaining = due - paid
+      return (
+        <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>
+          <span style={{ color: '#f39c12' }}>{paid.toLocaleString()}</span>
+          <span style={{ color: '#9ca3af', margin: '0 4px' }}>|</span>
+          <span style={{ color: '#e74c3c', fontWeight: 700 }}>{remaining.toLocaleString()}</span>
+          <span style={{ color: '#9ca3af', margin: '0 4px' }}>|</span>
+          <span style={{ color: '#27ae60' }}>{due.toLocaleString()}</span>
+        </span>
+      )
+    }
+    return <span style={{ fontWeight: 700, color: '#27ae60' }}>{due.toLocaleString()} ريال</span>
   }
 
   return (
@@ -500,8 +516,6 @@ function Payments({ onBack }) {
             </thead>
             <tbody>
               {filteredPayments.map((p, idx) => {
-                // نفضّل الرقم الحقيقي المحفوظ بقاعدة البيانات (نفس المستخدم في صفحة الاستحقاقات)
-                // ونرجع للتخمين بالفرز فقط لو الرقم الحقيقي غير موجود
                 const total = p.total_installments || getTotalInstallments(p.lease_id)
                 const index = p.installment_number || getPaymentIndex(p)
                 const computedStatus = computePaymentStatus(p)
@@ -527,7 +541,7 @@ function Payments({ onBack }) {
                         {total ? `${index} / ${total}` : `${index}`}
                       </span>
                     </td>
-                    <td style={{ padding: '12px', fontWeight: 700, color: '#27ae60' }}>{Number(p.amount).toLocaleString()} ريال</td>
+                    <td style={{ padding: '12px' }}>{amountCell(p)}</td>
                     <td style={{ padding: '12px' }}>{statusBadge(p)}</td>
                     <td style={{ padding: '12px', color: '#6b7280' }}>
                       <div style={{ fontWeight: 600 }}>{hijriText ? hijriText + ' هـ' : '—'}</div>
