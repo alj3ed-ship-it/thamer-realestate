@@ -360,7 +360,8 @@ function Projects() {
                             fontSize: 13,
                             color: '#6b7280',
                             cursor: hasLongDesc ? 'pointer' : 'default',
-                            whiteSpace: descExpanded ? 'normal' : 'nowrap',
+                            whiteSpace: 'normal',
+                            wordBreak: 'break-word',
                             maxWidth: descExpanded ? 'none' : 220,
                             minWidth: 160
                           }}
@@ -401,7 +402,8 @@ function Projects() {
                             fontSize: 13,
                             color: '#9ca3af',
                             cursor: hasLongNotes ? 'pointer' : 'default',
-                            whiteSpace: notesExpanded ? 'normal' : 'nowrap',
+                            whiteSpace: 'normal',
+                            wordBreak: 'break-word',
                             maxWidth: notesExpanded ? 'none' : 160,
                             minWidth: 100
                           }}
