@@ -12,6 +12,12 @@ const STATUS_COLORS = {
   'جزئي': { bg: '#FEF9E7', text: '#9A7D0A', label: '🟡 جزئي' },
   'غير مستلم': { bg: '#FDEDEC', text: '#C0392B', label: '🔴 غير مستلم' },
 };
+function formatHijriDisplay(dateStr) {
+  if (!dateStr) return '—';
+  const parts = dateStr.split('/');
+  if (parts.length !== 3) return dateStr;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
 
 export default function Bookings() {
   const [bookings, setBookings] = useState([]);
@@ -185,8 +191,9 @@ export default function Bookings() {
         </button>
       </div>
 
-      <ExportToolbar
-        data={bookings}
+         <ExportToolbar
+
+      data={bookings.map((b) => ({ ...b, event_date_hijri: formatHijriDisplay(b.event_date_hijri) }))}
         columns={[
           { key: 'event_date_hijri', label: 'التاريخ الهجري' },
           { key: 'event_type', label: 'النوع' },
@@ -229,7 +236,7 @@ export default function Bookings() {
                 const statusStyle = STATUS_COLORS[b.remaining_status] || STATUS_COLORS['جزئي'];
                 return (
                   <tr key={b.id} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={td}>{b.event_date_hijri} هـ</td>
+                    <td style={td}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
                     <td style={td}>{b.event_type}</td>
                     <td style={td}>{b.client_name}</td>
                     <td style={td}>{Number(b.total_amount).toLocaleString()} ر.س</td>
