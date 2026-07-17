@@ -11,7 +11,6 @@ const HIJRI_MONTHS = [
 
 const UNIT_TYPE_ORDER = { "محل": 1, "شقة": 2, "ورشة": 3 };
 
-// ألوان ثابتة: لون واحد لكل "عقار" ولون واحد لكل "مستأجر" بكل الصفحات
 const PROPERTY_BADGE_COLOR = { bg: "#EAF2F8", color: "#1B4D7A", border: "#AED6F1" };
 const TENANT_BADGE_COLOR = { bg: "#FEF9E7", color: "#9A7D0A", border: "#F7DC6F" };
 const ACTIVITY_BADGE_COLOR = { bg: "#E8F6F3", color: "#148F77", border: "#A2D9CE" };
@@ -20,8 +19,6 @@ function parseHijri(dateStr) {
   if (!dateStr) return null;
   const parts = dateStr.split("/").map((p) => parseInt(p));
   if (parts.length !== 3 || parts.some((p) => isNaN(p))) return null;
-  // يدعم صيغتين: يوم/شهر/سنة (مثل 1/2/1448) أو سنة/شهر/يوم (مثل 1448/02/01)
-  // نحدد أي رقم هو السنة بناءً على كونه أكبر من 1300
   if (parts[0] >= 1300) {
     return { year: parts[0], month: parts[1], day: parts[2] };
   }
@@ -144,36 +141,34 @@ export default function ViewerLayout() {
   const [selectedProperty, setSelectedProperty] = useState(null);
   const [selectedTenant, setSelectedTenant] = useState(null);
 
-  // فلترة الاستحقاقات (شهر/سنة هجري)
   const [selectedYear, setSelectedYear] = useState("1448");
   const [selectedMonthNum, setSelectedMonthNum] = useState("1");
   const [entResults, setEntResults] = useState([]);
   const [entSearched, setEntSearched] = useState(false);
 
-  // فلتر العقار والمستأجر لتبويب الاستحقاقات
-  const [entSelectedProperties, setEntSelectedProperties] = useState([]); // فاضي = كل العقارات
+  const [entSelectedProperties, setEntSelectedProperties] = useState([]);
   const [showEntPropDropdown, setShowEntPropDropdown] = useState(false);
-  const [entSelectedTenants, setEntSelectedTenants] = useState([]); // فاضي = كل المستأجرين
+  const [entSelectedTenants, setEntSelectedTenants] = useState([]);
   const [showEntTenantDropdown, setShowEntTenantDropdown] = useState(false);
   const [entTenantSearchText, setEntTenantSearchText] = useState("");
 
-  // فلتر العقار لتبويب الوحدات
   const [unitsSelectedProperties, setUnitsSelectedProperties] = useState([]);
   const [showUnitsPropDropdown, setShowUnitsPropDropdown] = useState(false);
 
-  // فلتر العقار والمستأجر لتبويب المستأجرين
   const [tenantsSelectedProperties, setTenantsSelectedProperties] = useState([]);
   const [showTenantsPropDropdown, setShowTenantsPropDropdown] = useState(false);
   const [tenantsSelectedTenants, setTenantsSelectedTenants] = useState([]);
   const [showTenantsTenantDropdown, setShowTenantsTenantDropdown] = useState(false);
   const [tenantsTenantSearchText, setTenantsTenantSearchText] = useState("");
 
-  // فلتر العقار والمستأجر لتبويب العقود
   const [leasesSelectedProperties, setLeasesSelectedProperties] = useState([]);
   const [showLeasesPropDropdown, setShowLeasesPropDropdown] = useState(false);
   const [leasesSelectedTenants, setLeasesSelectedTenants] = useState([]);
   const [showLeasesTenantDropdown, setShowLeasesTenantDropdown] = useState(false);
   const [leasesTenantSearchText, setLeasesTenantSearchText] = useState("");
+
+  const [viewerExpandedDesc, setViewerExpandedDesc] = useState(new Set());
+  const [viewerExpandedNotes, setViewerExpandedNotes] = useState(new Set());
 
   useEffect(() => {
     supabase.from("properties").select("*").order("priority").then(({ data }) => setProperties(data || []));
@@ -221,7 +216,6 @@ export default function ViewerLayout() {
     borderBottom: "1px solid #e0e7ef", textAlign: "center", cursor: "pointer"
   };
 
-  // ترتيب موحّد: أولوية العقار، ثم نوع الوحدة (محل > شقة > ورشة)، ثم رقم الوحدة
   const propertyPriorityMap = {};
   properties.forEach(p => { propertyPriorityMap[p.id] = p.priority ?? 99; });
 
@@ -235,7 +229,6 @@ export default function ViewerLayout() {
     return (parseInt(a.unit_number) || 999) - (parseInt(b.unit_number) || 999);
   });
 
-  // مفتاح ترتيب موحّد لأي عقد بناءً على أفضل (أقل) نوع/رقم وحدة مرتبطة به
   function leaseUnitSortKey(l) {
     const unitsList = l.lease_units?.map(lu => lu.units).filter(Boolean) || [];
     let type = 5, num = 999;
@@ -254,7 +247,6 @@ export default function ViewerLayout() {
     return p ? p.name : "-";
   };
 
-  // لكل مستأجر، نحدد أول وحدة/عقد مرتبط له لأغراض الترتيب والعرض
   const tenantSortInfo = (tenant) => {
     const tLeases = leases.filter(l => l.tenant_id === tenant.id);
     let best = { priority: 99, type: 5, num: 999, units: [] };
@@ -291,7 +283,6 @@ export default function ViewerLayout() {
     return ka.num - kb.num;
   });
 
-  // ===== تطبيق البحث النصي على كل تبويب =====
   const filteredProperties = properties;
 
   const filteredUnits = sortedUnits.filter(u => {
@@ -299,7 +290,6 @@ export default function ViewerLayout() {
     return true;
   });
 
-  // قائمة أسماء كل المستأجرين (لبناء قوائم الفلتر القابلة للكتابة)
   const allTenantNames = useMemo(() => {
     return tenants.map((t) => t.name).filter(Boolean).sort((a, b) => a.localeCompare(b, "ar"));
   }, [tenants]);
@@ -350,7 +340,6 @@ export default function ViewerLayout() {
     return <span style={{ background: "#FDEDEC", color: "#e74c3c", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>لم يُسدَّد ✗</span>;
   }
 
-  // عرض عمود المبلغ: للجزئي نوضح الإجمالي/المدفوع/المتبقي بالكلمة والرقم بسطر واحد بدون أي حساب على القارئ
   function amountDisplay(r) {
     if (r.status === "partial") {
       const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
@@ -370,7 +359,6 @@ export default function ViewerLayout() {
     return <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
   }
 
-  // قائمة أسماء المستأجرين الفريدة (من الدفعات) لبناء قائمة الفلتر القابلة للكتابة
   const entUniqueTenants = useMemo(() => {
     const names = new Set();
     payments.forEach((p) => {
@@ -421,13 +409,10 @@ export default function ViewerLayout() {
     setEntSearched(true);
   }
 
-  // إجمالي المستحق = كل الأقساط. إجمالي المحصّل = كل الفلوس اللي فعلاً دخلت (سواء من مدفوع بالكامل أو جزء من الجزئي).
-  // إجمالي المتبقي = الفرق بينهم. هذا يغني عن تصنيف "جزئي" كرقم مستقل فوق ويمنع اللخبطة.
   const totalAmount = entResults.reduce((s, r) => s + (r.amount || 0), 0);
   const totalCollected = entResults.reduce((s, r) => s + (r.paidAmount || 0), 0);
   const totalRemaining = Math.max(totalAmount - totalCollected, 0);
 
-  // ===== حسابات تبويب المتعثرين =====
   function getDefaulterTenant(tenantId) {
     return tenants.find((t) => t.id === tenantId);
   }
@@ -438,7 +423,6 @@ export default function ViewerLayout() {
   const defaultersTotalCollected = defaulters.reduce((s, d) => s + getDefaulterPaid(d.id), 0);
   const defaultersTotalRemaining = defaultersTotalDebt - defaultersTotalCollected;
 
-  // ===== بيانات التصدير لكل تبويب =====
   const propertiesExportData = filteredProperties.map(p => ({
     name: p.name || "—",
     address: p.address || "—",
@@ -509,6 +493,22 @@ export default function ViewerLayout() {
     { label: "إجمالي الباقي", value: `${defaultersTotalRemaining.toLocaleString()} ريال`, color: "#854d0e" },
   ];
 
+  const toggleViewerDesc = (id) => {
+    setViewerExpandedDesc((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleViewerNotes = (id) => {
+    setViewerExpandedNotes((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: "#f0f4f8", fontFamily: "Tahoma, Arial, sans-serif", direction: "rtl" }}>
       <div className="no-print" style={{ background: "#1B4D7A", padding: "16px 32px", display: "flex", alignItems: "center", gap: "16px" }}>
@@ -528,7 +528,6 @@ export default function ViewerLayout() {
 
       <div style={{ padding: "32px" }}>
 
-        {/* تفاصيل عقار */}
         {selectedProperty && (
           <div>
             <button onClick={() => setSelectedProperty(null)} className="no-print" style={{
@@ -577,7 +576,6 @@ export default function ViewerLayout() {
           </div>
         )}
 
-        {/* تفاصيل مستأجر */}
         {selectedTenant && (
           <div>
             <button onClick={() => setSelectedTenant(null)} className="no-print" style={{
@@ -1370,11 +1368,34 @@ export default function ViewerLayout() {
                       <tr><td colSpan="8" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد مشاريع مسجّلة</td></tr>
                     ) : projects.map((p) => {
                       const bal = (Number(p.revenues) || 0) - (Number(p.expenses) || 0);
+                      const descExpanded = viewerExpandedDesc.has(p.id);
+                      const notesExpanded = viewerExpandedNotes.has(p.id);
+                      const hasLongDesc = p.description && p.description.length > 50;
+                      const hasLongNotes = p.notes && p.notes.length > 30;
                       return (
                         <tr key={p.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
                           <td style={{ padding: "12px", fontWeight: "bold", color: "#1B4D7A" }}>{p.name}</td>
-                          <td style={{ padding: "12px", fontSize: "13px", color: "#6b7280" }}>
-                            {p.description ? p.description.substring(0, 50) + (p.description.length > 50 ? "..." : "") : "—"}
+                          <td
+                            onClick={() => hasLongDesc && toggleViewerDesc(p.id)}
+                            title={p.description || ""}
+                            style={{
+                              padding: "12px",
+                              fontSize: "13px",
+                              color: "#6b7280",
+                              cursor: hasLongDesc ? "pointer" : "default",
+                              whiteSpace: descExpanded ? "normal" : "nowrap",
+                              maxWidth: descExpanded ? "none" : 220,
+                              minWidth: 160,
+                            }}
+                          >
+                            {p.description
+                              ? (descExpanded ? p.description : p.description.substring(0, 50) + (hasLongDesc ? "..." : ""))
+                              : "—"}
+                            {hasLongDesc && (
+                              <span style={{ color: "#2563eb", fontSize: 11, marginRight: 6, whiteSpace: "nowrap" }}>
+                                {descExpanded ? " (إخفاء)" : " (عرض الكل)"}
+                              </span>
+                            )}
                           </td>
                           <td style={{ padding: "12px", color: "#6b7280", whiteSpace: "nowrap" }}>{p.date_created || "—"}</td>
                           <td style={{ padding: "12px" }}>
@@ -1387,8 +1408,27 @@ export default function ViewerLayout() {
                           <td style={{ padding: "12px", color: "#e74c3c", fontWeight: "bold" }}>{Number(p.expenses || 0).toLocaleString()} ريال</td>
                           <td style={{ padding: "12px", color: "#27ae60", fontWeight: "bold" }}>{Number(p.revenues || 0).toLocaleString()} ريال</td>
                           <td style={{ padding: "12px", color: bal >= 0 ? "#27ae60" : "#e74c3c", fontWeight: "bold" }}>{bal.toLocaleString()} ريال</td>
-                          <td style={{ padding: "12px", fontSize: "13px", color: "#9ca3af" }}>
-                            {p.notes ? p.notes.substring(0, 30) + (p.notes.length > 30 ? "..." : "") : "—"}
+                          <td
+                            onClick={() => hasLongNotes && toggleViewerNotes(p.id)}
+                            title={p.notes || ""}
+                            style={{
+                              padding: "12px",
+                              fontSize: "13px",
+                              color: "#9ca3af",
+                              cursor: hasLongNotes ? "pointer" : "default",
+                              whiteSpace: notesExpanded ? "normal" : "nowrap",
+                              maxWidth: notesExpanded ? "none" : 160,
+                              minWidth: 100,
+                            }}
+                          >
+                            {p.notes
+                              ? (notesExpanded ? p.notes : p.notes.substring(0, 30) + (hasLongNotes ? "..." : ""))
+                              : "—"}
+                            {hasLongNotes && (
+                              <span style={{ color: "#2563eb", fontSize: 11, marginRight: 6, whiteSpace: "nowrap" }}>
+                                {notesExpanded ? " (إخفاء)" : " (عرض الكل)"}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );

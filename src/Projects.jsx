@@ -12,6 +12,8 @@ function Projects() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [expandedDesc, setExpandedDesc] = useState(new Set());
+  const [expandedNotes, setExpandedNotes] = useState(new Set());
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -131,6 +133,30 @@ function Projects() {
         alert('حصل خطأ: ' + error.message);
       }
     }
+  };
+
+  const toggleDesc = (id) => {
+    setExpandedDesc(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleNotes = (id) => {
+    setExpandedNotes(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const totalExpenses = projects.reduce((sum, p) => sum + (Number(p.expenses) || 0), 0);
@@ -325,11 +351,34 @@ function Projects() {
                   {projects.map((project, idx) => {
                     const colors = STATUS_COLORS[project.status];
                     const projectBalance = (Number(project.revenues) || 0) - (Number(project.expenses) || 0);
+                    const descExpanded = expandedDesc.has(project.id);
+                    const notesExpanded = expandedNotes.has(project.id);
+                    const hasLongDesc = project.description && project.description.length > 50;
+                    const hasLongNotes = project.notes && project.notes.length > 30;
                     return (
                       <tr key={project.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
                         <td style={{ ...styles.td, fontWeight: 600, color: '#1B4D7A' }}>{project.name}</td>
-                        <td style={{ ...styles.td, fontSize: 13, color: '#6b7280' }}>
-                          {project.description ? project.description.substring(0, 50) + (project.description.length > 50 ? '...' : '') : '—'}
+                        <td
+                          onClick={() => hasLongDesc && toggleDesc(project.id)}
+                          title={project.description || ''}
+                          style={{
+                            ...styles.td,
+                            fontSize: 13,
+                            color: '#6b7280',
+                            cursor: hasLongDesc ? 'pointer' : 'default',
+                            whiteSpace: descExpanded ? 'normal' : 'nowrap',
+                            maxWidth: descExpanded ? 'none' : 220,
+                            minWidth: 160
+                          }}
+                        >
+                          {project.description
+                            ? (descExpanded ? project.description : project.description.substring(0, 50) + (hasLongDesc ? '...' : ''))
+                            : '—'}
+                          {hasLongDesc && (
+                            <span style={{ color: '#2563eb', fontSize: 11, marginRight: 6, whiteSpace: 'nowrap' }}>
+                              {descExpanded ? ' (إخفاء)' : ' (عرض الكل)'}
+                            </span>
+                          )}
                         </td>
                         <td style={{ ...styles.td, color: '#6b7280', whiteSpace: 'nowrap' }}>{project.date_created || '—'}</td>
                         <td style={styles.td}>
@@ -350,8 +399,27 @@ function Projects() {
                         }}>
                           {projectBalance.toLocaleString()} ريال
                         </td>
-                        <td style={{ ...styles.td, fontSize: 13, color: '#9ca3af' }}>
-                          {project.notes ? project.notes.substring(0, 30) + (project.notes.length > 30 ? '...' : '') : '—'}
+                        <td
+                          onClick={() => hasLongNotes && toggleNotes(project.id)}
+                          title={project.notes || ''}
+                          style={{
+                            ...styles.td,
+                            fontSize: 13,
+                            color: '#9ca3af',
+                            cursor: hasLongNotes ? 'pointer' : 'default',
+                            whiteSpace: notesExpanded ? 'normal' : 'nowrap',
+                            maxWidth: notesExpanded ? 'none' : 160,
+                            minWidth: 100
+                          }}
+                        >
+                          {project.notes
+                            ? (notesExpanded ? project.notes : project.notes.substring(0, 30) + (hasLongNotes ? '...' : ''))
+                            : '—'}
+                          {hasLongNotes && (
+                            <span style={{ color: '#2563eb', fontSize: 11, marginRight: 6, whiteSpace: 'nowrap' }}>
+                              {notesExpanded ? ' (إخفاء)' : ' (عرض الكل)'}
+                            </span>
+                          )}
                         </td>
                         <td className="no-print" style={styles.td}>
                           <div style={styles.actionsBox}>
