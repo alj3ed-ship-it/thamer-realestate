@@ -11,7 +11,6 @@ const HIJRI_MONTHS = [
 
 const UNIT_TYPE_ORDER = { "محل": 1, "شقة": 2, "ورشة": 3 };
 
-// نفس ألوان صفحة الوالد بالضبط: العقار كحلي، المستأجر خردلي ذهبي، النشاط تركوازي
 const PROPERTY_BADGE_COLOR = { bg: "#EAF2F8", color: "#1B4D7A", border: "#AED6F1" };
 const TENANT_BADGE_COLOR = { bg: "#FEF9E7", color: "#9A7D0A", border: "#F7DC6F" };
 const ACTIVITY_BADGE_COLOR = { bg: "#E8F6F3", color: "#148F77", border: "#A2D9CE" };
@@ -172,7 +171,8 @@ export default function Entitlements() {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         dueDate.setHours(0, 0, 0, 0);
-        return dueDate < today ? "overdue" : "not_due";
+        // يوم الاستحقاق نفسه يُعتبر مستحقاً (متأخر) وليس "غير مستحق بعد"
+        return dueDate <= today ? "overdue" : "not_due";
       }
     }
     return "overdue"; // احتياطي إذا تعذر حساب التاريخ

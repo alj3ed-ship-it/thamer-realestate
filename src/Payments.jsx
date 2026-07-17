@@ -274,7 +274,8 @@ function Payments({ onBack }) {
     dueDate.setHours(0, 0, 0, 0)
     return {
       hijriText: hijriPartsToText(hijri.year, hijri.month, hijri.day),
-      subStatus: dueDate < today ? 'overdue' : 'not_due'
+      // يوم الاستحقاق نفسه يُعتبر مستحقاً (متأخر) وليس "غير مستحق بعد"
+      subStatus: dueDate <= today ? 'overdue' : 'not_due'
     }
   }
 
