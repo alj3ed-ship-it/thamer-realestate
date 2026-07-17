@@ -14,15 +14,16 @@ function Projects() {
   const [showForm, setShowForm] = useState(false);
   const [expandedDesc, setExpandedDesc] = useState(new Set());
   const [expandedNotes, setExpandedNotes] = useState(new Set());
-  const [formData, setFormData] = useState({
+  const emptyFormState = {
     name: '',
     description: '',
-    date_created: new Date().toISOString().slice(0, 10),
+    date_created: '',
     status: 'جاري',
     expenses: '',
     revenues: '',
     notes: ''
-  });
+  };
+  const [formData, setFormData] = useState(emptyFormState);
 
   useEffect(() => {
     loadProjects();
@@ -51,15 +52,7 @@ function Projects() {
   };
 
   const resetForm = () => {
-    setFormData({
-      name: '',
-      description: '',
-      date_created: new Date().toISOString().slice(0, 10),
-      status: 'جاري',
-      expenses: '',
-      revenues: '',
-      notes: ''
-    });
+    setFormData(emptyFormState);
     setEditingId(null);
     setShowForm(false);
   };
@@ -166,7 +159,7 @@ function Projects() {
   const exportData = projects.map(p => ({
     name: p.name,
     description: p.description || '—',
-    date: p.date_created,
+    date: p.date_created ? `${p.date_created} هـ` : '—',
     status: p.status,
     expenses: `${Number(p.expenses || 0).toLocaleString()} ريال`,
     revenues: `${Number(p.revenues || 0).toLocaleString()} ريال`,
@@ -218,12 +211,13 @@ function Projects() {
                 </div>
 
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>التاريخ</label>
+                  <label style={styles.label}>التاريخ الهجري (يوم/شهر/سنة)</label>
                   <input
-                    type="date"
+                    type="text"
                     value={formData.date_created}
                     onChange={(e) => handleInputChange('date_created', e.target.value)}
                     style={styles.input}
+                    placeholder="مثال: 16/1/1448"
                   />
                 </div>
 
@@ -380,7 +374,7 @@ function Projects() {
                             </span>
                           )}
                         </td>
-                        <td style={{ ...styles.td, color: '#6b7280', whiteSpace: 'nowrap' }}>{project.date_created || '—'}</td>
+                        <td style={{ ...styles.td, color: '#6b7280', whiteSpace: 'nowrap' }}>{project.date_created ? `${project.date_created} هـ` : '—'}</td>
                         <td style={styles.td}>
                           <span style={{ ...styles.badge, backgroundColor: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}>
                             {project.status}

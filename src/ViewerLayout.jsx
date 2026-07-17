@@ -197,7 +197,7 @@ export default function ViewerLayout() {
     `).then(({ data }) => setPayments((data || []).filter((p) => p.leases)));
     supabase.from("defaulters").select("*").order("created_at", { ascending: false }).then(({ data }) => setDefaulters(data || []));
     supabase.from("defaulter_payments").select("*").then(({ data }) => setDefaulterPayments(data || []));
-    supabase.from("projects").select("*").order("date_created", { ascending: false }).then(({ data }) => setProjects(data || []));
+    supabase.from("projects").select("*").then(({ data }) => setProjects(data || []));
     supabase.from("properties").select("id").eq("name", "قاعة مذهلة").single().then(({ data: hall }) => {
       if (hall?.id) {
         supabase.from("bookings").select("*").eq("property_id", hall.id).then(({ data }) => {
@@ -1330,7 +1330,7 @@ export default function ViewerLayout() {
                   data={projects.map(p => ({
                     name: p.name || "—",
                     description: p.description || "—",
-                    date: p.date_created || "—",
+                    date: p.date_created ? `${p.date_created} هـ` : "—",
                     status: p.status || "—",
                     expenses: `${Number(p.expenses || 0).toLocaleString()} ريال`,
                     revenues: `${Number(p.revenues || 0).toLocaleString()} ريال`,
@@ -1419,7 +1419,7 @@ export default function ViewerLayout() {
                               </span>
                             )}
                           </td>
-                          <td style={{ padding: "12px", color: "#6b7280", whiteSpace: "nowrap" }}>{p.date_created || "—"}</td>
+                          <td style={{ padding: "12px", color: "#6b7280", whiteSpace: "nowrap" }}>{p.date_created ? `${p.date_created} هـ` : "—"}</td>
                           <td style={{ padding: "12px" }}>
                             <span style={{
                               padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold",
