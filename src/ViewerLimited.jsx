@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { supabase } from "./supabaseClient";
 import { getUnitTypeColor } from "./theme";
 import ExportToolbar from "./components/ExportToolbar";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 // === تعديل هذي القائمة فقط إذا احتجت تغيّر العقارات المسموح رؤيتها ===
 const ALLOWED_PROPERTY_KEYWORDS = ["سلمان", "براهيم", "عبدالله الكبيرة", "عبدالله الصغير"];
@@ -42,10 +43,41 @@ function computeInstallmentHijri(startDateHijri, totalInstallments, installmentN
 }
 
 const BOOKING_STATUS_COLORS = {
-  "مستلم": { bg: "#E8F8F0", text: "#1E8449", label: "🟢 مستلم" },
-  "جزئي": { bg: "#FEF9E7", text: "#9A7D0A", label: "🟡 جزئي" },
-  "غير مستلم": { bg: "#FDEDEC", text: "#C0392B", label: "🔴 غير مستلم" },
+  "مستلم": { bg: "#EAFAF1", text: "#27ae60", label: "مستلم ✓" },
+  "جزئي": { bg: "#FEF9E7", text: "#f39c12", label: "جزئي ⚠" },
+  "غير مستلم": { bg: "#FDEDEC", text: "#e74c3c", label: "غير مستلم ✗" },
 };
+const BOOKING_TYPE_COLORS = {
+  "كاملة": { bg: "#EAF2F8", text: "#1B4D7A", border: "#AED6F1" },
+  "نساء": { bg: "#FDF2F8", text: "#C2185B", border: "#F8BBD0" },
+  "رجال": { bg: "#E8F6F3", text: "#148F77", border: "#A2D9CE" },
+  "أخرى": { bg: "#F4F6F7", text: "#7f8c8d", border: "#D5D8DC" },
+};
+function bookingTypeBadge(type) {
+  const c = BOOKING_TYPE_COLORS[type] || BOOKING_TYPE_COLORS["أخرى"];
+  return (
+    <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, padding: "4px 12px", borderRadius: "12px", fontSize: "13px", fontWeight: "bold", whiteSpace: "nowrap" }}>
+      {type}
+    </span>
+  );
+}
+function bookingClientBadge(name) {
+  return (
+    <span style={{ background: "#FEF9E7", color: "#9A7D0A", border: "1px solid #F7DC6F", padding: "4px 12px", borderRadius: "12px", fontSize: "13px", fontWeight: "bold", whiteSpace: "nowrap" }}>
+      {name}
+    </span>
+  );
+}
+function bookingReceiverColor(value) {
+  if (value === "مستلم") return "#27ae60";
+  if (value === "لم يستلم") return "#e74c3c";
+  return "#1B4D7A";
+}
+function getBookingHijriYear(dateStr) {
+  if (!dateStr) return null;
+  const parts = dateStr.split("/");
+  return parts.length === 3 ? parts[2] : null;
+}
 
 const PROPERTY_BADGE_COLOR = { bg: "#EAF2F8", color: "#1B4D7A", border: "#AED6F1" };
 const TENANT_BADGE_COLOR = { bg: "#FEF9E7", color: "#9A7D0A", border: "#F7DC6F" };
@@ -66,6 +98,25 @@ function formatHijriDisplay(dateStr) {
   const parts = dateStr.split("/");
   if (parts.length !== 3) return dateStr;
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+// تحويل هجري إلى ميلادي (نفس الخوارزمية المستخدمة في Entitlements.jsx وصفحة الدفعات)
+function hijriToGregorian(hy, hm, hd) {
+  try {
+    const jd = Math.floor((11 * hy + 3) / 30) + 354 * hy + 30 * hm -
+      Math.floor((hm - 1) / 2) + hd + 1948440 - 385;
+    let l = jd + 68569;
+    const n = Math.floor((4 * l) / 146097);
+    l = l - Math.floor((146097 * n + 3) / 4);
+    const i = Math.floor((4000 * (l + 1)) / 1461001);
+    l = l - Math.floor((1461 * i) / 4) + 31;
+    const j = Math.floor((80 * l) / 2447);
+    const day = l - Math.floor((2447 * j) / 80);
+    l = Math.floor(j / 11);
+    const month = j + 2 - 12 * l;
+    const year = 100 * (n - 49) + i + l;
+    return new Date(year, month - 1, day);
+  } catch { return null; }
 }
 
 function unitTypeBadge(unitType, unitNumber) {
@@ -145,6 +196,11 @@ export default function ViewerLimited() {
   const [projects, setProjects] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [activePage, setActivePage] = useState("tenants");
+  const [bookingsSelectedYear, setBookingsSelectedYear] = useState("all");
+  const [bookingsExpensePct, setBookingsExpensePct] = useState(() => {
+    const saved = localStorage.getItem("bookings_expense_pct");
+    return saved ? Number(saved) : 25;
+  });
   const [selectedTenant, setSelectedTenant] = useState(null);
 
   const [tenantsSelectedProperties, setTenantsSelectedProperties] = useState([]);
@@ -220,6 +276,33 @@ export default function ViewerLimited() {
     );
   }, [properties]);
   const allowedPropertyIds = useMemo(() => allowedProperties.map((p) => p.id), [allowedProperties]);
+
+  const bookingsAvailableYears = useMemo(() => {
+    const years = new Set();
+    bookings.forEach((b) => {
+      const y = getBookingHijriYear(b.event_date_hijri);
+      if (y) years.add(y);
+    });
+    return Array.from(years).sort();
+  }, [bookings]);
+
+  const bookingsYearlyStats = useMemo(() => {
+    const map = {};
+    bookings.forEach((b) => {
+      const y = getBookingHijriYear(b.event_date_hijri);
+      if (!y) return;
+      if (!map[y]) map[y] = { year: y, count: 0, revenue: 0 };
+      map[y].count += 1;
+      map[y].revenue += Number(b.total_amount || 0);
+    });
+    return Object.values(map)
+      .sort((a, b) => a.year.localeCompare(b.year))
+      .map((row) => ({ ...row, net: Math.round(row.revenue * (1 - bookingsExpensePct / 100)) }));
+  }, [bookings, bookingsExpensePct]);
+
+  const bookingsFiltered = bookingsSelectedYear === "all"
+    ? bookings
+    : bookings.filter((b) => getBookingHijriYear(b.event_date_hijri) === bookingsSelectedYear);
 
   const navStyle = (page) => ({
     padding: "10px 20px", cursor: "pointer", borderRadius: "8px",
@@ -336,24 +419,39 @@ export default function ViewerLimited() {
     .slice()
     .sort((a, b) => hijriSortKey(a.payment_date_hijri) - hijriSortKey(b.payment_date_hijri));
 
-  function computeStatus(row) {
+  // status الآن: "paid" | "partial" | "overdue" (متأخر) | "not_due" (غير مستحق بعد) — نفس منطق Entitlements.jsx
+  function computeStatus(row, hijri) {
     const due = Number(row.amount_due || 0);
     const paid = Number(row.amount_paid || 0);
-    if (paid <= 0) return "unpaid";
-    if (paid >= due && due > 0) return "paid";
-    return "partial";
+    if (paid > 0 && paid >= due && due > 0) return "paid";
+    if (paid > 0) return "partial";
+
+    // لم يُدفع شيء بعد — نحدد إذا كان متأخراً أو لسا ما جاء وقته
+    if (hijri) {
+      const dueDate = hijriToGregorian(hijri.year, hijri.month, hijri.day);
+      if (dueDate) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        dueDate.setHours(0, 0, 0, 0);
+        // يوم الاستحقاق نفسه يُعتبر مستحقاً (متأخر) وليس "غير مستحق بعد"
+        return dueDate <= today ? "overdue" : "not_due";
+      }
+    }
+    return "overdue"; // احتياطي إذا تعذر حساب التاريخ
   }
 
   function statusToArabic(status) {
     if (status === "paid") return "مدفوع";
     if (status === "partial") return "جزئي";
-    return "لم يُسدَّد";
+    if (status === "not_due") return "غير مستحق بعد";
+    return "متأخر";
   }
 
   function statusBadge(status) {
     if (status === "paid") return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
     if (status === "partial") return <span style={{ background: "#FEF9E7", color: "#f39c12", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>جزئي ⚠</span>;
-    return <span style={{ background: "#FDEDEC", color: "#e74c3c", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>لم يُسدَّد ✗</span>;
+    if (status === "not_due") return <span style={{ background: "#F4F6F7", color: "#7f8c8d", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>غير مستحق بعد ⏳</span>;
+    return <span style={{ background: "#FDEDEC", color: "#e74c3c", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>متأخر ⏰</span>;
   }
 
   function amountDisplay(r) {
@@ -371,6 +469,9 @@ export default function ViewerLimited() {
   }
   if (r.status === "paid") {
     return <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+  }
+  if (r.status === "not_due") {
+    return <span style={{ color: "#7f8c8d", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
   }
   return <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
 }
@@ -404,7 +505,7 @@ export default function ViewerLimited() {
       if (!hijri || hijri.year !== filterYear || hijri.month !== filterMonth) continue;
 
       const unitsList = lease.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
-      const status = computeStatus(row);
+      const status = computeStatus(row, hijri);
 
       found.push({
         tenant: lease.tenants?.name || "",
@@ -471,7 +572,8 @@ export default function ViewerLimited() {
   });
 
   const paymentsExportData = filteredPaymentsList.map((p) => {
-    const status = computeStatus(p);
+    const hijri = computeInstallmentHijri(p.leases?.start_date_hijri, p.total_installments, p.installment_number);
+    const status = computeStatus(p, hijri);
     const due = Number(p.amount_due || 0);
     const paid = Number(p.amount_paid || 0);
     const unitsList = p.leases?.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
@@ -1000,7 +1102,8 @@ export default function ViewerLimited() {
                       {filteredPaymentsList.length === 0 ? (
                         <tr><td colSpan="9" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد دفعات</td></tr>
                       ) : filteredPaymentsList.map((p) => {
-                        const status = computeStatus(p);
+                        const hijri = computeInstallmentHijri(p.leases?.start_date_hijri, p.total_installments, p.installment_number);
+                        const status = computeStatus(p, hijri);
                         const due = Number(p.amount_due || 0);
                         const paid = Number(p.amount_paid || 0);
                         const unitsList = p.leases?.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
@@ -1366,7 +1469,7 @@ export default function ViewerLimited() {
             {activePage === "bookings" && (
               <div id="viewer-bookings-table">
                 <ExportToolbar
-                  data={bookings.map(b => ({
+                  data={bookingsFiltered.map(b => ({
                     date: b.event_date_hijri ? `${formatHijriDisplay(b.event_date_hijri)} هـ` : "—",
                     type: b.event_type || "—",
                     client: b.client_name || "—",
@@ -1390,24 +1493,88 @@ export default function ViewerLimited() {
                   title="تقرير حجوزات قاعة مذهلة"
                 />
 
+                {/* تبويبات السنوات */}
+                <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
+                  <button onClick={() => setBookingsSelectedYear("all")} style={{
+                    padding: "8px 20px", borderRadius: "8px", border: bookingsSelectedYear === "all" ? "none" : "1px solid #ddd",
+                    background: bookingsSelectedYear === "all" ? "#1B4D7A" : "#fff", color: bookingsSelectedYear === "all" ? "#fff" : "#555",
+                    fontWeight: "bold", fontSize: "14px", cursor: "pointer",
+                  }}>كل السنين</button>
+                  {bookingsAvailableYears.map((y) => (
+                    <button key={y} onClick={() => setBookingsSelectedYear(y)} style={{
+                      padding: "8px 20px", borderRadius: "8px", border: bookingsSelectedYear === y ? "none" : "1px solid #ddd",
+                      background: bookingsSelectedYear === y ? "#1B4D7A" : "#fff", color: bookingsSelectedYear === y ? "#fff" : "#555",
+                      fontWeight: "bold", fontSize: "14px", cursor: "pointer",
+                    }}>{y} هـ</button>
+                  ))}
+                </div>
+
                 <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
                   <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #1B4D7A", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
                     <div style={{ fontSize: "13px", color: "#555" }}>عدد الحجوزات</div>
-                    <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>{bookings.length}</div>
+                    <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>{bookingsFiltered.length}</div>
                   </div>
-                  <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #148F77", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #1B4D7A", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
                     <div style={{ fontSize: "13px", color: "#555" }}>إجمالي قيمة الحجوزات</div>
-                    <div style={{ fontWeight: "bold", color: "#148F77", fontSize: "18px" }}>
-                      {bookings.reduce((s, b) => s + Number(b.total_amount || 0), 0).toLocaleString()} ر.س
+                    <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>
+                      {bookingsFiltered.reduce((s, b) => s + Number(b.total_amount || 0), 0).toLocaleString()} ر.س
                     </div>
                   </div>
-                  <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #C0392B", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
-                    <div style={{ fontSize: "13px", color: "#555" }}>مبالغ لسا ما استُلمت نهائياً</div>
-                    <div style={{ fontWeight: "bold", color: "#C0392B", fontSize: "18px" }}>
-                      {bookings.filter(b => b.remaining_status !== "مستلم").reduce((s, b) => s + Number(b.remaining_amount || 0), 0).toLocaleString()} ر.س
+                  <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #27ae60", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المبالغ المستلمة</div>
+                    <div style={{ fontWeight: "bold", color: "#27ae60", fontSize: "18px" }}>
+                      {(bookingsFiltered.reduce((s, b) => s + Number(b.total_amount || 0), 0) - bookingsFiltered.filter(b => b.remaining_status !== "مستلم").reduce((s, b) => s + Number(b.remaining_amount || 0), 0)).toLocaleString()} ر.س
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #e74c3c", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>الباقي غير المحصّل</div>
+                    <div style={{ fontWeight: "bold", color: "#e74c3c", fontSize: "18px" }}>
+                      {bookingsFiltered.filter(b => b.remaining_status !== "مستلم").reduce((s, b) => s + Number(b.remaining_amount || 0), 0).toLocaleString()} ر.س
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #8E44AD", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>صافي الدخل (بعد خصم {bookingsExpensePct}%)</div>
+                    <div style={{ fontWeight: "bold", color: "#8E44AD", fontSize: "18px" }}>
+                      {Math.round(bookingsFiltered.reduce((s, b) => s + Number(b.total_amount || 0), 0) * (1 - bookingsExpensePct / 100)).toLocaleString()} ر.س
                     </div>
                   </div>
                 </div>
+
+                <div style={{ background: "#fff", borderRadius: "10px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", padding: "14px 20px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "10px", maxWidth: "320px" }}>
+                  <label style={{ fontSize: "14px", color: "#555", fontWeight: "bold", whiteSpace: "nowrap" }}>نسبة المصاريف الثابتة (%)</label>
+                  <input type="number" value={bookingsExpensePct}
+                    onChange={(e) => {
+                      const val = Number(e.target.value) || 0;
+                      setBookingsExpensePct(val);
+                      localStorage.setItem("bookings_expense_pct", String(val));
+                    }}
+                    style={{ width: "80px", padding: "6px 10px", borderRadius: "6px", border: "1px solid #ccc" }} />
+                </div>
+
+                {bookingsYearlyStats.length > 1 && (
+                  <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "20px", marginBottom: "24px" }}>
+                    <h3 style={{ margin: "0 0 16px", color: "#1B4D7A", fontSize: "16px" }}>مقارنة الدخل والصافي بين السنين</h3>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <BarChart data={bookingsYearlyStats}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="year" tick={{ fontSize: 13 }} />
+                        <YAxis tick={{ fontSize: 12 }} />
+                        <Tooltip formatter={(value) => `${Number(value).toLocaleString()} ر.س`} />
+                        <Legend />
+                        <Bar dataKey="revenue" name="إجمالي الدخل" fill="#1B4D7A" radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="net" name={`الصافي (بعد ${bookingsExpensePct}%)`} fill="#27ae60" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    <div style={{ display: "flex", gap: "24px", marginTop: "16px", flexWrap: "wrap", justifyContent: "center" }}>
+                      {bookingsYearlyStats.map((y) => (
+                        <div key={y.year} style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: "13px", color: "#666" }}>{y.year} هـ</div>
+                          <div style={{ fontSize: "18px", fontWeight: "bold", color: "#1B4D7A" }}>{y.count} حجز</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
                   <thead style={{ background: "#1B4D7A", color: "#fff" }}>
@@ -1423,27 +1590,27 @@ export default function ViewerLimited() {
                     </tr>
                   </thead>
                   <tbody>
-                    {bookings.length === 0 ? (
-                      <tr><td colSpan="8" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا يوجد حجوزات حالياً</td></tr>
-                    ) : bookings.map((b) => {
+                    {bookingsFiltered.length === 0 ? (
+                      <tr><td colSpan="8" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا يوجد حجوزات لهذه السنة</td></tr>
+                    ) : bookingsFiltered.map((b) => {
                       const statusStyle = BOOKING_STATUS_COLORS[b.remaining_status] || BOOKING_STATUS_COLORS["جزئي"];
                       return (
                         <tr key={b.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
                           <td style={{ padding: "12px" }}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
-                          <td style={{ padding: "12px" }}>{b.event_type}</td>
-                          <td style={{ padding: "12px" }}>{b.client_name}</td>
-                          <td style={{ padding: "12px" }}>{Number(b.total_amount || 0).toLocaleString()} ر.س</td>
-                          <td style={{ padding: "12px" }}>{Number(b.deposit_amount || 0).toLocaleString()} ر.س</td>
-                          <td style={{ padding: "12px" }}>{Number(b.remaining_amount || 0).toLocaleString()} ر.س</td>
+                          <td style={{ padding: "12px" }}>{bookingTypeBadge(b.event_type)}</td>
+                          <td style={{ padding: "12px" }}>{bookingClientBadge(b.client_name)}</td>
+                          <td style={{ padding: "12px", fontWeight: "bold", color: "#1B4D7A" }}>{Number(b.total_amount || 0).toLocaleString()} ر.س</td>
+                          <td style={{ padding: "12px", fontWeight: "bold", color: "#148F77" }}>{Number(b.deposit_amount || 0).toLocaleString()} ر.س</td>
+                          <td style={{ padding: "12px", fontWeight: "bold", color: "#e74c3c" }}>{Number(b.remaining_amount || 0).toLocaleString()} ر.س</td>
                           <td style={{ padding: "12px" }}>
                             <span style={{
                               background: statusStyle.bg, color: statusStyle.text,
-                              padding: "4px 10px", borderRadius: "6px", fontSize: "13px",
+                              padding: "4px 10px", borderRadius: "20px", fontSize: "13px", fontWeight: "bold",
                             }}>
                               {statusStyle.label}
                             </span>
                           </td>
-                          <td style={{ padding: "12px" }}>{b.remaining_receiver_final || "—"}</td>
+                          <td style={{ padding: "12px", fontWeight: "bold", color: bookingReceiverColor(b.remaining_receiver_final) }}>{b.remaining_receiver_final || "—"}</td>
                         </tr>
                       );
                     })}
