@@ -1,0 +1,20 @@
+﻿
+const UNIT_TYPE_ORDER = { "محل": 1, "شقة": 2, "ورشة": 3 };
+
+const BOOKING_STATUS_COLORS = {
+  "مستلم": { bg: "#E8F8F0", text: "#1E8449", label: "🟢 مستلم" },
+  "جزئي": { bg: "#FEF9E7", text: "#9A7D0A", label: "🟡 جزئي" },
+  "غير مستلم": { bg: "#FDEDEC", text: "#C0392B", label: "🔴 غير مستلم" },
+};
+
+const PROPERTY_BADGE_COLOR = { bg: "#EAF2F8", color: "#1B4D7A", border: "#AED6F1" };
+const TENANT_BADGE_COLOR = { bg: "#FEF9E7", color: "#9A7D0A", border: "#F7DC6F" };
+const ACTIVITY_BADGE_COLOR = { bg: "#E8F6F3", color: "#148F77", border: "#A2D9CE" };
+
+function parseHijri(dateStr) {
+  if (!dateStr) return null;
+  const parts = dateStr.split("/").map((p) => parseInt(p));
+  if (parts.length !== 3 || parts.some((p) => isNaN(p))) return null;
+  if (parts[0] >= 1300) {
+    return { year: parts[0], month: parts[1], day: parts[2] };
+  }
