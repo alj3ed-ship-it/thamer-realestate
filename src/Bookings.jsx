@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabaseClient';
 import ExportToolbar from './components/ExportToolbar';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 
 const EVENT_TYPES = ['كاملة', 'نساء', 'رجال', 'أخرى'];
 const RECEIVER_STAGE1_OPTIONS = ['أبو أيوب', 'تحويل مباشر', 'نقدي مباشر'];
 const RECEIVER_FINAL_OPTIONS = ['مستلم', 'الوالد', 'لم يستلم'];
 const REMAINING_STATUS_OPTIONS = ['مستلم', 'جزئي', 'غير مستلم'];
+const DEFAULT_EXPENSE_PCT = 25;
 
 const STATUS_COLORS = {
   'مستلم': { bg: '#EAFAF1', text: '#27ae60', label: 'مستلم ✓' },
@@ -25,6 +29,13 @@ function formatHijriDisplay(dateStr) {
   const parts = dateStr.split('/');
   if (parts.length !== 3) return dateStr;
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+function getHijriYear(dateStr) {
+  if (!dateStr) return null;
+  const parts = dateStr.split('/');
+  if (parts.length !== 3) return null;
+  return parts[2];
 }
 
 function typeBadge(type) {
@@ -63,6 +74,11 @@ export default function Bookings() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [hallId, setHallId] = useState(null);
+  const [selectedYear, setSelectedYear] = useState('all');
+  const [expensePct, setExpensePct] = useState(() => {
+    const saved = localStorage.getItem('bookings_expense_pct');
+    return saved ? Number(saved) : DEFAULT_EXPENSE_PCT;
+  });
 
   const emptyForm = {
     event_date_hijri: '',
@@ -83,6 +99,10 @@ export default function Bookings() {
   useEffect(() => {
     loadHallAndBookings();
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('bookings_expense_pct', String(expensePct));
+  }, [expensePct]);
 
   async function loadHallAndBookings() {
     setLoading(true);
@@ -201,11 +221,44 @@ export default function Bookings() {
     }
   }
 
-  const totalRevenue = bookings.reduce((sum, b) => sum + Number(b.total_amount || 0), 0);
-  const totalPending = bookings
+  // استخراج كل السنين الموجودة فعلياً بالبيانات (ديناميكياً)
+  const availableYears = useMemo(() => {
+    const years = new Set();
+    bookings.forEach((b) => {
+      const y = getHijriYear(b.event_date_hijri);
+      if (y) years.add(y);
+    });
+    return Array.from(years).sort();
+  }, [bookings]);
+
+  // بيانات الرسم البياني: لكل سنة عدد الحجوزات، الدخل، الصافي بعد خصم نسبة المصاريف
+  const yearlyStats = useMemo(() => {
+    const map = {};
+    bookings.forEach((b) => {
+      const y = getHijriYear(b.event_date_hijri);
+      if (!y) return;
+      if (!map[y]) map[y] = { year: y, count: 0, revenue: 0 };
+      map[y].count += 1;
+      map[y].revenue += Number(b.total_amount || 0);
+    });
+    return Object.values(map)
+      .sort((a, b) => a.year.localeCompare(b.year))
+      .map((row) => ({
+        ...row,
+        net: Math.round(row.revenue * (1 - expensePct / 100)),
+      }));
+  }, [bookings, expensePct]);
+
+  const filteredBookings = selectedYear === 'all'
+    ? bookings
+    : bookings.filter((b) => getHijriYear(b.event_date_hijri) === selectedYear);
+
+  const totalRevenue = filteredBookings.reduce((sum, b) => sum + Number(b.total_amount || 0), 0);
+  const totalPending = filteredBookings
     .filter((b) => b.remaining_status !== 'مستلم')
     .reduce((sum, b) => sum + Number(b.remaining_amount || 0), 0);
   const totalCollected = totalRevenue - totalPending;
+  const totalNet = Math.round(totalRevenue * (1 - expensePct / 100));
 
   return (
     <div style={{ direction: 'rtl', fontFamily: 'Cairo, sans-serif', padding: '20px' }}>
@@ -228,7 +281,7 @@ export default function Bookings() {
       </div>
 
       <ExportToolbar
-        data={bookings.map((b) => ({ ...b, event_date_hijri: formatHijriDisplay(b.event_date_hijri) }))}
+        data={filteredBookings.map((b) => ({ ...b, event_date_hijri: formatHijriDisplay(b.event_date_hijri) }))}
         columns={[
           { key: 'event_date_hijri', label: 'التاريخ الهجري' },
           { key: 'event_type', label: 'النوع' },
@@ -240,13 +293,82 @@ export default function Bookings() {
         ]}
       />
 
-      {/* بطاقات ملخص */}
+      {/* تبويبات السنوات */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <button
+          onClick={() => setSelectedYear('all')}
+          style={yearTabStyle(selectedYear === 'all')}
+        >
+          كل السنين
+        </button>
+        {availableYears.map((y) => (
+          <button
+            key={y}
+            onClick={() => setSelectedYear(y)}
+            style={yearTabStyle(selectedYear === y)}
+          >
+            {y} هـ
+          </button>
+        ))}
+      </div>
+
+      {/* بطاقات ملخص (حسب التبويب المختار) */}
       <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <SummaryCard label="عدد الحجوزات" value={bookings.length} color="#1B4D7A" />
+        <SummaryCard label="عدد الحجوزات" value={filteredBookings.length} color="#1B4D7A" />
         <SummaryCard label="إجمالي قيمة الحجوزات" value={`${totalRevenue.toLocaleString()} ر.س`} color="#1B4D7A" />
         <SummaryCard label="إجمالي المبالغ المستلمة" value={`${totalCollected.toLocaleString()} ر.س`} color="#27ae60" />
         <SummaryCard label="الباقي غير المحصّل" value={`${totalPending.toLocaleString()} ر.س`} color="#e74c3c" />
+        <SummaryCard label={`صافي الدخل (بعد خصم ${expensePct}%)`} value={`${totalNet.toLocaleString()} ر.س`} color="#8E44AD" />
       </div>
+
+      {/* نسبة المصاريف القابلة للتعديل */}
+      <div style={{
+        background: '#fff', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+        padding: '14px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px', maxWidth: '320px',
+      }}>
+        <label style={{ fontSize: '14px', color: '#555', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+          نسبة المصاريف الثابتة (%)
+        </label>
+        <input
+          type="number"
+          value={expensePct}
+          onChange={(e) => setExpensePct(Number(e.target.value) || 0)}
+          style={{ width: '80px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
+        />
+      </div>
+
+      {/* الرسم البياني المقارن بين السنين */}
+      {yearlyStats.length > 1 && (
+        <div style={{
+          background: '#fff', borderRadius: '12px', boxShadow: '0 2px 12px rgba(0,0,0,0.07)',
+          padding: '20px', marginBottom: '24px',
+        }}>
+          <h3 style={{ margin: '0 0 16px', color: '#1B4D7A', fontSize: '16px' }}>مقارنة الدخل والصافي بين السنين</h3>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={yearlyStats}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="year" tick={{ fontFamily: 'Cairo, sans-serif', fontSize: 13 }} />
+              <YAxis tick={{ fontFamily: 'Cairo, sans-serif', fontSize: 12 }} />
+              <Tooltip
+                contentStyle={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl' }}
+                formatter={(value) => `${Number(value).toLocaleString()} ر.س`}
+              />
+              <Legend wrapperStyle={{ fontFamily: 'Cairo, sans-serif' }} />
+              <Bar dataKey="revenue" name="إجمالي الدخل" fill="#1B4D7A" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="net" name={`الصافي (بعد ${expensePct}%)`} fill="#27ae60" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+
+          <div style={{ display: 'flex', gap: '24px', marginTop: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            {yearlyStats.map((y) => (
+              <div key={y.year} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '13px', color: '#666' }}>{y.year} هـ</div>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1B4D7A' }}>{y.count} حجز</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && <div style={{ color: '#e74c3c', marginBottom: '10px' }}>{error}</div>}
       {loading ? (
@@ -269,7 +391,7 @@ export default function Bookings() {
                 </tr>
               </thead>
               <tbody>
-                {bookings.map((b, idx) => {
+                {filteredBookings.map((b, idx) => {
                   const statusStyle = STATUS_COLORS[b.remaining_status] || STATUS_COLORS['جزئي'];
                   return (
                     <tr key={b.id} style={{ borderBottom: '1px solid #f0f0f0', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
@@ -303,10 +425,10 @@ export default function Bookings() {
                     </tr>
                   );
                 })}
-                {bookings.length === 0 && (
+                {filteredBookings.length === 0 && (
                   <tr>
                     <td colSpan={9} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                      لا يوجد حجوزات حالياً
+                      لا يوجد حجوزات لهذه السنة
                     </td>
                   </tr>
                 )}
@@ -452,6 +574,20 @@ function SummaryCard({ label, value, color }) {
       <div style={{ fontSize: '20px', fontWeight: 'bold', color }}>{value}</div>
     </div>
   );
+}
+
+function yearTabStyle(active) {
+  return {
+    padding: '8px 20px',
+    borderRadius: '8px',
+    border: active ? 'none' : '1px solid #ddd',
+    background: active ? '#1B4D7A' : '#fff',
+    color: active ? '#fff' : '#555',
+    fontWeight: 'bold',
+    fontSize: '14px',
+    fontFamily: 'Cairo, sans-serif',
+    cursor: 'pointer',
+  };
 }
 
 const th = { padding: '12px 16px', fontWeight: 'bold', color: '#555' };
