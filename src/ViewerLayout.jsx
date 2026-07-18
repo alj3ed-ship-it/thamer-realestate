@@ -58,8 +58,14 @@ function hijriSortKey(hijriText) {
   return y * 10000 + m * 100 + d;
 }
 
-function unitTypeBadge(unitType, unitNumber) {
-  const c = getUnitTypeColor(unitType);
+function formatHijriDisplay(dateStr) {
+  if (!dateStr) return "—";
+  const parts = dateStr.split("/");
+  if (parts.length !== 3) return dateStr;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+  function unitTypeBadge(unitType, unitNumber) { 
+   const c = getUnitTypeColor(unitType);
   return (
     <span style={{
       background: c.bg, color: c.color, border: `1px solid ${c.border}`,
@@ -1687,7 +1693,7 @@ export default function ViewerLayout() {
               <div id="viewer-bookings-table">
                 <ExportToolbar
                   data={bookings.map(b => ({
-                    date: b.event_date_hijri ? `${b.event_date_hijri} هـ` : "—",
+                    date: b.event_date_hijri ? `${formatHijriDisplay(b.event_date_hijri)} هـ` : "—",
                     type: b.event_type || "—",
                     client: b.client_name || "—",
                     total: `${Number(b.total_amount || 0).toLocaleString()} ر.س`,
@@ -1749,7 +1755,7 @@ export default function ViewerLayout() {
                       const statusStyle = BOOKING_STATUS_COLORS[b.remaining_status] || BOOKING_STATUS_COLORS["جزئي"];
                       return (
                         <tr key={b.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
-                          <td style={{ padding: "12px" }}>{b.event_date_hijri} هـ</td>
+                          <td style={{ padding: "12px" }}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
                           <td style={{ padding: "12px" }}>{b.event_type}</td>
                           <td style={{ padding: "12px" }}>{b.client_name}</td>
                           <td style={{ padding: "12px" }}>{Number(b.total_amount || 0).toLocaleString()} ر.س</td>
