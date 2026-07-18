@@ -1,0 +1,90 @@
+﻿  const filteredLeases = sortedAllowedLeases.filter(l => {
+    if (leasesSelectedProperties.length > 0 && !leasesSelectedProperties.includes(l.property_id)) return false;
+    if (leasesSelectedTenants.length > 0) {
+      const tenantName = tenants.find(t => t.id === l.tenant_id)?.name;
+      if (!leasesSelectedTenants.includes(tenantName)) return false;
+    }
+    return true;
+  });
+
+  const filteredPaymentsList = allowedPayments
+    .filter((p) => {
+      if (paymentsSelectedProperties.length > 0 && !paymentsSelectedProperties.includes(p.leases?.property_id)) return false;
+      if (paymentsSelectedTenants.length > 0 && !paymentsSelectedTenants.includes(p.leases?.tenants?.name)) return false;
+      return true;
+    })
+    .slice()
+    .sort((a, b) => hijriSortKey(a.payment_date_hijri) - hijriSortKey(b.payment_date_hijri));
+
+  function computeStatus(row) {
+    const due = Number(row.amount_due || 0);
+    const paid = Number(row.amount_paid || 0);
+    if (paid <= 0) return "unpaid";
+    if (paid >= due && due > 0) return "paid";
+    return "partial";
+  }
+
+  function statusToArabic(status) {
+    if (status === "paid") return "Ù…Ø¯ÙÙˆØ¹";
+    if (status === "partial") return "Ø¬Ø²Ø¦ÙŠ";
+    return "Ù„Ù… ÙŠÙØ³Ø¯ÙŽÙ‘Ø¯";
+  }
+
+  function statusBadge(status) {
+    if (status === "paid") return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>Ù…Ø¯ÙÙˆØ¹ âœ“</span>;
+    if (status === "partial") return <span style={{ background: "#FEF9E7", color: "#f39c12", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>Ø¬Ø²Ø¦ÙŠ âš </span>;
+    return <span style={{ background: "#FDEDEC", color: "#e74c3c", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>Ù„Ù… ÙŠÙØ³Ø¯ÙŽÙ‘Ø¯ âœ—</span>;
+  }
+
+  function amountDisplay(r) {
+  if (r.status === "partial") {
+    const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
+    return (
+      <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
+        <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
+        <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+        <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
+        <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+        <span style={{ color: "#1B4D7A", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
+      </div>
+    );
+  }
+  if (r.status === "paid") {
+    return <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+  }
+  return <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+}
+
+  const entUniqueTenants = useMemo(() => {
+    const names = new Set();
+    allowedPayments.forEach((p) => {
+      const name = p.leases?.tenants?.name;
+      if (name) names.add(name);
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "ar"));
+  }, [allowedPayments]);
+
+  const entFilteredTenantOptions = entUniqueTenants.filter((name) =>
+    name.toLowerCase().includes(entTenantSearchText.toLowerCase())
+  );
+
+  function handleEntitlementsSearch() {
+    setShowEntPropDropdown(false);
+    setShowEntTenantDropdown(false);
+    const filterYear = parseInt(selectedYear);
+    const filterMonth = parseInt(selectedMonthNum);
+    const found = [];
+
+    for (const row of allowedPayments) {
+      const lease = row.leases;
+      if (entSelectedProperties.length > 0 && !entSelectedProperties.includes(lease.property_id)) continue;
+      if (entSelectedTenants.length > 0 && !entSelectedTenants.includes(lease.tenants?.name)) continue;
+
+      const hijri = computeInstallmentHijri(lease.start_date_hijri, row.total_installments, row.installment_number);
+      if (!hijri || hijri.year !== filterYear || hijri.month !== filterMonth) continue;
+
+      const unitsList = lease.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
+      const status = computeStatus(row);
+
+      found.push({
+        tenant: lease.tenants?.name || "",
