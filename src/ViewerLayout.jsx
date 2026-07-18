@@ -404,11 +404,11 @@ export default function ViewerLayout() {
       const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
       return (
         <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
-          <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
-          <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
           <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
           <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
-          <span style={{ color: "#f39c12", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
+          <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
+          <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+          <span style={{ color: "#1B4D7A", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
         </div>
       );
     }
