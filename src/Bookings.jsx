@@ -4,19 +4,56 @@ import ExportToolbar from './components/ExportToolbar';
 
 const EVENT_TYPES = ['كاملة', 'نساء', 'رجال', 'أخرى'];
 const RECEIVER_STAGE1_OPTIONS = ['أبو أيوب', 'تحويل مباشر', 'نقدي مباشر'];
-const RECEIVER_FINAL_OPTIONS = ['مستلم', 'الوالد', 'لسا ما وصل'];
+const RECEIVER_FINAL_OPTIONS = ['مستلم', 'الوالد', 'لم يستلم'];
 const REMAINING_STATUS_OPTIONS = ['مستلم', 'جزئي', 'غير مستلم'];
 
 const STATUS_COLORS = {
-  'مستلم': { bg: '#E8F8F0', text: '#1E8449', label: '🟢 مستلم' },
-  'جزئي': { bg: '#FEF9E7', text: '#9A7D0A', label: '🟡 جزئي' },
-  'غير مستلم': { bg: '#FDEDEC', text: '#C0392B', label: '🔴 غير مستلم' },
+  'مستلم': { bg: '#EAFAF1', text: '#27ae60', label: 'مستلم ✓' },
+  'جزئي': { bg: '#FEF9E7', text: '#f39c12', label: 'جزئي ⚠' },
+  'غير مستلم': { bg: '#FDEDEC', text: '#e74c3c', label: 'غير مستلم ✗' },
 };
+
+const TYPE_COLORS = {
+  'كاملة': { bg: '#EAF2F8', text: '#1B4D7A', border: '#AED6F1' },
+  'نساء': { bg: '#FDF2F8', text: '#C2185B', border: '#F8BBD0' },
+  'رجال': { bg: '#E8F6F3', text: '#148F77', border: '#A2D9CE' },
+  'أخرى': { bg: '#F4F6F7', text: '#7f8c8d', border: '#D5D8DC' },
+};
+
 function formatHijriDisplay(dateStr) {
   if (!dateStr) return '—';
   const parts = dateStr.split('/');
   if (parts.length !== 3) return dateStr;
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
+function typeBadge(type) {
+  const c = TYPE_COLORS[type] || TYPE_COLORS['أخرى'];
+  return (
+    <span style={{
+      background: c.bg, color: c.text, border: `1px solid ${c.border}`,
+      padding: '4px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap',
+    }}>
+      {type}
+    </span>
+  );
+}
+
+function clientBadge(name) {
+  return (
+    <span style={{
+      background: '#FEF9E7', color: '#9A7D0A', border: '1px solid #F7DC6F',
+      padding: '4px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap',
+    }}>
+      {name}
+    </span>
+  );
+}
+
+function receiverColor(value) {
+  if (value === 'مستلم') return '#27ae60';
+  if (value === 'لم يستلم') return '#e74c3c';
+  return '#1B4D7A';
 }
 
 export default function Bookings() {
@@ -38,7 +75,7 @@ export default function Bookings() {
     remaining_amount: '',
     remaining_status: 'جزئي',
     remaining_receiver_stage1: '',
-    remaining_receiver_final: 'لسا ما وصل',
+    remaining_receiver_final: 'لم يستلم',
     notes: '',
   };
   const [form, setForm] = useState(emptyForm);
@@ -67,7 +104,6 @@ export default function Bookings() {
 
       if (bookingsErr) throw bookingsErr;
 
-      // ترتيب حسب السنة الهجرية ثم الشهر ثم اليوم
       const sorted = (data || []).sort((a, b) => {
         const pa = a.event_date_hijri.split('/').map(Number);
         const pb = b.event_date_hijri.split('/').map(Number);
@@ -103,7 +139,7 @@ export default function Bookings() {
       remaining_amount: booking.remaining_amount,
       remaining_status: booking.remaining_status,
       remaining_receiver_stage1: booking.remaining_receiver_stage1 || '',
-      remaining_receiver_final: booking.remaining_receiver_final || 'لسا ما وصل',
+      remaining_receiver_final: booking.remaining_receiver_final || 'لم يستلم',
       notes: booking.notes || '',
     });
     setEditingId(booking.id);
@@ -165,11 +201,11 @@ export default function Bookings() {
     }
   }
 
-  // إجماليات سريعة
   const totalRevenue = bookings.reduce((sum, b) => sum + Number(b.total_amount || 0), 0);
   const totalPending = bookings
     .filter((b) => b.remaining_status !== 'مستلم')
     .reduce((sum, b) => sum + Number(b.remaining_amount || 0), 0);
+  const totalCollected = totalRevenue - totalPending;
 
   return (
     <div style={{ direction: 'rtl', fontFamily: 'Cairo, sans-serif', padding: '20px' }}>
@@ -191,9 +227,8 @@ export default function Bookings() {
         </button>
       </div>
 
-         <ExportToolbar
-
-      data={bookings.map((b) => ({ ...b, event_date_hijri: formatHijriDisplay(b.event_date_hijri) }))}
+      <ExportToolbar
+        data={bookings.map((b) => ({ ...b, event_date_hijri: formatHijriDisplay(b.event_date_hijri) }))}
         columns={[
           { key: 'event_date_hijri', label: 'التاريخ الهجري' },
           { key: 'event_type', label: 'النوع' },
@@ -208,70 +243,76 @@ export default function Bookings() {
       {/* بطاقات ملخص */}
       <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <SummaryCard label="عدد الحجوزات" value={bookings.length} color="#1B4D7A" />
-        <SummaryCard label="إجمالي قيمة الحجوزات" value={`${totalRevenue.toLocaleString()} ر.س`} color="#148F77" />
-        <SummaryCard label="مبالغ لسا ما استُلمت نهائياً" value={`${totalPending.toLocaleString()} ر.س`} color="#C0392B" />
+        <SummaryCard label="إجمالي قيمة الحجوزات" value={`${totalRevenue.toLocaleString()} ر.س`} color="#1B4D7A" />
+        <SummaryCard label="إجمالي المبالغ المستلمة" value={`${totalCollected.toLocaleString()} ر.س`} color="#27ae60" />
+        <SummaryCard label="الباقي غير المحصّل" value={`${totalPending.toLocaleString()} ر.س`} color="#e74c3c" />
       </div>
 
-      {error && <div style={{ color: '#C0392B', marginBottom: '10px' }}>{error}</div>}
+      {error && <div style={{ color: '#e74c3c', marginBottom: '10px' }}>{error}</div>}
       {loading ? (
         <div>جاري التحميل...</div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-            <thead>
-              <tr style={{ background: '#F4F6F7', textAlign: 'right' }}>
-                <th style={th}>التاريخ الهجري</th>
-                <th style={th}>النوع</th>
-                <th style={th}>العميل</th>
-                <th style={th}>الإجمالي</th>
-                <th style={th}>العربون</th>
-                <th style={th}>الباقي</th>
-                <th style={th}>حالة الباقي</th>
-                <th style={th}>الاستلام النهائي (باقي)</th>
-                <th style={th}>إجراءات</th>
-              </tr>
-            </thead>
-            <tbody>
-              {bookings.map((b) => {
-                const statusStyle = STATUS_COLORS[b.remaining_status] || STATUS_COLORS['جزئي'];
-                return (
-                  <tr key={b.id} style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={td}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
-                    <td style={td}>{b.event_type}</td>
-                    <td style={td}>{b.client_name}</td>
-                    <td style={td}>{Number(b.total_amount).toLocaleString()} ر.س</td>
-                    <td style={td}>{Number(b.deposit_amount).toLocaleString()} ر.س</td>
-                    <td style={td}>{Number(b.remaining_amount).toLocaleString()} ر.س</td>
-                    <td style={td}>
-                      <span
-                        style={{
-                          background: statusStyle.bg,
-                          color: statusStyle.text,
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          fontSize: '13px',
-                        }}
-                      >
-                        {statusStyle.label}
-                      </span>
-                    </td>
-                    <td style={td}>{b.remaining_receiver_final || '—'}</td>
-                    <td style={td}>
-                      <button onClick={() => openEditForm(b)} style={actionBtn('#1B4D7A')}>تعديل</button>
-                      <button onClick={() => handleDelete(b.id)} style={actionBtn('#C0392B')}>حذف</button>
+        <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 2px 12px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+              <thead>
+                <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #e9ecef', textAlign: 'right' }}>
+                  <th style={th}>التاريخ الهجري</th>
+                  <th style={th}>النوع</th>
+                  <th style={th}>العميل</th>
+                  <th style={th}>الإجمالي</th>
+                  <th style={th}>العربون</th>
+                  <th style={th}>الباقي</th>
+                  <th style={th}>حالة الباقي</th>
+                  <th style={th}>الاستلام النهائي (باقي)</th>
+                  <th style={th}>إجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bookings.map((b, idx) => {
+                  const statusStyle = STATUS_COLORS[b.remaining_status] || STATUS_COLORS['جزئي'];
+                  return (
+                    <tr key={b.id} style={{ borderBottom: '1px solid #f0f0f0', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+                      <td style={td}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
+                      <td style={td}>{typeBadge(b.event_type)}</td>
+                      <td style={td}>{clientBadge(b.client_name)}</td>
+                      <td style={{ ...td, fontWeight: 'bold', color: '#1B4D7A' }}>{Number(b.total_amount).toLocaleString()} ر.س</td>
+                      <td style={{ ...td, fontWeight: 'bold', color: '#148F77' }}>{Number(b.deposit_amount).toLocaleString()} ر.س</td>
+                      <td style={{ ...td, fontWeight: 'bold', color: '#e74c3c' }}>{Number(b.remaining_amount).toLocaleString()} ر.س</td>
+                      <td style={td}>
+                        <span
+                          style={{
+                            background: statusStyle.bg,
+                            color: statusStyle.text,
+                            padding: '4px 12px',
+                            borderRadius: '20px',
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                          }}
+                        >
+                          {statusStyle.label}
+                        </span>
+                      </td>
+                      <td style={{ ...td, fontWeight: 'bold', color: receiverColor(b.remaining_receiver_final) }}>
+                        {b.remaining_receiver_final || '—'}
+                      </td>
+                      <td style={td}>
+                        <button onClick={() => openEditForm(b)} style={actionBtn('#1B4D7A')}>تعديل</button>
+                        <button onClick={() => handleDelete(b.id)} style={actionBtn('#e74c3c')}>حذف</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {bookings.length === 0 && (
+                  <tr>
+                    <td colSpan={9} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                      لا يوجد حجوزات حالياً
                     </td>
                   </tr>
-                );
-              })}
-              {bookings.length === 0 && (
-                <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                    لا يوجد حجوزات حالياً
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -413,8 +454,8 @@ function SummaryCard({ label, value, color }) {
   );
 }
 
-const th = { padding: '10px', borderBottom: '2px solid #ddd' };
-const td = { padding: '10px' };
+const th = { padding: '12px 16px', fontWeight: 'bold', color: '#555' };
+const td = { padding: '12px 16px' };
 const label = { display: 'block', marginTop: '10px', marginBottom: '4px', fontSize: '13px', color: '#555' };
 const input = {
   width: '100%',
