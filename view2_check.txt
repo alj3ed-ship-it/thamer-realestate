@@ -1,0 +1,20 @@
+﻿    if (window.location.pathname === "/view") {
+      setRole("viewer");
+      setCheckingSession(false);
+      return;
+    }
+    if (window.location.pathname === "/view2") {
+      setRole("viewer2");
+      setCheckingSession(false);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      console.warn("Ø§Ù†ØªÙ‡Øª Ù…Ù‡Ù„Ø© Ø§Ù„ØªØ­Ù‚Ù‚ Ù…Ù† Ø§Ù„Ø¬Ù„Ø³Ø© â€” ÙŠØ¨Ø¯Ùˆ Ø£Ù† Ù‡Ù†Ø§Ùƒ Ø¨Ø·Ø¡ ÙÙŠ Ø§ØªØµØ§Ù„ Supabase.");
+      setCheckingSession(false);
+    }, 8000);
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(timeoutId);
+      if (session) setRole("admin");
+      setCheckingSession(false);

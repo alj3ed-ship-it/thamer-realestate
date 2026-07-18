@@ -1,0 +1,39 @@
+﻿
+> src\ViewerLayout.jsx:402:  function amountDisplay(r) {
+  src\ViewerLayout.jsx:403:    if (r.status === "partial") {
+  src\ViewerLayout.jsx:404:      const remaining = Math.max((r.amount || 0) - 
+(r.paidAmount || 0), 0);
+  src\ViewerLayout.jsx:405:      return (
+  src\ViewerLayout.jsx:406:        <div style={{ whiteSpace: "nowrap", fontSize: "13px" 
+}}>
+  src\ViewerLayout.jsx:407:          <span style={{ color: "#e74c3c", fontWeight: 
+"bold" }}>{r.amount.toLocaleString()}</span>
+  src\ViewerLayout.jsx:408:          <span style={{ margin: "0 8px", color: "#ccc" 
+}}>|</span>
+  src\ViewerLayout.jsx:409:          <span style={{ color: "#27ae60", fontWeight: 
+"bold" }}>{r.paidAmount.toLocaleString()}</span>
+  src\ViewerLayout.jsx:410:          <span style={{ margin: "0 8px", color: "#ccc" 
+}}>|</span>
+  src\ViewerLayout.jsx:411:          <span style={{ color: "#f39c12", fontWeight: 
+"bold" }}>{remaining.toLocaleString()}</span>
+  src\ViewerLayout.jsx:412:        </div>
+  src\ViewerLayout.jsx:413:      );
+  src\ViewerLayout.jsx:414:    }
+  src\ViewerLayout.jsx:415:    if (r.status === "paid") {
+  src\ViewerLayout.jsx:416:      return <span style={{ color: "#27ae60", fontWeight: 
+"bold" }}>{r.amount.toLocaleString()}</span>;
+  src\ViewerLayout.jsx:417:    }
+  src\ViewerLayout.jsx:418:    return <span style={{ color: "#e74c3c", fontWeight: 
+"bold" }}>{r.amount.toLocaleString()}</span>;
+  src\ViewerLayout.jsx:419:  }
+  src\ViewerLayout.jsx:420:
+  src\ViewerLayout.jsx:421:  const entUniqueTenants = useMemo(() => {
+  src\ViewerLayout.jsx:422:    const names = new Set();
+  src\ViewerLayout.jsx:423:    payments.forEach((p) => {
+  src\ViewerLayout.jsx:424:      const name = p.leases?.tenants?.name;
+  src\ViewerLayout.jsx:425:      if (name) names.add(name);
+  src\ViewerLayout.jsx:426:    });
+  src\ViewerLayout.jsx:427:    return Array.from(names).sort((a, b) => 
+a.localeCompare(b, "ar"));
+
+
