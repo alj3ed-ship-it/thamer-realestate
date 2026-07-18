@@ -357,23 +357,23 @@ export default function ViewerLimited() {
   }
 
   function amountDisplay(r) {
-    if (r.status === "partial") {
-      const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
-      return (
-        <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
-          <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
-          <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
-          <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
-          <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
-          <span style={{ color: "#f39c12", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
-        </div>
-      );
-    }
-    if (r.status === "paid") {
-      return <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
-    }
-    return <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+  if (r.status === "partial") {
+    const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
+    return (
+      <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
+        <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
+        <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+        <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
+        <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+        <span style={{ color: "#1B4D7A", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
+      </div>
+    );
   }
+  if (r.status === "paid") {
+    return <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+  }
+  return <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+}
 
   const entUniqueTenants = useMemo(() => {
     const names = new Set();
