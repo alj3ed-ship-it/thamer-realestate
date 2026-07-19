@@ -31,6 +31,21 @@ function bookingTypeBadge(type) {
     </span>
   );
 }
+const INCOME_TYPES = ["ميز", "صوتيات", "مطبخ القصر", "أخرى"];
+const INCOME_TYPE_COLORS = {
+  "ميز": { bg: "#FEF5E7", text: "#B7950B", border: "#F9E79F" },
+  "صوتيات": { bg: "#F4ECF7", text: "#7D3C98", border: "#D2B4DE" },
+  "مطبخ القصر": { bg: "#FDF2E9", text: "#B9770E", border: "#F5CBA7" },
+  "أخرى": { bg: "#F4F6F7", text: "#7f8c8d", border: "#D5D8DC" },
+};
+function incomeTypeBadge(type) {
+  const c = INCOME_TYPE_COLORS[type] || INCOME_TYPE_COLORS["أخرى"];
+  return (
+    <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, padding: "4px 12px", borderRadius: "12px", fontSize: "13px", fontWeight: "bold", whiteSpace: "nowrap" }}>
+      {type}
+    </span>
+  );
+}
 function bookingClientBadge(name) {
   return (
     <span style={{ background: "#FEF9E7", color: "#9A7D0A", border: "1px solid #F7DC6F", padding: "4px 12px", borderRadius: "12px", fontSize: "13px", fontWeight: "bold", whiteSpace: "nowrap" }}>
@@ -192,6 +207,7 @@ export default function ViewerLayout() {
   const [defaulterPayments, setDefaulterPayments] = useState([]);
   const [projects, setProjects] = useState([]);
   const [bookings, setBookings] = useState([]);
+  const [extraIncome, setExtraIncome] = useState([]);
   const [activePage, setActivePage] = useState("properties");
 const [bookingsSelectedYear, setBookingsSelectedYear] = useState("all");
   const [bookingsExpensePct, setBookingsExpensePct] = useState(() => {
@@ -259,6 +275,7 @@ const [bookingsSelectedYear, setBookingsSelectedYear] = useState("all");
     supabase.from("defaulters").select("*").order("created_at", { ascending: false }).then(({ data }) => setDefaulters(data || []));
     supabase.from("defaulter_payments").select("*").then(({ data }) => setDefaulterPayments(data || []));
     supabase.from("projects").select("*").then(({ data }) => setProjects(data || []));
+    supabase.from("hall_extra_income").select("*").order("created_at", { ascending: false }).then(({ data }) => setExtraIncome(data || []));
     supabase.from("properties").select("id").eq("name", "قاعة مذهلة").single().then(({ data: hall }) => {
       if (hall?.id) {
         supabase.from("bookings").select("*").eq("property_id", hall.id).then(({ data }) => {
@@ -300,6 +317,11 @@ const bookingsAvailableYears = useMemo(() => {
   const bookingsFiltered = bookingsSelectedYear === "all"
     ? bookings
     : bookings.filter((b) => getBookingHijriYear(b.event_date_hijri) === bookingsSelectedYear);
+  const bookingsExtraIncomeFiltered = bookingsSelectedYear === "all"
+    ? extraIncome
+    : extraIncome.filter((e) => getBookingHijriYear(e.date_hijri) === bookingsSelectedYear);
+  const bookingsExtraIncomeTotal = bookingsExtraIncomeFiltered.reduce((s, e) => s + Number(e.amount || 0), 0);
+  const bookingsGrandTotal = bookingsFiltered.reduce((s, b) => s + Number(b.total_amount || 0), 0) + bookingsExtraIncomeTotal;
   const navStyle = (page) => ({
     padding: "10px 20px", cursor: "pointer", borderRadius: "8px",
     background: activePage === page ? "#1B4D7A" : "transparent",
@@ -1822,6 +1844,14 @@ const bookingsAvailableYears = useMemo(() => {
                       {Math.round(bookingsFiltered.reduce((s, b) => s + Number(b.total_amount || 0), 0) * (1 - bookingsExpensePct / 100)).toLocaleString()} ر.س
                     </div>
                   </div>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #148F77", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>دخل إضافي</div>
+                    <div style={{ fontWeight: "bold", color: "#148F77", fontSize: "18px" }}>{bookingsExtraIncomeTotal.toLocaleString()} ر.س</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #B9770E", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                    <div style={{ fontSize: "13px", color: "#555" }}>الإجمالي الكلي (حجوزات + دخل إضافي)</div>
+                    <div style={{ fontWeight: "bold", color: "#B9770E", fontSize: "18px" }}>{bookingsGrandTotal.toLocaleString()} ر.س</div>
+                  </div>
                 </div>
 
                 <div style={{ background: "#fff", borderRadius: "10px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", padding: "14px 20px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "10px", maxWidth: "320px" }}>
@@ -1900,6 +1930,39 @@ const bookingsAvailableYears = useMemo(() => {
                     })}
                   </tbody>
                 </table>
+
+                <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflow: "hidden", marginTop: "24px" }}>
+                  <h3 style={{ margin: 0, padding: "16px 20px 0", color: "#148F77", fontSize: "16px" }}>💰 الدخل الإضافي</h3>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+                    <thead style={{ background: "#f8f9fa", borderBottom: "2px solid #e9ecef" }}>
+                      <tr>
+                        <th style={{ padding: "12px" }}>التاريخ</th>
+                        <th style={{ padding: "12px" }}>النوع</th>
+                        <th style={{ padding: "12px" }}>مرتبط بحجز</th>
+                        <th style={{ padding: "12px" }}>العميل</th>
+                        <th style={{ padding: "12px" }}>المبلغ</th>
+                        <th style={{ padding: "12px" }}>ملاحظات</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bookingsExtraIncomeFiltered.length === 0 ? (
+                        <tr><td colSpan="6" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا يوجد دخل إضافي مسجّل</td></tr>
+                      ) : bookingsExtraIncomeFiltered.map((e) => {
+                        const linkedBooking = bookings.find((b) => b.id === e.booking_id);
+                        return (
+                          <tr key={e.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
+                            <td style={{ padding: "12px" }}>{e.date_hijri ? `${formatHijriDisplay(e.date_hijri)} هـ` : "—"}</td>
+                            <td style={{ padding: "12px" }}>{incomeTypeBadge(e.income_type)}</td>
+                            <td style={{ padding: "12px" }}>{linkedBooking ? bookingClientBadge(linkedBooking.client_name) : "— مستقل —"}</td>
+                            <td style={{ padding: "12px" }}>{e.client_name || "—"}</td>
+                            <td style={{ padding: "12px", fontWeight: "bold", color: "#148F77" }}>{Number(e.amount || 0).toLocaleString()} ر.س</td>
+                            <td style={{ padding: "12px", color: "#9ca3af", fontSize: "13px" }}>{e.notes || "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </>
