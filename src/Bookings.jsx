@@ -94,6 +94,7 @@ export default function Bookings() {
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [showExtraForm, setShowExtraForm] = useState(false);
+  const [showExtraDetails, setShowExtraDetails] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editingExtraId, setEditingExtraId] = useState(null);
   const [hallId, setHallId] = useState(null);
@@ -452,7 +453,7 @@ export default function Bookings() {
         <SummaryCard label="إجمالي المبالغ المستلمة" value={`${totalCollected.toLocaleString()} ر.س`} color="#27ae60" />
         <SummaryCard label="الباقي غير المحصّل" value={`${totalPending.toLocaleString()} ر.س`} color="#e74c3c" />
         <SummaryCard label={`صافي الدخل (بعد خصم ${expensePct}%)`} value={`${totalNet.toLocaleString()} ر.س`} color="#8E44AD" />
-        <SummaryCard label="دخل إضافي" value={`${totalExtraIncome.toLocaleString()} ر.س`} color="#148F77" />
+        <SummaryCard label="دخل إضافي" value={`${totalExtraIncome.toLocaleString()} ر.س`} color="#148F77" onClick={() => setShowExtraDetails(true)} />
         <SummaryCard label="الإجمالي الكلي (حجوزات + دخل إضافي)" value={`${grandTotal.toLocaleString()} ر.س`} color="#B9770E" />
       </div>
 
@@ -572,10 +573,19 @@ export default function Bookings() {
               </table>
             </div>
           </div>
+        </>
+      )}
 
-          {/* جدول الدخل الإضافي */}
-          <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 2px 12px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-            <h3 style={{ margin: 0, padding: '16px 20px 0', color: '#148F77', fontSize: '16px' }}>💰 الدخل الإضافي</h3>
+      {/* نافذة تفاصيل الدخل الإضافي (تُفتح بالضغط على بطاقة "دخل إضافي") */}
+      {showExtraDetails && (
+        <div style={overlayStyle} onClick={() => setShowExtraDetails(false)}>
+          <div style={wideModalStyle} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: '#148F77' }}>💰 تفاصيل الدخل الإضافي</h3>
+              <button onClick={() => setShowExtraDetails(false)} style={{ ...actionBtn('#999'), padding: '8px 16px' }}>
+                إغلاق ✕
+              </button>
+            </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                 <thead>
@@ -618,7 +628,7 @@ export default function Bookings() {
               </table>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* فورم الإضافة/التعديل - الحجوزات */}
@@ -823,11 +833,20 @@ export default function Bookings() {
   );
 }
 
-function SummaryCard({ label, value, color }) {
+function SummaryCard({ label, value, color, onClick }) {
   return (
-    <div style={{ background: '#fff', border: `2px solid ${color}`, borderRadius: '10px', padding: '14px 20px', minWidth: '180px' }}>
+    <div
+      onClick={onClick}
+      style={{
+        background: '#fff', border: `2px solid ${color}`, borderRadius: '10px', padding: '14px 20px', minWidth: '180px',
+        cursor: onClick ? 'pointer' : 'default', transition: 'transform 0.15s',
+      }}
+      onMouseEnter={(e) => { if (onClick) e.currentTarget.style.transform = 'translateY(-2px)'; }}
+      onMouseLeave={(e) => { if (onClick) e.currentTarget.style.transform = 'translateY(0)'; }}
+    >
       <div style={{ fontSize: '13px', color: '#666' }}>{label}</div>
       <div style={{ fontSize: '20px', fontWeight: 'bold', color }}>{value}</div>
+      {onClick && <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>اضغط للتفاصيل ◂</div>}
     </div>
   );
 }
@@ -863,6 +882,10 @@ const overlayStyle = {
 };
 const modalStyle = {
   background: '#fff', borderRadius: '12px', padding: '24px', width: '420px', maxHeight: '90vh', overflowY: 'auto',
+  direction: 'rtl', fontFamily: 'Cairo, sans-serif',
+};
+const wideModalStyle = {
+  background: '#fff', borderRadius: '12px', padding: '24px', width: '90%', maxWidth: '900px', maxHeight: '85vh', overflowY: 'auto',
   direction: 'rtl', fontFamily: 'Cairo, sans-serif',
 };
 function actionBtn(color) {

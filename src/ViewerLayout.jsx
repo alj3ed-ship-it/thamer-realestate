@@ -210,6 +210,7 @@ export default function ViewerLayout() {
   const [extraIncome, setExtraIncome] = useState([]);
   const [activePage, setActivePage] = useState("properties");
 const [bookingsSelectedYear, setBookingsSelectedYear] = useState("all");
+const [bookingsShowExtraDetails, setBookingsShowExtraDetails] = useState(false);
   const [bookingsExpensePct, setBookingsExpensePct] = useState(() => {
     const saved = localStorage.getItem("bookings_expense_pct");
     return saved ? Number(saved) : 25;
@@ -1844,9 +1845,12 @@ const bookingsAvailableYears = useMemo(() => {
                       {Math.round(bookingsFiltered.reduce((s, b) => s + Number(b.total_amount || 0), 0) * (1 - bookingsExpensePct / 100)).toLocaleString()} ر.س
                     </div>
                   </div>
-                  <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #148F77", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                  <div
+                    onClick={() => setBookingsShowExtraDetails(true)}
+                    style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #148F77", borderRadius: "10px", padding: "14px 20px", textAlign: "center", cursor: "pointer" }}>
                     <div style={{ fontSize: "13px", color: "#555" }}>دخل إضافي</div>
                     <div style={{ fontWeight: "bold", color: "#148F77", fontSize: "18px" }}>{bookingsExtraIncomeTotal.toLocaleString()} ر.س</div>
+                    <div style={{ fontSize: "11px", color: "#999", marginTop: "4px" }}>اضغط للتفاصيل ◂</div>
                   </div>
                   <div style={{ flex: 1, minWidth: "150px", background: "#fff", border: "2px solid #B9770E", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
                     <div style={{ fontSize: "13px", color: "#555" }}>الإجمالي الكلي (حجوزات + دخل إضافي)</div>
@@ -1930,42 +1934,62 @@ const bookingsAvailableYears = useMemo(() => {
                     })}
                   </tbody>
                 </table>
-
-                <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflow: "hidden", marginTop: "24px" }}>
-                  <h3 style={{ margin: 0, padding: "16px 20px 0", color: "#148F77", fontSize: "16px" }}>💰 الدخل الإضافي</h3>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
-                    <thead style={{ background: "#f8f9fa", borderBottom: "2px solid #e9ecef" }}>
-                      <tr>
-                        <th style={{ padding: "12px" }}>التاريخ</th>
-                        <th style={{ padding: "12px" }}>النوع</th>
-                        <th style={{ padding: "12px" }}>مرتبط بحجز</th>
-                        <th style={{ padding: "12px" }}>العميل</th>
-                        <th style={{ padding: "12px" }}>المبلغ</th>
-                        <th style={{ padding: "12px" }}>ملاحظات</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bookingsExtraIncomeFiltered.length === 0 ? (
-                        <tr><td colSpan="6" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا يوجد دخل إضافي مسجّل</td></tr>
-                      ) : bookingsExtraIncomeFiltered.map((e) => {
-                        const linkedBooking = bookings.find((b) => b.id === e.booking_id);
-                        return (
-                          <tr key={e.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
-                            <td style={{ padding: "12px" }}>{e.date_hijri ? `${formatHijriDisplay(e.date_hijri)} هـ` : "—"}</td>
-                            <td style={{ padding: "12px" }}>{incomeTypeBadge(e.income_type)}</td>
-                            <td style={{ padding: "12px" }}>{linkedBooking ? bookingClientBadge(linkedBooking.client_name) : "— مستقل —"}</td>
-                            <td style={{ padding: "12px" }}>{e.client_name || "—"}</td>
-                            <td style={{ padding: "12px", fontWeight: "bold", color: "#148F77" }}>{Number(e.amount || 0).toLocaleString()} ر.س</td>
-                            <td style={{ padding: "12px", color: "#9ca3af", fontSize: "13px" }}>{e.notes || "—"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
               </div>
             )}
           </>
+        )}
+
+        {bookingsShowExtraDetails && (
+          <div
+            onClick={() => setBookingsShowExtraDetails(false)}
+            style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ background: "#fff", borderRadius: "12px", padding: "24px", width: "90%", maxWidth: "900px", maxHeight: "85vh", overflowY: "auto", direction: "rtl" }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                <h3 style={{ margin: 0, color: "#148F77" }}>💰 تفاصيل الدخل الإضافي</h3>
+                <button
+                  onClick={() => setBookingsShowExtraDetails(false)}
+                  style={{ background: "#999", color: "#fff", border: "none", padding: "8px 16px", borderRadius: "6px", cursor: "pointer", fontSize: "13px" }}
+                >
+                  إغلاق ✕
+                </button>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+                  <thead style={{ background: "#f8f9fa", borderBottom: "2px solid #e9ecef" }}>
+                    <tr>
+                      <th style={{ padding: "12px" }}>التاريخ</th>
+                      <th style={{ padding: "12px" }}>النوع</th>
+                      <th style={{ padding: "12px" }}>مرتبط بحجز</th>
+                      <th style={{ padding: "12px" }}>العميل</th>
+                      <th style={{ padding: "12px" }}>المبلغ</th>
+                      <th style={{ padding: "12px" }}>ملاحظات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bookingsExtraIncomeFiltered.length === 0 ? (
+                      <tr><td colSpan="6" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا يوجد دخل إضافي مسجّل</td></tr>
+                    ) : bookingsExtraIncomeFiltered.map((e) => {
+                      const linkedBooking = bookings.find((b) => b.id === e.booking_id);
+                      return (
+                        <tr key={e.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
+                          <td style={{ padding: "12px" }}>{e.date_hijri ? `${formatHijriDisplay(e.date_hijri)} هـ` : "—"}</td>
+                          <td style={{ padding: "12px" }}>{incomeTypeBadge(e.income_type)}</td>
+                          <td style={{ padding: "12px" }}>{linkedBooking ? bookingClientBadge(linkedBooking.client_name) : "— مستقل —"}</td>
+                          <td style={{ padding: "12px" }}>{e.client_name || "—"}</td>
+                          <td style={{ padding: "12px", fontWeight: "bold", color: "#148F77" }}>{Number(e.amount || 0).toLocaleString()} ر.س</td>
+                          <td style={{ padding: "12px", color: "#9ca3af", fontSize: "13px" }}>{e.notes || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
