@@ -10,6 +10,7 @@ const RECEIVER_STAGE1_OPTIONS = ['أبو أيوب', 'تحويل مباشر', 'ن
 const RECEIVER_FINAL_OPTIONS = ['مستلم', 'الوالد', 'لم يستلم'];
 const REMAINING_STATUS_OPTIONS = ['مستلم', 'جزئي', 'غير مستلم'];
 const DEFAULT_EXPENSE_PCT = 25;
+const INCOME_TYPES = ['ميز', 'صوتيات', 'مطبخ القصر', 'أخرى'];
 
 const STATUS_COLORS = {
   'مستلم': { bg: '#EAFAF1', text: '#27ae60', label: 'مستلم ✓' },
@@ -21,6 +22,13 @@ const TYPE_COLORS = {
   'كاملة': { bg: '#EAF2F8', text: '#1B4D7A', border: '#AED6F1' },
   'نساء': { bg: '#FDF2F8', text: '#C2185B', border: '#F8BBD0' },
   'رجال': { bg: '#E8F6F3', text: '#148F77', border: '#A2D9CE' },
+  'أخرى': { bg: '#F4F6F7', text: '#7f8c8d', border: '#D5D8DC' },
+};
+
+const INCOME_TYPE_COLORS = {
+  'ميز': { bg: '#FEF5E7', text: '#B7950B', border: '#F9E79F' },
+  'صوتيات': { bg: '#F4ECF7', text: '#7D3C98', border: '#D2B4DE' },
+  'مطبخ القصر': { bg: '#FDF2E9', text: '#B9770E', border: '#F5CBA7' },
   'أخرى': { bg: '#F4F6F7', text: '#7f8c8d', border: '#D5D8DC' },
 };
 
@@ -50,6 +58,18 @@ function typeBadge(type) {
   );
 }
 
+function incomeTypeBadge(type) {
+  const c = INCOME_TYPE_COLORS[type] || INCOME_TYPE_COLORS['أخرى'];
+  return (
+    <span style={{
+      background: c.bg, color: c.text, border: `1px solid ${c.border}`,
+      padding: '4px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap',
+    }}>
+      {type}
+    </span>
+  );
+}
+
 function clientBadge(name) {
   return (
     <span style={{
@@ -69,10 +89,13 @@ function receiverColor(value) {
 
 export default function Bookings() {
   const [bookings, setBookings] = useState([]);
+  const [extraIncome, setExtraIncome] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [showExtraForm, setShowExtraForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [editingExtraId, setEditingExtraId] = useState(null);
   const [hallId, setHallId] = useState(null);
   const [selectedYear, setSelectedYear] = useState('all');
   const [expensePct, setExpensePct] = useState(() => {
@@ -95,6 +118,16 @@ export default function Bookings() {
     notes: '',
   };
   const [form, setForm] = useState(emptyForm);
+
+  const emptyExtraForm = {
+    booking_id: '',
+    income_type: INCOME_TYPES[0],
+    amount: '',
+    date_hijri: '',
+    client_name: '',
+    notes: '',
+  };
+  const [extraForm, setExtraForm] = useState(emptyExtraForm);
 
   useEffect(() => {
     loadHallAndBookings();
@@ -133,6 +166,14 @@ export default function Bookings() {
       });
 
       setBookings(sorted);
+
+      const { data: extraData, error: extraErr } = await supabase
+        .from('hall_extra_income')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (extraErr) throw extraErr;
+      setExtraIncome(extraData || []);
     } catch (err) {
       console.error(err);
       setError('حدث خطأ أثناء تحميل الحجوزات: ' + err.message);
@@ -164,6 +205,25 @@ export default function Bookings() {
     });
     setEditingId(booking.id);
     setShowForm(true);
+  }
+
+  function openAddExtraForm() {
+    setExtraForm(emptyExtraForm);
+    setEditingExtraId(null);
+    setShowExtraForm(true);
+  }
+
+  function openEditExtraForm(entry) {
+    setExtraForm({
+      booking_id: entry.booking_id || '',
+      income_type: entry.income_type,
+      amount: entry.amount,
+      date_hijri: entry.date_hijri || '',
+      client_name: entry.client_name || '',
+      notes: entry.notes || '',
+    });
+    setEditingExtraId(entry.id);
+    setShowExtraForm(true);
   }
 
   async function handleSave() {
@@ -210,10 +270,57 @@ export default function Bookings() {
     }
   }
 
+  async function handleSaveExtra() {
+    if (!extraForm.income_type || !extraForm.amount) {
+      alert('الرجاء تعبئة نوع الدخل والمبلغ على الأقل');
+      return;
+    }
+
+    const payload = {
+      booking_id: extraForm.booking_id || null,
+      income_type: extraForm.income_type,
+      amount: Number(extraForm.amount),
+      date_hijri: extraForm.date_hijri || null,
+      client_name: extraForm.client_name || null,
+      notes: extraForm.notes || null,
+    };
+
+    try {
+      if (editingExtraId) {
+        const { error: updateErr } = await supabase
+          .from('hall_extra_income')
+          .update(payload)
+          .eq('id', editingExtraId);
+        if (updateErr) throw updateErr;
+      } else {
+        const { error: insertErr } = await supabase
+          .from('hall_extra_income')
+          .insert([payload]);
+        if (insertErr) throw insertErr;
+      }
+      setShowExtraForm(false);
+      loadHallAndBookings();
+    } catch (err) {
+      console.error(err);
+      alert('خطأ أثناء الحفظ: ' + err.message);
+    }
+  }
+
   async function handleDelete(id) {
     if (!confirm('متأكد تبي تحذف هذا الحجز؟')) return;
     try {
       const { error: delErr } = await supabase.from('bookings').delete().eq('id', id);
+      if (delErr) throw delErr;
+      loadHallAndBookings();
+    } catch (err) {
+      alert('خطأ أثناء الحذف: ' + err.message);
+    }
+  }
+
+  async function handleDeleteExtra(id) {
+    if (!confirm('متأكد تبي تحذف هذا الدخل الإضافي؟')) return;
+    try {
+      const { error: delErr } = await supabase.from('hall_extra_income').delete().eq('id', id);
       if (delErr) throw delErr;
       loadHallAndBookings();
     } catch (err) {
@@ -253,31 +360,57 @@ export default function Bookings() {
     ? bookings
     : bookings.filter((b) => getHijriYear(b.event_date_hijri) === selectedYear);
 
+  const filteredExtraIncome = selectedYear === 'all'
+    ? extraIncome
+    : extraIncome.filter((e) => getHijriYear(e.date_hijri) === selectedYear);
+
   const totalRevenue = filteredBookings.reduce((sum, b) => sum + Number(b.total_amount || 0), 0);
   const totalPending = filteredBookings
     .filter((b) => b.remaining_status !== 'مستلم')
     .reduce((sum, b) => sum + Number(b.remaining_amount || 0), 0);
   const totalCollected = totalRevenue - totalPending;
   const totalNet = Math.round(totalRevenue * (1 - expensePct / 100));
+  const totalExtraIncome = filteredExtraIncome.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  const grandTotal = totalRevenue + totalExtraIncome;
+
+  function bookingLabel(b) {
+    return `${formatHijriDisplay(b.event_date_hijri)} هـ — ${b.client_name}`;
+  }
 
   return (
     <div style={{ direction: 'rtl', fontFamily: 'Cairo, sans-serif', padding: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <h2 style={{ margin: 0 }}>🎉 حجوزات قاعة مذهلة</h2>
-        <button
-          onClick={openAddForm}
-          style={{
-            background: '#1B4D7A',
-            color: '#fff',
-            border: 'none',
-            padding: '10px 20px',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontFamily: 'Cairo, sans-serif',
-          }}
-        >
-          + إضافة حجز جديد
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            onClick={openAddExtraForm}
+            style={{
+              background: '#148F77',
+              color: '#fff',
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontFamily: 'Cairo, sans-serif',
+            }}
+          >
+            + إضافة دخل إضافي
+          </button>
+          <button
+            onClick={openAddForm}
+            style={{
+              background: '#1B4D7A',
+              color: '#fff',
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontFamily: 'Cairo, sans-serif',
+            }}
+          >
+            + إضافة حجز جديد
+          </button>
+        </div>
       </div>
 
       <ExportToolbar
@@ -319,6 +452,8 @@ export default function Bookings() {
         <SummaryCard label="إجمالي المبالغ المستلمة" value={`${totalCollected.toLocaleString()} ر.س`} color="#27ae60" />
         <SummaryCard label="الباقي غير المحصّل" value={`${totalPending.toLocaleString()} ر.س`} color="#e74c3c" />
         <SummaryCard label={`صافي الدخل (بعد خصم ${expensePct}%)`} value={`${totalNet.toLocaleString()} ر.س`} color="#8E44AD" />
+        <SummaryCard label="دخل إضافي" value={`${totalExtraIncome.toLocaleString()} ر.س`} color="#148F77" />
+        <SummaryCard label="الإجمالي الكلي (حجوزات + دخل إضافي)" value={`${grandTotal.toLocaleString()} ر.س`} color="#B9770E" />
       </div>
 
       {/* نسبة المصاريف القابلة للتعديل */}
@@ -374,71 +509,119 @@ export default function Bookings() {
       {loading ? (
         <div>جاري التحميل...</div>
       ) : (
-        <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 2px 12px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-              <thead>
-                <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #e9ecef', textAlign: 'right' }}>
-                  <th style={th}>التاريخ الهجري</th>
-                  <th style={th}>النوع</th>
-                  <th style={th}>العميل</th>
-                  <th style={th}>الإجمالي</th>
-                  <th style={th}>العربون</th>
-                  <th style={th}>الباقي</th>
-                  <th style={th}>حالة الباقي</th>
-                  <th style={th}>الاستلام النهائي (باقي)</th>
-                  <th style={th}>إجراءات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredBookings.map((b, idx) => {
-                  const statusStyle = STATUS_COLORS[b.remaining_status] || STATUS_COLORS['جزئي'];
-                  return (
-                    <tr key={b.id} style={{ borderBottom: '1px solid #f0f0f0', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                      <td style={td}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
-                      <td style={td}>{typeBadge(b.event_type)}</td>
-                      <td style={td}>{clientBadge(b.client_name)}</td>
-                      <td style={{ ...td, fontWeight: 'bold', color: '#1B4D7A' }}>{Number(b.total_amount).toLocaleString()} ر.س</td>
-                      <td style={{ ...td, fontWeight: 'bold', color: '#148F77' }}>{Number(b.deposit_amount).toLocaleString()} ر.س</td>
-                      <td style={{ ...td, fontWeight: 'bold', color: '#e74c3c' }}>{Number(b.remaining_amount).toLocaleString()} ر.س</td>
-                      <td style={td}>
-                        <span
-                          style={{
-                            background: statusStyle.bg,
-                            color: statusStyle.text,
-                            padding: '4px 12px',
-                            borderRadius: '20px',
-                            fontSize: '12px',
-                            fontWeight: 'bold',
-                          }}
-                        >
-                          {statusStyle.label}
-                        </span>
-                      </td>
-                      <td style={{ ...td, fontWeight: 'bold', color: receiverColor(b.remaining_receiver_final) }}>
-                        {b.remaining_receiver_final || '—'}
-                      </td>
-                      <td style={td}>
-                        <button onClick={() => openEditForm(b)} style={actionBtn('#1B4D7A')}>تعديل</button>
-                        <button onClick={() => handleDelete(b.id)} style={actionBtn('#e74c3c')}>حذف</button>
+        <>
+          <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 2px 12px rgba(0,0,0,0.07)', overflow: 'hidden', marginBottom: '24px' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #e9ecef', textAlign: 'right' }}>
+                    <th style={th}>التاريخ الهجري</th>
+                    <th style={th}>النوع</th>
+                    <th style={th}>العميل</th>
+                    <th style={th}>الإجمالي</th>
+                    <th style={th}>العربون</th>
+                    <th style={th}>الباقي</th>
+                    <th style={th}>حالة الباقي</th>
+                    <th style={th}>الاستلام النهائي (باقي)</th>
+                    <th style={th}>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBookings.map((b, idx) => {
+                    const statusStyle = STATUS_COLORS[b.remaining_status] || STATUS_COLORS['جزئي'];
+                    return (
+                      <tr key={b.id} style={{ borderBottom: '1px solid #f0f0f0', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+                        <td style={td}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
+                        <td style={td}>{typeBadge(b.event_type)}</td>
+                        <td style={td}>{clientBadge(b.client_name)}</td>
+                        <td style={{ ...td, fontWeight: 'bold', color: '#1B4D7A' }}>{Number(b.total_amount).toLocaleString()} ر.س</td>
+                        <td style={{ ...td, fontWeight: 'bold', color: '#148F77' }}>{Number(b.deposit_amount).toLocaleString()} ر.س</td>
+                        <td style={{ ...td, fontWeight: 'bold', color: '#e74c3c' }}>{Number(b.remaining_amount).toLocaleString()} ر.س</td>
+                        <td style={td}>
+                          <span
+                            style={{
+                              background: statusStyle.bg,
+                              color: statusStyle.text,
+                              padding: '4px 12px',
+                              borderRadius: '20px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                            }}
+                          >
+                            {statusStyle.label}
+                          </span>
+                        </td>
+                        <td style={{ ...td, fontWeight: 'bold', color: receiverColor(b.remaining_receiver_final) }}>
+                          {b.remaining_receiver_final || '—'}
+                        </td>
+                        <td style={td}>
+                          <button onClick={() => openEditForm(b)} style={actionBtn('#1B4D7A')}>تعديل</button>
+                          <button onClick={() => handleDelete(b.id)} style={actionBtn('#e74c3c')}>حذف</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredBookings.length === 0 && (
+                    <tr>
+                      <td colSpan={9} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                        لا يوجد حجوزات لهذه السنة
                       </td>
                     </tr>
-                  );
-                })}
-                {filteredBookings.length === 0 && (
-                  <tr>
-                    <td colSpan={9} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                      لا يوجد حجوزات لهذه السنة
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+
+          {/* جدول الدخل الإضافي */}
+          <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 2px 12px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+            <h3 style={{ margin: 0, padding: '16px 20px 0', color: '#148F77', fontSize: '16px' }}>💰 الدخل الإضافي</h3>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #e9ecef', textAlign: 'right' }}>
+                    <th style={th}>التاريخ</th>
+                    <th style={th}>النوع</th>
+                    <th style={th}>مرتبط بحجز</th>
+                    <th style={th}>العميل</th>
+                    <th style={th}>المبلغ</th>
+                    <th style={th}>ملاحظات</th>
+                    <th style={th}>إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredExtraIncome.map((e, idx) => {
+                    const linkedBooking = bookings.find((b) => b.id === e.booking_id);
+                    return (
+                      <tr key={e.id} style={{ borderBottom: '1px solid #f0f0f0', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+                        <td style={td}>{e.date_hijri ? `${formatHijriDisplay(e.date_hijri)} هـ` : '—'}</td>
+                        <td style={td}>{incomeTypeBadge(e.income_type)}</td>
+                        <td style={td}>{linkedBooking ? clientBadge(linkedBooking.client_name) : '— مستقل —'}</td>
+                        <td style={td}>{e.client_name || '—'}</td>
+                        <td style={{ ...td, fontWeight: 'bold', color: '#148F77' }}>{Number(e.amount).toLocaleString()} ر.س</td>
+                        <td style={td}>{e.notes || '—'}</td>
+                        <td style={td}>
+                          <button onClick={() => openEditExtraForm(e)} style={actionBtn('#1B4D7A')}>تعديل</button>
+                          <button onClick={() => handleDeleteExtra(e.id)} style={actionBtn('#e74c3c')}>حذف</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredExtraIncome.length === 0 && (
+                    <tr>
+                      <td colSpan={7} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+                        لا يوجد دخل إضافي مسجّل
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
-      {/* فورم الإضافة/التعديل */}
+      {/* فورم الإضافة/التعديل - الحجوزات */}
       {showForm && (
         <div style={overlayStyle}>
           <div style={modalStyle}>
@@ -557,6 +740,79 @@ export default function Bookings() {
                 حفظ
               </button>
               <button onClick={() => setShowForm(false)} style={{ ...actionBtn('#999'), flex: 1, padding: '10px' }}>
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* فورم الإضافة/التعديل - الدخل الإضافي */}
+      {showExtraForm && (
+        <div style={overlayStyle}>
+          <div style={modalStyle}>
+            <h3>{editingExtraId ? 'تعديل دخل إضافي' : 'إضافة دخل إضافي'}</h3>
+
+            <label style={label}>نوع الدخل</label>
+            <select
+              value={extraForm.income_type}
+              onChange={(e) => setExtraForm({ ...extraForm, income_type: e.target.value })}
+              style={input}
+            >
+              {INCOME_TYPES.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+
+            <label style={label}>مرتبط بحجز (اختياري)</label>
+            <select
+              value={extraForm.booking_id}
+              onChange={(e) => setExtraForm({ ...extraForm, booking_id: e.target.value })}
+              style={input}
+            >
+              <option value="">— دخل مستقل (غير مرتبط) —</option>
+              {bookings.map((b) => (
+                <option key={b.id} value={b.id}>{bookingLabel(b)}</option>
+              ))}
+            </select>
+
+            <label style={label}>المبلغ</label>
+            <input
+              type="number"
+              value={extraForm.amount}
+              onChange={(e) => setExtraForm({ ...extraForm, amount: e.target.value })}
+              style={input}
+            />
+
+            <label style={label}>التاريخ (هجري - يوم/شهر/سنة) - اختياري</label>
+            <input
+              type="text"
+              placeholder="مثال: 24/1/1448"
+              value={extraForm.date_hijri}
+              onChange={(e) => setExtraForm({ ...extraForm, date_hijri: e.target.value })}
+              style={input}
+            />
+
+            <label style={label}>اسم العميل (اختياري)</label>
+            <input
+              type="text"
+              value={extraForm.client_name}
+              onChange={(e) => setExtraForm({ ...extraForm, client_name: e.target.value })}
+              style={input}
+            />
+
+            <label style={label}>ملاحظات</label>
+            <textarea
+              value={extraForm.notes}
+              onChange={(e) => setExtraForm({ ...extraForm, notes: e.target.value })}
+              style={{ ...input, minHeight: '60px' }}
+            />
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+              <button onClick={handleSaveExtra} style={{ ...actionBtn('#148F77'), flex: 1, padding: '10px' }}>
+                حفظ
+              </button>
+              <button onClick={() => setShowExtraForm(false)} style={{ ...actionBtn('#999'), flex: 1, padding: '10px' }}>
                 إلغاء
               </button>
             </div>
