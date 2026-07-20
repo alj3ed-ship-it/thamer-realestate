@@ -227,6 +227,7 @@ export default function Bookings() {
     setShowExtraForm(true);
   }
 
+  // الحفظ من لوحة الأدمن يُعتبر معتمداً مباشرة (status = approved)
   async function handleSave() {
     if (!form.event_date_hijri || !form.client_name || !form.total_amount) {
       alert('الرجاء تعبئة التاريخ واسم العميل والمبلغ الإجمالي على الأقل');
@@ -247,6 +248,8 @@ export default function Bookings() {
       remaining_receiver_stage1: form.remaining_receiver_stage1,
       remaining_receiver_final: form.remaining_receiver_final,
       notes: form.notes,
+      status: 'approved',
+      previous_data: null,
       updated_at: new Date().toISOString(),
     };
 
@@ -329,20 +332,86 @@ export default function Bookings() {
     }
   }
 
-  // استخراج كل السنين الموجودة فعلياً بالبيانات (ديناميكياً)
+  // === اعتماد / رفض ما أدخله المحاسب ===
+  async function handleApproveBooking(booking) {
+    try {
+      const { error: approveErr } = await supabase
+        .from('bookings')
+        .update({ status: 'approved', previous_data: null, needs_review: false, admin_note: null })
+        .eq('id', booking.id);
+      if (approveErr) throw approveErr;
+      loadHallAndBookings();
+    } catch (err) {
+      alert('خطأ أثناء الاعتماد: ' + err.message);
+    }
+  }
+
+  async function handleRejectBooking(booking) {
+    const isEdit = !!booking.previous_data;
+    const reason = prompt(
+      isEdit ? 'سبب رفض التعديل (اختياري) — راح يظهر للمحاسب:' : 'سبب رفض الحجز (اختياري) — راح يظهر للمحاسب:',
+      ''
+    );
+    if (reason === null) return; // ضغط إلغاء
+
+    try {
+      if (isEdit) {
+        // نرجّع البيانات المعتمدة القديمة، ونترك إشعار للمحاسب بدل ما نخفي الموضوع
+        const { error: restoreErr } = await supabase
+          .from('bookings')
+          .update({
+            ...booking.previous_data,
+            status: 'approved',
+            previous_data: null,
+            needs_review: true,
+            admin_note: reason || 'تم رفض التعديل الأخير، وأُعيد الحجز لآخر بيانات معتمدة.',
+          })
+          .eq('id', booking.id);
+        if (restoreErr) throw restoreErr;
+      } else {
+        // حجز جديد بالكامل: لا نحذفه فوراً، نتركه كإشعار رفض يشوفه المحاسب ثم يختفي بعد اطلاعه
+        const { error: rejectErr } = await supabase
+          .from('bookings')
+          .update({
+            status: 'rejected',
+            needs_review: true,
+            admin_note: reason || 'تم رفض هذا الحجز.',
+          })
+          .eq('id', booking.id);
+        if (rejectErr) throw rejectErr;
+      }
+      loadHallAndBookings();
+    } catch (err) {
+      alert('خطأ أثناء الرفض: ' + err.message);
+    }
+  }
+
+  // بانتظار الاعتماد (من المحاسب) — لا تدخل في الإحصائيات أدناه
+  const pendingBookings = useMemo(
+    () => bookings.filter((b) => b.status === 'pending'),
+    [bookings]
+  );
+
+  // المعتمدة فقط تدخل في الجدول الرئيسي والإحصائيات (صفوف بدون status تُعتبر معتمدة، للتوافق مع البيانات القديمة)
+  const approvedBookings = useMemo(
+    () => bookings.filter((b) => (b.status || 'approved') === 'approved'),
+    [bookings]
+  );
+
+  // استخراج كل السنين الموجودة فعلياً بالبيانات المعتمدة (ديناميكياً)
   const availableYears = useMemo(() => {
     const years = new Set();
-    bookings.forEach((b) => {
+    approvedBookings.forEach((b) => {
       const y = getHijriYear(b.event_date_hijri);
       if (y) years.add(y);
     });
     return Array.from(years).sort();
-  }, [bookings]);
+  }, [approvedBookings]);
 
   // بيانات الرسم البياني: لكل سنة عدد الحجوزات، الدخل، الصافي بعد خصم نسبة المصاريف
   const yearlyStats = useMemo(() => {
     const map = {};
-    bookings.forEach((b) => {
+    approvedBookings.forEach((b) => {
       const y = getHijriYear(b.event_date_hijri);
       if (!y) return;
       if (!map[y]) map[y] = { year: y, count: 0, revenue: 0 };
@@ -355,11 +424,11 @@ export default function Bookings() {
         ...row,
         net: Math.round(row.revenue * (1 - expensePct / 100)),
       }));
-  }, [bookings, expensePct]);
+  }, [approvedBookings, expensePct]);
 
   const filteredBookings = selectedYear === 'all'
-    ? bookings
-    : bookings.filter((b) => getHijriYear(b.event_date_hijri) === selectedYear);
+    ? approvedBookings
+    : approvedBookings.filter((b) => getHijriYear(b.event_date_hijri) === selectedYear);
 
   const filteredExtraIncome = selectedYear === 'all'
     ? extraIncome
@@ -413,6 +482,55 @@ export default function Bookings() {
           </button>
         </div>
       </div>
+
+      {/* ==== قسم بانتظار الاعتماد — تعديلات/حجوزات المحاسب ==== */}
+      {pendingBookings.length > 0 && (
+        <div style={{
+          background: '#FFFBF3', border: '2px solid #F5CBA7', borderRadius: '12px',
+          padding: '18px 20px', marginBottom: '24px',
+        }}>
+          <h3 style={{ margin: '0 0 14px', color: '#B9770E', fontSize: '16px' }}>
+            ⏳ بانتظار الاعتماد ({pendingBookings.length})
+          </h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', background: '#fff', borderRadius: '8px', overflow: 'hidden' }}>
+              <thead>
+                <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #e9ecef', textAlign: 'right' }}>
+                  <th style={th}>النوع</th>
+                  <th style={th}>التاريخ الهجري</th>
+                  <th style={th}>العميل</th>
+                  <th style={th}>الإجمالي</th>
+                  <th style={th}>مقدّم من</th>
+                  <th style={th}>إجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingBookings.map((b, idx) => (
+                  <tr key={b.id} style={{ borderBottom: '1px solid #f0f0f0', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
+                    <td style={td}>
+                      <span style={{
+                        background: b.previous_data ? '#EAF2F8' : '#EAFAF1',
+                        color: b.previous_data ? '#1B4D7A' : '#27ae60',
+                        padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold',
+                      }}>
+                        {b.previous_data ? 'تعديل على حجز' : 'حجز جديد'}
+                      </span>
+                    </td>
+                    <td style={td}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
+                    <td style={td}>{clientBadge(b.client_name)}</td>
+                    <td style={{ ...td, fontWeight: 'bold', color: '#1B4D7A' }}>{Number(b.total_amount || 0).toLocaleString()} ر.س</td>
+                    <td style={td}>{b.submitted_by || 'المحاسب'}</td>
+                    <td style={td}>
+                      <button onClick={() => handleApproveBooking(b)} style={actionBtn('#27ae60')}>✅ اعتماد</button>
+                      <button onClick={() => handleRejectBooking(b)} style={actionBtn('#e74c3c')}>❌ رفض</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <ExportToolbar
         data={filteredBookings.map((b) => ({ ...b, event_date_hijri: formatHijriDisplay(b.event_date_hijri) }))}
