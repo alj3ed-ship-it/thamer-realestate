@@ -8,6 +8,13 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 const ALLOWED_PROPERTY_KEYWORDS = ["سلمان", "براهيم", "عبدالله الكبيرة", "عبدالله الصغير"];
 const HALL_PROPERTY_NAME = "قاعة مذهلة";
 
+// كلمة السر البسيطة لفتح صلاحية إضافة/تعديل حجوزات القاعة (غيّرها هنا وقتما تبي)
+const HALL_EDIT_PASSWORD = "adil2026";
+const EVENT_TYPES = ["كاملة", "نساء", "رجال", "أخرى"];
+const RECEIVER_STAGE1_OPTIONS = ["أبو أيوب", "تحويل مباشر", "نقدي مباشر"];
+const RECEIVER_FINAL_OPTIONS = ["مستلم", "الوالد", "لم يستلم"];
+const REMAINING_STATUS_OPTIONS = ["مستلم", "جزئي", "غير مستلم"];
+
 const UNIT_TYPE_ORDER = { "محل": 1, "شقة": 2, "ورشة": 3 };
 
 const HIJRI_MONTHS = [
@@ -92,6 +99,15 @@ function getBookingHijriYear(dateStr) {
   if (!dateStr) return null;
   const parts = dateStr.split("/");
   return parts.length === 3 ? parts[2] : null;
+}
+
+// شارة "بانتظار الاعتماد" للحجوزات/التعديلات التي لم يعتمدها الأدمن بعد
+function pendingBadge() {
+  return (
+    <span style={{ background: "#FDF2E3", color: "#B9770E", border: "1px solid #F5CBA7", padding: "4px 10px", borderRadius: "12px", fontSize: "12px", fontWeight: "bold", whiteSpace: "nowrap" }}>
+      بانتظار الاعتماد ⏳
+    </span>
+  );
 }
 
 const PROPERTY_BADGE_COLOR = { bg: "#EAF2F8", color: "#1B4D7A", border: "#AED6F1" };
@@ -220,6 +236,27 @@ export default function ViewerLimited() {
   });
   const [selectedTenant, setSelectedTenant] = useState(null);
 
+  // === حالة القاعة: القفل، النموذج، الحجز الحالي ===
+  const [hallId, setHallId] = useState(null);
+  const [hallUnlocked, setHallUnlocked] = useState(false);
+  const [showBookingForm, setShowBookingForm] = useState(false);
+  const [editingBookingId, setEditingBookingId] = useState(null);
+  const emptyBookingForm = {
+    event_date_hijri: "",
+    event_type: "كاملة",
+    client_name: "",
+    total_amount: "",
+    deposit_amount: "",
+    deposit_receiver_stage1: RECEIVER_STAGE1_OPTIONS[0],
+    deposit_receiver_final: RECEIVER_FINAL_OPTIONS[0],
+    remaining_amount: "",
+    remaining_status: "جزئي",
+    remaining_receiver_stage1: "",
+    remaining_receiver_final: "لم يستلم",
+    notes: "",
+  };
+  const [bookingForm, setBookingForm] = useState(emptyBookingForm);
+
   const [tenantsSelectedProperties, setTenantsSelectedProperties] = useState([]);
   const [showTenantsPropDropdown, setShowTenantsPropDropdown] = useState(false);
   const [tenantsSelectedTenants, setTenantsSelectedTenants] = useState([]);
@@ -251,6 +288,21 @@ export default function ViewerLimited() {
   const [showEntTenantDropdown, setShowEntTenantDropdown] = useState(false);
   const [entTenantSearchText, setEntTenantSearchText] = useState("");
 
+  function reloadBookings(currentHallId) {
+    const idToUse = currentHallId || hallId;
+    if (!idToUse) return;
+    supabase.from("bookings").select("*").eq("property_id", idToUse).then(({ data }) => {
+      const sorted = (data || []).slice().sort((a, b) => {
+        const pa = (a.event_date_hijri || "").split("/").map(Number);
+        const pb = (b.event_date_hijri || "").split("/").map(Number);
+        if ((pa[2] || 0) !== (pb[2] || 0)) return (pa[2] || 0) - (pb[2] || 0);
+        if ((pa[1] || 0) !== (pb[1] || 0)) return (pa[1] || 0) - (pb[1] || 0);
+        return (pa[0] || 0) - (pb[0] || 0);
+      });
+      setBookings(sorted);
+    });
+  }
+
   useEffect(() => {
     supabase.from("properties").select("*").order("priority").then(({ data }) => setProperties(data || []));
     supabase.from("tenants").select("*").then(({ data }) => setTenants(data || []));
@@ -273,16 +325,8 @@ export default function ViewerLimited() {
     supabase.from("hall_extra_income").select("*").order("created_at", { ascending: false }).then(({ data }) => setExtraIncome(data || []));
     supabase.from("properties").select("id").eq("name", HALL_PROPERTY_NAME).single().then(({ data: hall }) => {
       if (hall?.id) {
-        supabase.from("bookings").select("*").eq("property_id", hall.id).then(({ data }) => {
-          const sorted = (data || []).slice().sort((a, b) => {
-            const pa = (a.event_date_hijri || "").split("/").map(Number);
-            const pb = (b.event_date_hijri || "").split("/").map(Number);
-            if ((pa[2] || 0) !== (pb[2] || 0)) return (pa[2] || 0) - (pb[2] || 0);
-            if ((pa[1] || 0) !== (pb[1] || 0)) return (pa[1] || 0) - (pb[1] || 0);
-            return (pa[0] || 0) - (pb[0] || 0);
-          });
-          setBookings(sorted);
-        });
+        setHallId(hall.id);
+        reloadBookings(hall.id);
       }
     });
   }, []);
@@ -295,18 +339,33 @@ export default function ViewerLimited() {
   }, [properties]);
   const allowedPropertyIds = useMemo(() => allowedProperties.map((p) => p.id), [allowedProperties]);
 
+  // === فصل الحجوزات المعتمدة عن بانتظار الاعتماد ===
+  const approvedBookings = useMemo(
+    () => bookings.filter((b) => (b.status || "approved") === "approved"),
+    [bookings]
+  );
+  const pendingBookings = useMemo(
+    () => bookings.filter((b) => b.status === "pending"),
+    [bookings]
+  );
+  // حجوزات/تعديلات رفضها المدير ولسا المحاسب ما اطّلع عليها
+  const rejectionNotices = useMemo(
+    () => bookings.filter((b) => b.needs_review),
+    [bookings]
+  );
+
   const bookingsAvailableYears = useMemo(() => {
     const years = new Set();
-    bookings.forEach((b) => {
+    approvedBookings.forEach((b) => {
       const y = getBookingHijriYear(b.event_date_hijri);
       if (y) years.add(y);
     });
     return Array.from(years).sort();
-  }, [bookings]);
+  }, [approvedBookings]);
 
   const bookingsYearlyStats = useMemo(() => {
     const map = {};
-    bookings.forEach((b) => {
+    approvedBookings.forEach((b) => {
       const y = getBookingHijriYear(b.event_date_hijri);
       if (!y) return;
       if (!map[y]) map[y] = { year: y, count: 0, revenue: 0 };
@@ -316,11 +375,11 @@ export default function ViewerLimited() {
     return Object.values(map)
       .sort((a, b) => a.year.localeCompare(b.year))
       .map((row) => ({ ...row, net: Math.round(row.revenue * (1 - bookingsExpensePct / 100)) }));
-  }, [bookings, bookingsExpensePct]);
+  }, [approvedBookings, bookingsExpensePct]);
 
   const bookingsFiltered = bookingsSelectedYear === "all"
-    ? bookings
-    : bookings.filter((b) => getBookingHijriYear(b.event_date_hijri) === bookingsSelectedYear);
+    ? approvedBookings
+    : approvedBookings.filter((b) => getBookingHijriYear(b.event_date_hijri) === bookingsSelectedYear);
   const bookingsExtraIncomeFiltered = bookingsSelectedYear === "all"
     ? extraIncome
     : extraIncome.filter((e) => getBookingHijriYear(e.date_hijri) === bookingsSelectedYear);
@@ -640,6 +699,139 @@ export default function ViewerLimited() {
   const tenantLeases = selectedTenant
     ? allowedLeases.filter(l => l.tenant_id === selectedTenant.id)
     : [];
+
+  // === صلاحية القاعة: فتح/قفل، إضافة/تعديل ===
+  function handleUnlockHall() {
+    const pass = prompt("أدخل كلمة السر لفتح صلاحية إضافة/تعديل حجوزات القاعة:");
+    if (pass === null) return;
+    if (pass === HALL_EDIT_PASSWORD) {
+      setHallUnlocked(true);
+    } else {
+      alert("كلمة السر غير صحيحة");
+    }
+  }
+
+  async function handleDismissNotice(booking) {
+    try {
+      if (booking.status === "rejected") {
+        // حجز جديد رُفض بالكامل: بعد ما المحاسب يطّلع عليه نحذفه نهائياً
+        const { error } = await supabase.from("bookings").delete().eq("id", booking.id);
+        if (error) throw error;
+      } else {
+        // تعديل مرفوض تم إرجاعه للحالة المعتمدة: نمسح فقط علامة الإشعار
+        const { error } = await supabase.from("bookings").update({ needs_review: false, admin_note: null }).eq("id", booking.id);
+        if (error) throw error;
+      }
+      reloadBookings();
+    } catch (err) {
+      alert("خطأ: " + err.message);
+    }
+  }
+
+  function openAddBookingForm() {
+    setBookingForm(emptyBookingForm);
+    setEditingBookingId(null);
+    setShowBookingForm(true);
+  }
+
+  function openEditBookingForm(booking) {
+    setBookingForm({
+      event_date_hijri: booking.event_date_hijri || "",
+      event_type: booking.event_type || "كاملة",
+      client_name: booking.client_name || "",
+      total_amount: booking.total_amount ?? "",
+      deposit_amount: booking.deposit_amount ?? "",
+      deposit_receiver_stage1: booking.deposit_receiver_stage1 || RECEIVER_STAGE1_OPTIONS[0],
+      deposit_receiver_final: booking.deposit_receiver_final || RECEIVER_FINAL_OPTIONS[0],
+      remaining_amount: booking.remaining_amount ?? "",
+      remaining_status: booking.remaining_status || "جزئي",
+      remaining_receiver_stage1: booking.remaining_receiver_stage1 || "",
+      remaining_receiver_final: booking.remaining_receiver_final || "لم يستلم",
+      notes: booking.notes || "",
+    });
+    setEditingBookingId(booking.id);
+    setShowBookingForm(true);
+  }
+
+  // === تفكيك/تركيب تاريخ الحجز (يوم/شهر/سنة) للقوائم المنسدلة ===
+  function getBookingDateParts() {
+    const parts = (bookingForm.event_date_hijri || "").split("/");
+    return {
+      day: parts[0] || "",
+      month: parts[1] || "",
+      year: parts[2] || "1448",
+    };
+  }
+  function setBookingDatePart(part, value) {
+    const current = getBookingDateParts();
+    const updated = { ...current, [part]: value };
+    setBookingForm((prev) => ({ ...prev, event_date_hijri: `${updated.day}/${updated.month}/${updated.year}` }));
+  }
+  const BOOKING_YEAR_OPTIONS = ["1445", "1446", "1447", "1448", "1449", "1450", "1451", "1452"];
+
+  async function handleBookingSave() {
+    const dateParts = getBookingDateParts();
+    if (!dateParts.day || !dateParts.month || !dateParts.year || !bookingForm.client_name || !bookingForm.total_amount) {
+      alert("الرجاء تعبئة التاريخ (يوم/شهر/سنة) واسم العميل والمبلغ الإجمالي على الأقل");
+      return;
+    }
+    if (!hallId) {
+      alert("تعذر تحديد القاعة، حاول تحديث الصفحة");
+      return;
+    }
+
+    const payload = {
+      property_id: hallId,
+      event_date_hijri: bookingForm.event_date_hijri,
+      event_type: bookingForm.event_type,
+      client_name: bookingForm.client_name,
+      total_amount: Number(bookingForm.total_amount),
+      deposit_amount: Number(bookingForm.deposit_amount) || 0,
+      deposit_receiver_stage1: bookingForm.deposit_receiver_stage1,
+      deposit_receiver_final: bookingForm.deposit_receiver_final,
+      remaining_amount: Number(bookingForm.remaining_amount) || 0,
+      remaining_status: bookingForm.remaining_status,
+      remaining_receiver_stage1: bookingForm.remaining_receiver_stage1,
+      remaining_receiver_final: bookingForm.remaining_receiver_final,
+      notes: bookingForm.notes,
+      status: "pending",
+      submitted_by: "المحاسب",
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      if (editingBookingId) {
+        const original = bookings.find((b) => b.id === editingBookingId);
+        const updatePayload = { ...payload };
+        // لو الحجز كان معتمداً من قبل، نحفظ نسخة منه عشان نقدر نرجعها لو رفض الأدمن التعديل
+        if (original && (original.status || "approved") === "approved") {
+          updatePayload.previous_data = {
+            event_date_hijri: original.event_date_hijri,
+            event_type: original.event_type,
+            client_name: original.client_name,
+            total_amount: original.total_amount,
+            deposit_amount: original.deposit_amount,
+            deposit_receiver_stage1: original.deposit_receiver_stage1,
+            deposit_receiver_final: original.deposit_receiver_final,
+            remaining_amount: original.remaining_amount,
+            remaining_status: original.remaining_status,
+            remaining_receiver_stage1: original.remaining_receiver_stage1,
+            remaining_receiver_final: original.remaining_receiver_final,
+            notes: original.notes,
+          };
+        }
+        const { error } = await supabase.from("bookings").update(updatePayload).eq("id", editingBookingId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("bookings").insert([payload]);
+        if (error) throw error;
+      }
+      setShowBookingForm(false);
+      reloadBookings();
+    } catch (err) {
+      alert("خطأ أثناء الحفظ: " + err.message);
+    }
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "#f0f4f8", fontFamily: "Tahoma, Arial, sans-serif", direction: "rtl" }}>
@@ -1516,6 +1708,63 @@ export default function ViewerLimited() {
                   title="تقرير حجوزات قاعة مذهلة"
                 />
 
+                {/* إشعارات رفض من المدير — حجوزات جديدة رُفضت أو تعديلات أُرجعت */}
+                {rejectionNotices.length > 0 && (
+                  <div style={{ background: "#FDEDEC", border: "1px solid #F1948A", borderRadius: "10px", padding: "14px 20px", marginBottom: "16px" }}>
+                    <div style={{ fontWeight: "bold", color: "#e74c3c", marginBottom: "10px", fontSize: "14px" }}>
+                      ⚠️ إشعارات من المدير ({rejectionNotices.length})
+                    </div>
+                    {rejectionNotices.map((b) => (
+                      <div key={b.id} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px",
+                        background: "#fff", borderRadius: "8px", padding: "10px 16px", marginBottom: "8px",
+                      }}>
+                        <div>
+                          <div style={{ fontWeight: "bold", color: "#1B4D7A" }}>
+                            {b.client_name} — {formatHijriDisplay(b.event_date_hijri)} هـ
+                          </div>
+                          <div style={{ fontSize: "13px", color: "#e74c3c", marginTop: "2px" }}>
+                            {b.admin_note || (b.status === "rejected" ? "تم رفض هذا الحجز." : "تم رفض آخر تعديل وأُرجع الحجز لحالته المعتمدة السابقة.")}
+                          </div>
+                        </div>
+                        <button onClick={() => handleDismissNotice(b)} style={{
+                          background: "#1B4D7A", color: "#fff", border: "none", padding: "7px 16px",
+                          borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontWeight: "bold", fontFamily: "Tahoma, Arial, sans-serif", whiteSpace: "nowrap",
+                        }}>تم الاطلاع ✓</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* شريط التحكم: قفل/فتح + إضافة حجز */}
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
+                  {!hallUnlocked ? (
+                    <button onClick={handleUnlockHall} style={{
+                      background: "#fff", color: "#1B4D7A", border: "2px solid #1B4D7A", padding: "9px 20px",
+                      borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: "bold", fontFamily: "Tahoma, Arial, sans-serif",
+                    }}>🔒 فتح صلاحية التعديل</button>
+                  ) : (
+                    <>
+                      <span style={{ display: "flex", alignItems: "center", color: "#27ae60", fontWeight: "bold", fontSize: "13px" }}>🔓 صلاحية التعديل مفعّلة</span>
+                      <button onClick={openAddBookingForm} style={{
+                        background: "#1B4D7A", color: "#fff", border: "none", padding: "9px 20px",
+                        borderRadius: "8px", cursor: "pointer", fontSize: "14px", fontWeight: "bold", fontFamily: "Tahoma, Arial, sans-serif",
+                      }}>+ إضافة حجز جديد</button>
+                      <button onClick={() => setHallUnlocked(false)} style={{
+                        background: "#fff", color: "#999", border: "1px solid #ddd", padding: "9px 16px",
+                        borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontFamily: "Tahoma, Arial, sans-serif",
+                      }}>قفل</button>
+                    </>
+                  )}
+                </div>
+
+                {/* تنبيه بوجود حجوزات/تعديلات بانتظار اعتماد الأدمن */}
+                {pendingBookings.length > 0 && (
+                  <div style={{ background: "#FDF2E3", border: "1px solid #F5CBA7", borderRadius: "10px", padding: "12px 20px", marginBottom: "16px", color: "#B9770E", fontWeight: "bold", fontSize: "14px" }}>
+                    ⏳ يوجد {pendingBookings.length} حجز/تعديل بانتظار اعتماد المدير — لن تظهر في الإحصائيات أدناه حتى تتم الموافقة عليها.
+                  </div>
+                )}
+
                 {/* تبويبات السنوات */}
                 <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
                   <button onClick={() => setBookingsSelectedYear("all")} style={{
@@ -1621,33 +1870,65 @@ export default function ViewerLimited() {
                       <th style={{ padding: "12px" }}>الباقي</th>
                       <th style={{ padding: "12px" }}>حالة الباقي</th>
                       <th style={{ padding: "12px" }}>الاستلام النهائي (باقي)</th>
+                      {hallUnlocked && <th style={{ padding: "12px" }}>إجراءات</th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {bookingsFiltered.length === 0 ? (
-                      <tr><td colSpan="8" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا يوجد حجوزات لهذه السنة</td></tr>
-                    ) : bookingsFiltered.map((b) => {
-                      const statusStyle = BOOKING_STATUS_COLORS[b.remaining_status] || BOOKING_STATUS_COLORS["جزئي"];
-                      return (
-                        <tr key={b.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
-                          <td style={{ padding: "12px" }}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
-                          <td style={{ padding: "12px" }}>{bookingTypeBadge(b.event_type)}</td>
-                          <td style={{ padding: "12px" }}>{bookingClientBadge(b.client_name)}</td>
-                          <td style={{ padding: "12px", fontWeight: "bold", color: "#1B4D7A" }}>{Number(b.total_amount || 0).toLocaleString()} ر.س</td>
-                          <td style={{ padding: "12px", fontWeight: "bold", color: "#148F77" }}>{Number(b.deposit_amount || 0).toLocaleString()} ر.س</td>
-                          <td style={{ padding: "12px", fontWeight: "bold", color: "#e74c3c" }}>{Number(b.remaining_amount || 0).toLocaleString()} ر.س</td>
-                          <td style={{ padding: "12px" }}>
-                            <span style={{
-                              background: statusStyle.bg, color: statusStyle.text,
-                              padding: "4px 10px", borderRadius: "20px", fontSize: "13px", fontWeight: "bold",
-                            }}>
-                              {statusStyle.label}
-                            </span>
-                          </td>
-                          <td style={{ padding: "12px", fontWeight: "bold", color: bookingReceiverColor(b.remaining_receiver_final) }}>{b.remaining_receiver_final || "—"}</td>
-                        </tr>
-                      );
-                    })}
+                    {bookingsFiltered.length === 0 && pendingBookings.length === 0 ? (
+                      <tr><td colSpan={hallUnlocked ? 9 : 8} style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا يوجد حجوزات لهذه السنة</td></tr>
+                    ) : (
+                      <>
+                        {pendingBookings.map((b) => (
+                          <tr key={`pending-${b.id}`} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center", background: "#FFFBF3" }}>
+                            <td style={{ padding: "12px" }}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
+                            <td style={{ padding: "12px" }}>{bookingTypeBadge(b.event_type)}</td>
+                            <td style={{ padding: "12px" }}>{bookingClientBadge(b.client_name)}</td>
+                            <td style={{ padding: "12px", fontWeight: "bold", color: "#1B4D7A" }}>{Number(b.total_amount || 0).toLocaleString()} ر.س</td>
+                            <td style={{ padding: "12px", fontWeight: "bold", color: "#148F77" }}>{Number(b.deposit_amount || 0).toLocaleString()} ر.س</td>
+                            <td style={{ padding: "12px", fontWeight: "bold", color: "#e74c3c" }}>{Number(b.remaining_amount || 0).toLocaleString()} ر.س</td>
+                            <td style={{ padding: "12px" }} colSpan={2}>{pendingBadge()}</td>
+                            {hallUnlocked && (
+                              <td style={{ padding: "12px" }}>
+                                <button onClick={() => openEditBookingForm(b)} style={{
+                                  background: "#1B4D7A", color: "#fff", border: "none", padding: "6px 14px",
+                                  borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontFamily: "Tahoma, Arial, sans-serif",
+                                }}>تعديل</button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                        {bookingsFiltered.map((b) => {
+                          const statusStyle = BOOKING_STATUS_COLORS[b.remaining_status] || BOOKING_STATUS_COLORS["جزئي"];
+                          return (
+                            <tr key={b.id} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
+                              <td style={{ padding: "12px" }}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
+                              <td style={{ padding: "12px" }}>{bookingTypeBadge(b.event_type)}</td>
+                              <td style={{ padding: "12px" }}>{bookingClientBadge(b.client_name)}</td>
+                              <td style={{ padding: "12px", fontWeight: "bold", color: "#1B4D7A" }}>{Number(b.total_amount || 0).toLocaleString()} ر.س</td>
+                              <td style={{ padding: "12px", fontWeight: "bold", color: "#148F77" }}>{Number(b.deposit_amount || 0).toLocaleString()} ر.س</td>
+                              <td style={{ padding: "12px", fontWeight: "bold", color: "#e74c3c" }}>{Number(b.remaining_amount || 0).toLocaleString()} ر.س</td>
+                              <td style={{ padding: "12px" }}>
+                                <span style={{
+                                  background: statusStyle.bg, color: statusStyle.text,
+                                  padding: "4px 10px", borderRadius: "20px", fontSize: "13px", fontWeight: "bold",
+                                }}>
+                                  {statusStyle.label}
+                                </span>
+                              </td>
+                              <td style={{ padding: "12px", fontWeight: "bold", color: bookingReceiverColor(b.remaining_receiver_final) }}>{b.remaining_receiver_final || "—"}</td>
+                              {hallUnlocked && (
+                                <td style={{ padding: "12px" }}>
+                                  <button onClick={() => openEditBookingForm(b)} style={{
+                                    background: "#1B4D7A", color: "#fff", border: "none", padding: "6px 14px",
+                                    borderRadius: "6px", cursor: "pointer", fontSize: "12px", fontFamily: "Tahoma, Arial, sans-serif",
+                                  }}>تعديل</button>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1703,6 +1984,116 @@ export default function ViewerLimited() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* فورم إضافة/تعديل حجز (المحاسب) — يُحفظ دائماً بحالة "بانتظار الاعتماد" */}
+        {showBookingForm && (
+          <div
+            onClick={() => setShowBookingForm(false)}
+            style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ background: "#fff", borderRadius: "12px", padding: "24px", width: "420px", maxWidth: "92%", maxHeight: "90vh", overflowY: "auto", direction: "rtl" }}
+            >
+              <h3 style={{ marginTop: 0 }}>{editingBookingId ? "تعديل حجز" : "إضافة حجز جديد"}</h3>
+              <div style={{ background: "#FDF2E3", color: "#B9770E", borderRadius: "8px", padding: "8px 12px", fontSize: "13px", marginBottom: "12px" }}>
+                سيُحفظ هذا كـ"بانتظار الاعتماد" حتى يوافق عليه المدير.
+              </div>
+
+              <label style={{ display: "block", marginTop: "10px", marginBottom: "4px", fontSize: "13px", color: "#555" }}>تاريخ المناسبة (هجري)</label>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <select value={getBookingDateParts().day} onChange={(e) => setBookingDatePart("day", e.target.value)}
+                  style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box" }}>
+                  <option value="">يوم</option>
+                  {Array.from({ length: 30 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+                <select value={getBookingDateParts().month} onChange={(e) => setBookingDatePart("month", e.target.value)}
+                  style={{ flex: 2, padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box" }}>
+                  <option value="">شهر</option>
+                  {HIJRI_MONTHS.map((name, i) => (
+                    <option key={i + 1} value={i + 1}>{i + 1} - {name}</option>
+                  ))}
+                </select>
+                <select value={getBookingDateParts().year} onChange={(e) => setBookingDatePart("year", e.target.value)}
+                  style={{ flex: 1, padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box" }}>
+                  {BOOKING_YEAR_OPTIONS.map((y) => (
+                    <option key={y} value={y}>{y} هـ</option>
+                  ))}
+                </select>
+              </div>
+
+              <label style={{ display: "block", marginTop: "10px", marginBottom: "4px", fontSize: "13px", color: "#555" }}>نوع المناسبة</label>
+              <select value={bookingForm.event_type} onChange={(e) => setBookingForm({ ...bookingForm, event_type: e.target.value })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box" }}>
+                {EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+
+              <label style={{ display: "block", marginTop: "10px", marginBottom: "4px", fontSize: "13px", color: "#555" }}>اسم العميل</label>
+              <input type="text" value={bookingForm.client_name}
+                onChange={(e) => setBookingForm({ ...bookingForm, client_name: e.target.value })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box" }} />
+
+              <label style={{ display: "block", marginTop: "10px", marginBottom: "4px", fontSize: "13px", color: "#555" }}>المبلغ الإجمالي</label>
+              <input type="number" value={bookingForm.total_amount}
+                onChange={(e) => setBookingForm({ ...bookingForm, total_amount: e.target.value })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box" }} />
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", marginTop: "10px", marginBottom: "4px", fontSize: "13px", color: "#555" }}>العربون</label>
+                  <input type="number" value={bookingForm.deposit_amount}
+                    onChange={(e) => setBookingForm({ ...bookingForm, deposit_amount: e.target.value })}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ display: "block", marginTop: "10px", marginBottom: "4px", fontSize: "13px", color: "#555" }}>الباقي</label>
+                  <input type="number" value={bookingForm.remaining_amount}
+                    onChange={(e) => setBookingForm({ ...bookingForm, remaining_amount: e.target.value })}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box" }} />
+                </div>
+              </div>
+
+              <label style={{ display: "block", marginTop: "10px", marginBottom: "4px", fontSize: "13px", color: "#555" }}>استلام العربون (مرحلة أولى)</label>
+              <select value={bookingForm.deposit_receiver_stage1} onChange={(e) => setBookingForm({ ...bookingForm, deposit_receiver_stage1: e.target.value })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box" }}>
+                {RECEIVER_STAGE1_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+
+              <label style={{ display: "block", marginTop: "10px", marginBottom: "4px", fontSize: "13px", color: "#555" }}>استلام العربون (نهائي)</label>
+              <select value={bookingForm.deposit_receiver_final} onChange={(e) => setBookingForm({ ...bookingForm, deposit_receiver_final: e.target.value })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box" }}>
+                {RECEIVER_FINAL_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+
+              <label style={{ display: "block", marginTop: "10px", marginBottom: "4px", fontSize: "13px", color: "#555" }}>حالة الباقي</label>
+              <select value={bookingForm.remaining_status} onChange={(e) => setBookingForm({ ...bookingForm, remaining_status: e.target.value })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box" }}>
+                {REMAINING_STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+
+              <label style={{ display: "block", marginTop: "10px", marginBottom: "4px", fontSize: "13px", color: "#555" }}>استلام الباقي (نهائي)</label>
+              <select value={bookingForm.remaining_receiver_final} onChange={(e) => setBookingForm({ ...bookingForm, remaining_receiver_final: e.target.value })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box" }}>
+                {RECEIVER_FINAL_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+
+              <label style={{ display: "block", marginTop: "10px", marginBottom: "4px", fontSize: "13px", color: "#555" }}>ملاحظات</label>
+              <textarea value={bookingForm.notes} onChange={(e) => setBookingForm({ ...bookingForm, notes: e.target.value })}
+                style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #ccc", fontFamily: "Tahoma, Arial, sans-serif", boxSizing: "border-box", minHeight: "60px" }} />
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "15px" }}>
+                <button onClick={handleBookingSave} style={{ flex: 1, padding: "10px", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif" }}>
+                  حفظ (للاعتماد)
+                </button>
+                <button onClick={() => setShowBookingForm(false)} style={{ flex: 1, padding: "10px", background: "#999", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif" }}>
+                  إلغاء
+                </button>
               </div>
             </div>
           </div>
