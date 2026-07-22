@@ -213,6 +213,9 @@ export default function Entitlements() {
       });
 
       const status = computeStatus(row, hijri);
+      const dueDateHijri = hijri
+        ? `${hijri.year}/${String(hijri.month).padStart(2, "0")}/${String(hijri.day).padStart(2, "0")}`
+        : "—";
 
       found.push({
         tenant: lease.tenants?.name || "",
@@ -226,7 +229,10 @@ export default function Entitlements() {
         paidAmount: Number(row.amount_paid || 0),
         status,
         statusLabel: statusToArabic(status),
+        dueDateHijri,
       });
+
+      
     }
 
     found.sort((a, b) => {
@@ -433,6 +439,7 @@ export default function Entitlements() {
               { key: "tenant", label: "المستأجر" },
               { key: "activity", label: "النشاط" },
               { key: "unit", label: "الوحدة" },
+                      { key: "dueDateHijri", label: "تاريخ الاستحقاق" },
               { key: "amount", label: "المبلغ المستحق" },
               { key: "paidAmount", label: "المبلغ المدفوع" },
               { key: "statusLabel", label: "الحالة" },
@@ -468,6 +475,7 @@ export default function Entitlements() {
                   <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>المستأجر</th>
                   <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>النشاط</th>
                   <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>الوحدة</th>
+                             <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>تاريخ الاستحقاق</th>
                   <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>المبلغ</th>
                   <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>الحالة</th>
                 </tr>
@@ -479,6 +487,7 @@ export default function Entitlements() {
                     <td style={{ padding: "12px 16px" }}>{tenantBadge(r.tenant)}</td>
                     <td style={{ padding: "12px 16px" }}>{activityBadge(r.activity)}</td>
                     <td style={{ padding: "12px 16px" }}>{unitBadges(r.units)}</td>
+                                <td style={{ padding: "12px 16px", color: "#6b7280", fontSize: 13 }}>{r.dueDateHijri} هـ</td>
                     <td style={{ padding: "12px 16px" }}>{amountDisplay(r)}</td>
                     <td style={{ padding: "12px 16px" }}>{statusBadge(r.status)}</td>
                   </tr>

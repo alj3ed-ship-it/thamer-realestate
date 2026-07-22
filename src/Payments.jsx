@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
+import ExportToolbar from './components/ExportToolbar'
 
 const FREQUENCY_MAP = {
   'سنوي': 1,
@@ -84,8 +85,6 @@ function parseHijriText(text) {
   return { year: Number(parts[0]), month: Number(parts[1]), day: Number(parts[2]) }
 }
 
-// تحليل تاريخ بداية العقد الهجري — يتعرف تلقائياً على موقع السنة
-// (قد يكون محفوظاً بصيغة سنة/شهر/يوم أو يوم/شهر/سنة)
 function parseHijriParts(dateStr) {
   if (!dateStr) return null
   const parts = dateStr.split('/').map(p => parseInt(p))
@@ -104,7 +103,6 @@ function addHijriMonths(date, months) {
   return { year: Math.floor(totalMonths / 12), month: (totalMonths % 12) + 1, day: date.day }
 }
 
-// حساب تاريخ استحقاق قسط معيّن بناءً على تاريخ بداية العقد وعدد الأقساط ورقم القسط
 function computeInstallmentHijri(startDateHijri, totalInstallments, installmentNumber) {
   const start = parseHijriParts(startDateHijri)
   if (!start || !totalInstallments) return null
@@ -178,7 +176,7 @@ function Payments({ onBack }) {
     const [pay, lea, ten, pro, uni, lu] = await Promise.all([
       supabase.from('payments').select('*').order('payment_date', { ascending: true }),
       supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id, start_date_hijri'),
-      supabase.from('tenants').select('id, name'),
+      supabase.from('tenants').select('id, name, note'),
       supabase.from('properties').select('id, name').order('name'),
       supabase.from('units').select('id, unit_number'),
       supabase.from('lease_units').select('lease_id, unit_id'),
@@ -207,6 +205,11 @@ function Payments({ onBack }) {
   function getTenantName(leaseId) {
     const lease = leases.find(l => l.id === leaseId)
     return tenants.find(t => t.id === lease?.tenant_id)?.name || '—'
+  }
+
+  function getTenantActivity(leaseId) {
+    const lease = leases.find(l => l.id === leaseId)
+    return tenants.find(t => t.id === lease?.tenant_id)?.note || '—'
   }
 
   function getPropertyName(leaseId) {
@@ -258,7 +261,6 @@ function Payments({ onBack }) {
     return idx + 1
   }
 
-  // يحسب تاريخ الاستحقاق المتوقع لدفعة غير مسددة، ويحدد هل هي متأخرة أو لسا ما جا وقتها
   function getUnpaidDueInfo(p) {
     const lease = leases.find(l => l.id === p.lease_id)
     if (!lease || !lease.start_date_hijri) return { hijriText: null, subStatus: 'overdue' }
@@ -391,6 +393,13 @@ function Payments({ onBack }) {
     return subStatus
   }
 
+  function statusToArabic(computed) {
+    if (computed === 'paid') return 'مدفوع'
+    if (computed === 'partial') return 'جزئي'
+    if (computed === 'not_due') return 'غير مستحق بعد'
+    return 'متأخر'
+  }
+
   function statusBadge(p) {
     const computed = computePaymentStatus(p)
     if (computed === 'paid') return <span style={{ background: '#EAFAF1', color: '#27ae60', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>مدفوع ✓</span>
@@ -399,7 +408,6 @@ function Payments({ onBack }) {
     return <span style={{ background: '#FDEDEC', color: '#e74c3c', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>متأخر ⏰</span>
   }
 
-  // عرض عمود المبلغ: نفس أسلوب صفحة الاستحقاقات (مدفوع | متبقي | إجمالي) عند الدفع الجزئي
   function amountCell(p) {
     const computed = computePaymentStatus(p)
     const due = Number(p.amount || 0)
@@ -418,6 +426,45 @@ function Payments({ onBack }) {
     }
     return <span style={{ fontWeight: 700, color: '#27ae60' }}>{due.toLocaleString()} ريال</span>
   }
+
+  function getPaymentHijriDisplay(p) {
+    const computed = computePaymentStatus(p)
+    const isUnpaid = computed === 'overdue' || computed === 'not_due'
+    let hijriText = p.payment_date_hijri
+    let isEstimated = false
+    if (!hijriText && p.payment_date) {
+      const h = gregorianToHijri(p.payment_date)
+      if (h) hijriText = hijriPartsToText(h.year, h.month, h.day)
+    } else if (!hijriText && !p.payment_date && isUnpaid) {
+      const { hijriText: estText } = getUnpaidDueInfo(p)
+      if (estText) { hijriText = estText; isEstimated = true }
+    }
+    return { hijriText, isEstimated }
+  }
+
+  // بيانات مسطّحة للتصدير والطباعة
+  const exportRows = filteredPayments.map(p => {
+    const total = p.total_installments || getTotalInstallments(p.lease_id)
+    const index = p.installment_number || getPaymentIndex(p)
+    const computed = computePaymentStatus(p)
+    const due = Number(p.amount || 0)
+    const paid = Number(p.amount_paid || 0)
+    const { hijriText } = getPaymentHijriDisplay(p)
+    return {
+      tenant: getTenantName(p.lease_id),
+      property: getPropertyName(p.lease_id),
+      activity: getTenantActivity(p.lease_id),
+      unit: getUnitNumbers(p.lease_id),
+      installment: total ? `${index} / ${total}` : `${index}`,
+      amount: computed === 'partial'
+        ? `${paid.toLocaleString()} | ${(due - paid).toLocaleString()} | ${due.toLocaleString()}`
+        : `${due.toLocaleString()} ريال`,
+      statusLabel: statusToArabic(computed),
+      date: hijriText ? hijriText + ' هـ' : '—',
+      method: p.payment_method || '—',
+      notes: p.notes || '—'
+    }
+  })
 
   return (
     <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -505,61 +552,73 @@ function Payments({ onBack }) {
       )}
 
       {status === 'success' && filteredPayments.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead>
-              <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                {['المستأجر', 'العقار', 'الوحدة', 'الدفعة', 'المبلغ', 'الحالة', 'التاريخ', 'طريقة الدفع', 'ملاحظات', ''].map(h => (
-                  <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPayments.map((p, idx) => {
-                const total = p.total_installments || getTotalInstallments(p.lease_id)
-                const index = p.installment_number || getPaymentIndex(p)
-                const computedStatus = computePaymentStatus(p)
-                const isUnpaid = computedStatus === 'overdue' || computedStatus === 'not_due'
+        <div id="payments-table">
+          <ExportToolbar
+            data={exportRows}
+            columns={[
+              { key: 'property', label: 'العقار' },
+              { key: 'tenant', label: 'المستأجر' },
+              { key: 'activity', label: 'النشاط' },
+              { key: 'unit', label: 'الوحدة' },
+              { key: 'installment', label: 'الدفعة' },
+              { key: 'amount', label: 'المبلغ' },
+              { key: 'statusLabel', label: 'الحالة' },
+              { key: 'date', label: 'التاريخ' },
+              { key: 'method', label: 'طريقة الدفع' },
+              { key: 'notes', label: 'ملاحظات' },
+            ]}
+            filename={`payments_${filterProperty === 'الكل' ? 'all' : filterProperty}`}
+            stats={[
+              { label: 'المجموع', value: `${totalFiltered.toLocaleString()} ريال`, color: '#27ae60' },
+            ]}
+          />
 
-                let hijriText = p.payment_date_hijri
-                let isEstimated = false
-                if (!hijriText && p.payment_date) {
-                  const h = gregorianToHijri(p.payment_date)
-                  if (h) hijriText = hijriPartsToText(h.year, h.month, h.day)
-                } else if (!hijriText && !p.payment_date && isUnpaid) {
-                  const { hijriText: estText } = getUnpaidDueInfo(p)
-                  if (estText) { hijriText = estText; isEstimated = true }
-                }
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+              <thead>
+                <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
+                  {['المستأجر', 'العقار', 'النشاط', 'الوحدة', 'الدفعة', 'المبلغ', 'الحالة', 'التاريخ', 'طريقة الدفع', 'ملاحظات', ''].map(h => (
+                    <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPayments.map((p, idx) => {
+                  const total = p.total_installments || getTotalInstallments(p.lease_id)
+                  const index = p.installment_number || getPaymentIndex(p)
+                  const { hijriText, isEstimated } = getPaymentHijriDisplay(p)
 
-                return (
-                  <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                    <td style={{ padding: '12px', fontWeight: 700, color: '#1B4D7A' }}>{getTenantName(p.lease_id)}</td>
-                    <td style={{ padding: '12px', color: '#6b7280' }}>{getPropertyName(p.lease_id)}</td>
-                    <td style={{ padding: '12px', color: '#6b7280', fontSize: 13 }}>{getUnitNumbers(p.lease_id)}</td>
-                    <td style={{ padding: '12px', textAlign: 'center' }}>
-                      <span style={{ background: '#eff6ff', color: '#1B4D7A', padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
-                        {total ? `${index} / ${total}` : `${index}`}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px' }}>{amountCell(p)}</td>
-                    <td style={{ padding: '12px' }}>{statusBadge(p)}</td>
-                    <td style={{ padding: '12px', color: '#6b7280' }}>
-                      <div style={{ fontWeight: 600 }}>{hijriText ? hijriText + ' هـ' : '—'}</div>
-                      <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.payment_date || (isEstimated ? 'متوقع' : '—')}</div>
-                    </td>
-                    <td style={{ padding: '12px', color: '#6b7280' }}>{p.payment_method || '—'}</td>
-                    <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{p.notes || '—'}</td>
-                    <td style={{ padding: '12px' }}>
-                      <button onClick={() => openEdit(p)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
-                      <button onClick={() => handleDelete(p.id)} disabled={deletingId === p.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
-                        {deletingId === p.id ? '...' : 'حذف'}
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                  return (
+                    <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                      <td style={{ padding: '12px', fontWeight: 700, color: '#1B4D7A' }}>{getTenantName(p.lease_id)}</td>
+                      <td style={{ padding: '12px', color: '#6b7280' }}>{getPropertyName(p.lease_id)}</td>
+                      <td style={{ padding: '12px', color: '#6b7280', fontSize: 13 }}>{getTenantActivity(p.lease_id)}</td>
+                      <td style={{ padding: '12px', color: '#6b7280', fontSize: 13 }}>{getUnitNumbers(p.lease_id)}</td>
+                      <td style={{ padding: '12px', textAlign: 'center' }}>
+                        <span style={{ background: '#eff6ff', color: '#1B4D7A', padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
+                          {total ? `${index} / ${total}` : `${index}`}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px' }}>{amountCell(p)}</td>
+                      <td style={{ padding: '12px' }}>{statusBadge(p)}</td>
+                      <td style={{ padding: '12px', color: '#6b7280' }}>
+                        <div style={{ fontWeight: 600 }}>{hijriText ? hijriText + ' هـ' : '—'}</div>
+                        <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.payment_date || (isEstimated ? 'متوقع' : '—')}</div>
+                      </td>
+                      <td style={{ padding: '12px', color: '#6b7280' }}>{p.payment_method || '—'}</td>
+                      <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{p.notes || '—'}</td>
+                      <td style={{ padding: '12px' }} className="no-print">
+                        <button onClick={() => openEdit(p)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
+                        <button onClick={() => handleDelete(p.id)} disabled={deletingId === p.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
+                          {deletingId === p.id ? '...' : 'حذف'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
