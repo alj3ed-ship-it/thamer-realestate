@@ -109,6 +109,7 @@ export default function Entitlements() {
   const [selectedTenants, setSelectedTenants] = useState([]);
   const [showTenantDropdown, setShowTenantDropdown] = useState(false);
   const [tenantSearchText, setTenantSearchText] = useState("");
+  const [selectedUnitType, setSelectedUnitType] = useState("");
   const [results, setResults] = useState([]);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -153,9 +154,28 @@ export default function Entitlements() {
     return Array.from(names).sort((a, b) => a.localeCompare(b, "ar"));
   }, [payments]);
 
-  const filteredTenantOptions = uniqueTenants.filter((name) =>
-    name.toLowerCase().includes(tenantSearchText.toLowerCase())
-  );
+  const filteredTenantOptions = uniqueTenants
+    .filter((name) => {
+      if (selectedProperties.length === 0) return true;
+      return payments.some(
+        (p) => p.leases?.tenants?.name === name && selectedProperties.includes(p.leases?.property_id)
+      );
+    })
+    .filter((name) => name.toLowerCase().includes(tenantSearchText.toLowerCase()));
+
+  const uniqueUnitTypes = useMemo(() => {
+    const set = new Set();
+    payments.forEach((p) => {
+      (p.leases?.lease_units || []).forEach((lu) => {
+        const t = lu.units?.unit_type;
+        if (t) set.add(t.trim());
+      });
+    });
+    const known = ["محل", "شقة", "ورشة"];
+    const knownPresent = known.filter((k) => set.has(k));
+    const others = Array.from(set).filter((t) => !known.includes(t)).sort((a, b) => a.localeCompare(b, "ar"));
+    return [...knownPresent, ...others];
+  }, [payments]);
 
   // status الآن: "paid" | "partial" | "overdue" (متأخر) | "not_due" (غير مستحق بعد)
   function computeStatus(row, hijri) {
@@ -201,6 +221,7 @@ export default function Entitlements() {
       if (!hijri || hijri.year !== filterYear || hijri.month !== filterMonth) continue;
 
       const units = lease.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
+      if (selectedUnitType && !units.some((u) => (u.unit_type || "").trim() === selectedUnitType)) continue;
       let sortType = 99;
       let sortNum = 999;
       units.forEach((u) => {
@@ -422,6 +443,17 @@ export default function Entitlements() {
               ))}
             </div>
           )}
+        </div>
+
+        <div>
+          <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>نوع الوحدة</label>
+          <select value={selectedUnitType} onChange={(e) => setSelectedUnitType(e.target.value)}
+            style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Cairo, sans-serif", minWidth: "140px" }}>
+            <option value="">كل الأنواع</option>
+            {uniqueUnitTypes.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
         </div>
 
         <button onClick={handleSearch}
