@@ -22,6 +22,11 @@ import html2canvas from "html2canvas";
  * مصمم خصيصاً للطباعة (خط أكبر، تباعد أوسع، ترويسة رسمية، ملخص أرقام واضح).
  * هذا يفادي مشكلة تشوّه النص العربي اللي تصير أحياناً عند تصوير عناصر الشاشة المزدحمة،
  * ويضمن شكل احترافي ثابت بغض النظر عن تصميم الصفحة الظاهرة.
+ *
+ * ملاحظة إصلاح الطباعة (يوليو 2026):
+ * عنصر الطباعة عرضه ثابت 1700px، وهذا أعرض من ورقة A4 حتى بالوضع الأفقي،
+ * فكان يسبب قص الأعمدة الأخيرة عند الطباعة. الحل: تصغير المحتوى وقت الطباعة
+ * فقط عبر transform: scale(0.6) مع transform-origin: top right (بما إن التصميم RTL).
  */
 export default function ExportToolbar({
   data,
@@ -60,7 +65,9 @@ export default function ExportToolbar({
         #export-print-area {
           position: absolute !important;
           inset: 0 !important;
-          width: 100% !important;
+          width: 1700px !important;
+          transform: scale(0.6);
+          transform-origin: top right;
           height: auto !important;
           overflow: visible !important;
           visibility: visible !important;
