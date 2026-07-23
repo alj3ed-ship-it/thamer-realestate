@@ -145,7 +145,7 @@ export default function App() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", maxWidth: "100vw", overflowX: "hidden", fontFamily: "Cairo, sans-serif", direction: "rtl" }}>
-      <div style={{ width: "220px", flexShrink: 0, background: "#1B4D7A", display: "flex", flexDirection: "column", padding: "24px 0" }}>
+      <div className="print-sidebar" style={{ width: "220px", flexShrink: 0, background: "#1B4D7A", display: "flex", flexDirection: "column", padding: "24px 0" }}>
         <div style={{ padding: "0 20px 24px", borderBottom: "1px solid #2E6394" }}>
           <img src="/logo_v6_wide.svg" alt="logo" style={{ width: "100%" }} />
         </div>
@@ -170,7 +170,7 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ flex: 1, minWidth: 0, background: "#f0f4f8", overflow: "auto" }}>
+      <div className="print-main-content" style={{ flex: 1, minWidth: 0, background: "#f0f4f8", overflow: "auto" }}>
         {activePage === "dashboard" && (
           <div style={{ padding: "18px 22px" }}>
             <h2 style={{ color: "#1B4D7A", marginBottom: "12px", fontSize: "20px" }}>{T.dashboard}</h2>
