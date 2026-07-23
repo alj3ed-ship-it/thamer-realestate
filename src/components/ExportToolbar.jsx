@@ -65,14 +65,19 @@ export default function ExportToolbar({
         #export-print-area {
           position: absolute !important;
           inset: 0 !important;
-          width: 1700px !important;
-          transform: scale(0.6);
-          transform-origin: top right;
+          width: 100% !important;
+          max-width: 100% !important;
           height: auto !important;
           overflow: visible !important;
           visibility: visible !important;
+          padding: 10mm !important;
+          box-sizing: border-box !important;
         }
-        @page { size: landscape; margin: 12mm; }
+        #export-print-area table {
+          width: 100% !important;
+          table-layout: fixed !important;
+        }
+        @page { size: landscape; margin: 8mm; }
       }
     `;
     document.head.appendChild(styleTag);
