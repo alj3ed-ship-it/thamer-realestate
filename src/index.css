@@ -18,13 +18,16 @@ html, body {
    بالمشروع ملفوف بـ <div id="....-table">. الجدول ياخذ عرضه الطبيعي
    الكامل (مو مضغوط)، والحاوية تتمرّر بدل ما تنكسر الصفحة كلها. */
 @media (max-width: 900px) {
-  div[id$="-table"] {
+  /* يشمل الحاوية الخارجية (div[id$="-table"]) وأي حاوية تمرير داخلية
+     موجودة أصلاً بصفحات لوحة التحكم (overflow-x: auto مكتوبة inline) */
+  div[id$="-table"],
+  div[id$="-table"] [style*="overflow"] {
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
-    direction: ltr; /* يصلح خلل Safari بحساب أقصى مسافة تمرير داخل RTL */
+    direction: ltr !important; /* يصلح خلل Safari بحساب أقصى مسافة تمرير داخل RTL */
   }
   div[id$="-table"] table {
-    direction: rtl; /* يرجّع اتجاه المحتوى الطبيعي بعد إصلاح التمرير */
+    direction: rtl !important; /* يرجّع اتجاه المحتوى الطبيعي بعد إصلاح التمرير */
     width: max-content !important;
     min-width: 100% !important;
   }
