@@ -130,11 +130,14 @@ export default function ExportToolbar({
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       const canvas = await html2canvas(node, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-        foreignObjectRendering: true,
-      });
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      foreignObjectRendering: true,
+      windowWidth: 1700,
+      scrollX: 0,
+      scrollY: 0,
+    });
 
       if (canvas.width === 0 || canvas.height === 0) {
         throw new Error("التقاط التقرير رجع فارغ (canvas بلا أبعاد)");
