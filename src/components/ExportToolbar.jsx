@@ -24,9 +24,11 @@ import html2canvas from "html2canvas";
  * ويضمن شكل احترافي ثابت بغض النظر عن تصميم الصفحة الظاهرة.
  *
  * ملاحظة إصلاح الطباعة (يوليو 2026):
- * عنصر الطباعة عرضه ثابت 1700px، وهذا أعرض من ورقة A4 حتى بالوضع الأفقي،
- * فكان يسبب قص الأعمدة الأخيرة عند الطباعة. الحل: تصغير المحتوى وقت الطباعة
- * فقط عبر transform: scale(0.6) مع transform-origin: top right (بما إن التصميم RTL).
+ * زر الطباعة العادي (window.print) يستخدم قواعد @media print أدناه — تعمل تمام.
+ * زر PDF (html2canvas) رجعناه لإعداداته الأصلية البسيطة بعد ما تبيّن إن أي إجبار على
+ * width/windowWidth/scrollX/scrollY كان يكسر حساب موقع العنصر (position:absolute)
+ * ويسبب قص أول عمودين. الإصلاح الوحيد المحتفظ به هو overflow:"visible" في
+ * printRootVisible، عشان ما تنقص الشارات الملونة عريضة النص وقت التصوير.
  */
 export default function ExportToolbar({
   data,
@@ -130,17 +132,11 @@ export default function ExportToolbar({
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       const canvas = await html2canvas(node, {
-  scale: 2,
-  useCORS: true,
-  backgroundColor: "#ffffff",
-  foreignObjectRendering: true,
-  width: node.scrollWidth,
-  height: node.scrollHeight,
-  windowWidth: node.scrollWidth,
-  windowHeight: node.scrollHeight,
-  scrollX: 0,
-  scrollY: 0,
-});
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        foreignObjectRendering: true,
+      });
 
       if (canvas.width === 0 || canvas.height === 0) {
         throw new Error("التقاط التقرير رجع فارغ (canvas بلا أبعاد)");
@@ -292,22 +288,19 @@ const styles = {
     fontSize: "14px",
   },
 
-  // العنصر المخفي (مُستخدم فقط وقت الطباعة/التصدير)
+  // العنصر المخفي (مُستخدم فقط وقت الطباعة/التصدير) — إعدادات أصلية شغّالة
   printRoot: {
     position: "absolute",
     top: 0,
-    left: 0,
+    left: "-9999px",
     width: "1700px",
-    height: 0,
-    overflow: "hidden",
-    visibility: "hidden",
-    pointerEvents: "none",
     background: "#ffffff",
     padding: "30px 50px",
     fontFamily: "Cairo, Tahoma, sans-serif",
     direction: "rtl",
     color: "#111827",
     boxSizing: "border-box",
+    overflow: "hidden",
   },
   // نفس التصميم بالضبط، بس ظاهر فعلياً فوق كل شي وقت التصوير.
   // نستخدم absolute (مو fixed) عمداً — html2canvas فيه خلل معروف مع position:fixed
