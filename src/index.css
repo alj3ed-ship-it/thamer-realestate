@@ -21,8 +21,10 @@ html, body {
   div[id$="-table"] {
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
+    direction: ltr; /* يصلح خلل Safari بحساب أقصى مسافة تمرير داخل RTL */
   }
   div[id$="-table"] table {
+    direction: rtl; /* يرجّع اتجاه المحتوى الطبيعي بعد إصلاح التمرير */
     width: max-content !important;
     min-width: 100% !important;
   }
