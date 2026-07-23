@@ -61,6 +61,9 @@ export default function ExportToolbar({
           position: absolute !important;
           inset: 0 !important;
           width: 100% !important;
+          height: auto !important;
+          overflow: visible !important;
+          visibility: visible !important;
         }
         @page { size: landscape; margin: 12mm; }
       }
@@ -275,15 +278,18 @@ const styles = {
   printRoot: {
     position: "absolute",
     top: 0,
-    left: "-9999px",
+    left: 0,
     width: "1700px",
+    height: 0,
+    overflow: "hidden",
+    visibility: "hidden",
+    pointerEvents: "none",
     background: "#ffffff",
     padding: "30px 50px",
     fontFamily: "Cairo, Tahoma, sans-serif",
     direction: "rtl",
     color: "#111827",
     boxSizing: "border-box",
-    overflow: "hidden",
   },
   // نفس التصميم بالضبط، بس ظاهر فعلياً فوق كل شي وقت التصوير.
   // نستخدم absolute (مو fixed) عمداً — html2canvas فيه خلل معروف مع position:fixed
