@@ -13,3 +13,17 @@ html, body {
   min-height: 100vh;
   overflow-x: hidden;
 }
+
+/* تمرير عرضي مستقل لكل جدول على الجوال/الآيباد — يعتمد على إن كل جدول
+   بالمشروع ملفوف بـ <div id="....-table">. الجدول ياخذ عرضه الطبيعي
+   الكامل (مو مضغوط)، والحاوية تتمرّر بدل ما تنكسر الصفحة كلها. */
+@media (max-width: 900px) {
+  div[id$="-table"] {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  div[id$="-table"] table {
+    width: max-content !important;
+    min-width: 100% !important;
+  }
+}
