@@ -1,5 +1,0 @@
-﻿
-src\App.jsx:62:      setRole("viewer2");
-src\App.jsx:137:   if (role === "viewer2") return <ViewerLimited />;
-
-
