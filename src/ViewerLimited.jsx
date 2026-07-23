@@ -262,18 +262,21 @@ export default function ViewerLimited() {
   const [tenantsSelectedTenants, setTenantsSelectedTenants] = useState([]);
   const [showTenantsTenantDropdown, setShowTenantsTenantDropdown] = useState(false);
   const [tenantsTenantSearchText, setTenantsTenantSearchText] = useState("");
+  const [tenantsSelectedUnitType, setTenantsSelectedUnitType] = useState("");
 
   const [leasesSelectedProperties, setLeasesSelectedProperties] = useState([]);
   const [showLeasesPropDropdown, setShowLeasesPropDropdown] = useState(false);
   const [leasesSelectedTenants, setLeasesSelectedTenants] = useState([]);
   const [showLeasesTenantDropdown, setShowLeasesTenantDropdown] = useState(false);
   const [leasesTenantSearchText, setLeasesTenantSearchText] = useState("");
+  const [leasesSelectedUnitType, setLeasesSelectedUnitType] = useState("");
 
   const [paymentsSelectedProperties, setPaymentsSelectedProperties] = useState([]);
   const [showPaymentsPropDropdown, setShowPaymentsPropDropdown] = useState(false);
   const [paymentsSelectedTenants, setPaymentsSelectedTenants] = useState([]);
   const [showPaymentsTenantDropdown, setShowPaymentsTenantDropdown] = useState(false);
   const [paymentsTenantSearchText, setPaymentsTenantSearchText] = useState("");
+  const [paymentsSelectedUnitType, setPaymentsSelectedUnitType] = useState("");
 
   const [viewerExpandedDesc, setViewerExpandedDesc] = useState(new Set());
   const [viewerExpandedNotes, setViewerExpandedNotes] = useState(new Set());
@@ -287,6 +290,7 @@ export default function ViewerLimited() {
   const [entSelectedTenants, setEntSelectedTenants] = useState([]);
   const [showEntTenantDropdown, setShowEntTenantDropdown] = useState(false);
   const [entTenantSearchText, setEntTenantSearchText] = useState("");
+  const [entSelectedUnitType, setEntSelectedUnitType] = useState("");
 
   function reloadBookings(currentHallId) {
     const idToUse = currentHallId || hallId;
@@ -463,13 +467,34 @@ export default function ViewerLimited() {
     return allowedTenants.map((t) => t.name).filter(Boolean).sort((a, b) => a.localeCompare(b, "ar"));
   }, [allowedTenants]);
 
-  const leasesFilteredTenantOptions = allTenantNames.filter((name) =>
+  function tenantOptionsForProperties(selectedProps) {
+    const list = selectedProps.length === 0
+      ? allowedTenants
+      : allowedTenants.filter((t) => allowedLeases.some((l) => l.tenant_id === t.id && selectedProps.includes(l.property_id)));
+    return list.map((t) => t.name).filter(Boolean).sort((a, b) => a.localeCompare(b, "ar"));
+  }
+
+  const allUnitTypes = useMemo(() => {
+    const set = new Set();
+    allowedLeases.forEach((l) => {
+      (l.lease_units || []).forEach((lu) => {
+        const t = lu.units?.unit_type;
+        if (t) set.add(t.trim());
+      });
+    });
+    const known = ["محل", "شقة", "ورشة"];
+    const knownPresent = known.filter((k) => set.has(k));
+    const others = Array.from(set).filter((t) => !known.includes(t)).sort((a, b) => a.localeCompare(b, "ar"));
+    return [...knownPresent, ...others];
+  }, [allowedLeases]);
+
+  const leasesFilteredTenantOptions = tenantOptionsForProperties(leasesSelectedProperties).filter((name) =>
     name.toLowerCase().includes(leasesTenantSearchText.toLowerCase())
   );
-  const tenantsFilteredTenantOptions = allTenantNames.filter((name) =>
+  const tenantsFilteredTenantOptions = tenantOptionsForProperties(tenantsSelectedProperties).filter((name) =>
     name.toLowerCase().includes(tenantsTenantSearchText.toLowerCase())
   );
-  const paymentsFilteredTenantOptions = allTenantNames.filter((name) =>
+  const paymentsFilteredTenantOptions = tenantOptionsForProperties(paymentsSelectedProperties).filter((name) =>
     name.toLowerCase().includes(paymentsTenantSearchText.toLowerCase())
   );
 
@@ -480,6 +505,10 @@ export default function ViewerLimited() {
       const matches = tLeases.some(l => tenantsSelectedProperties.includes(l.property_id));
       if (!matches) return false;
     }
+    if (tenantsSelectedUnitType) {
+      const hasType = t._sort.units.some(u => (u.unit_type || "").trim() === tenantsSelectedUnitType);
+      if (!hasType) return false;
+    }
     return true;
   });
 
@@ -489,6 +518,10 @@ export default function ViewerLimited() {
       const tenantName = tenants.find(t => t.id === l.tenant_id)?.name;
       if (!leasesSelectedTenants.includes(tenantName)) return false;
     }
+    if (leasesSelectedUnitType) {
+      const unitsList = l.lease_units?.map(lu => lu.units).filter(Boolean) || [];
+      if (!unitsList.some(u => (u.unit_type || "").trim() === leasesSelectedUnitType)) return false;
+    }
     return true;
   });
 
@@ -496,6 +529,10 @@ export default function ViewerLimited() {
     .filter((p) => {
       if (paymentsSelectedProperties.length > 0 && !paymentsSelectedProperties.includes(p.leases?.property_id)) return false;
       if (paymentsSelectedTenants.length > 0 && !paymentsSelectedTenants.includes(p.leases?.tenants?.name)) return false;
+      if (paymentsSelectedUnitType) {
+        const unitsList = p.leases?.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
+        if (!unitsList.some((u) => (u.unit_type || "").trim() === paymentsSelectedUnitType)) return false;
+      }
       return true;
     })
     .slice()
@@ -567,7 +604,7 @@ export default function ViewerLimited() {
     return Array.from(names).sort((a, b) => a.localeCompare(b, "ar"));
   }, [allowedPayments]);
 
-  const entFilteredTenantOptions = entUniqueTenants.filter((name) =>
+  const entFilteredTenantOptions = tenantOptionsForProperties(entSelectedProperties).filter((name) =>
     name.toLowerCase().includes(entTenantSearchText.toLowerCase())
   );
 
@@ -587,6 +624,7 @@ export default function ViewerLimited() {
       if (!hijri || hijri.year !== filterYear || hijri.month !== filterMonth) continue;
 
       const unitsList = lease.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
+      if (entSelectedUnitType && !unitsList.some((u) => (u.unit_type || "").trim() === entSelectedUnitType)) continue;
       const status = computeStatus(row, hijri);
 
       found.push({
@@ -999,6 +1037,17 @@ export default function ViewerLimited() {
                       </div>
                     )}
                   </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>نوع الوحدة</label>
+                    <select value={tenantsSelectedUnitType} onChange={(e) => setTenantsSelectedUnitType(e.target.value)}
+                      style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Tahoma, Arial, sans-serif", minWidth: "140px" }}>
+                      <option value="">كل الأنواع</option>
+                      {allUnitTypes.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div id="tenants-table">
@@ -1123,6 +1172,17 @@ export default function ViewerLimited() {
                         ))}
                       </div>
                     )}
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>نوع الوحدة</label>
+                    <select value={leasesSelectedUnitType} onChange={(e) => setLeasesSelectedUnitType(e.target.value)}
+                      style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Tahoma, Arial, sans-serif", minWidth: "140px" }}>
+                      <option value="">كل الأنواع</option>
+                      {allUnitTypes.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -1262,6 +1322,17 @@ export default function ViewerLimited() {
                         ))}
                       </div>
                     )}
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>نوع الوحدة</label>
+                    <select value={paymentsSelectedUnitType} onChange={(e) => setPaymentsSelectedUnitType(e.target.value)}
+                      style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Tahoma, Arial, sans-serif", minWidth: "140px" }}>
+                      <option value="">كل الأنواع</option>
+                      {allUnitTypes.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -1476,6 +1547,18 @@ export default function ViewerLimited() {
                         ))}
                       </div>
                     )}
+                  </div>
+
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>نوع الوحدة</label>
+                    <select value={entSelectedUnitType} onChange={(e) => setEntSelectedUnitType(e.target.value)}
+                      style={{ border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Tahoma, Arial, sans-serif", minWidth: "140px" }}>
+                      <option value="">كل الأنواع</option>
+                      {allUnitTypes.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <button onClick={handleEntitlementsSearch}
