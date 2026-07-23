@@ -318,7 +318,7 @@ const styles = {
     direction: "rtl",
     color: "#111827",
     boxSizing: "border-box",
-    overflow: "hidden",
+    overflow: "visible",
   },
   letterhead: {
     display: "flex",
