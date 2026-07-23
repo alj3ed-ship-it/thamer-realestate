@@ -3,9 +3,11 @@
     display: none !important;
   }
   .print-main-content {
+    display: block !important;
     width: 100% !important;
     max-width: 100% !important;
     overflow: visible !important;
+    flex: none !important;
   }
   body, html {
     width: 100% !important;
