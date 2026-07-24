@@ -1,0 +1,6 @@
+﻿121: const prevHtmlOverflowX = document.documentElement.style.overflowX;
+122: const prevBodyOverflowX = document.body.style.overflowX;
+131: document.documentElement.style.overflowX = "visible";
+132: document.body.style.overflowX = "visible";
+184: document.documentElement.style.overflowX = prevHtmlOverflowX;
+185: document.body.style.overflowX = prevBodyOverflowX;
