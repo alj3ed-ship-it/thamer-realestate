@@ -288,19 +288,26 @@ const styles = {
     fontSize: "14px",
   },
 
-  // العنصر المخفي (مُستخدم فقط وقت الطباعة/التصدير) — إعدادات أصلية شغّالة
+  // العنصر المخفي (مُستخدم فقط وقت الطباعة/التصدير)
+  // إصلاح (يوليو 2026): استبدلنا left:-9999px بـ height:0 + overflow:hidden +
+  // visibility:hidden. الإحداثيات السالبة (left:-9999px) تخدع بعض المتصفحات
+  // (خصوصاً على الشاشات الضيقة) فتوسّع مساحة الصفحة (html/body) الفعلية لتشمل
+  // هذا العنصر البعيد، وتسبب فراغ أبيض ضخم وتمرير غير طبيعي. هذي الطريقة تبقي
+  // العنصر بمكانه بالتدفق الطبيعي (top/left:0) لكن بدون أي ارتفاع أو ظهور.
   printRoot: {
     position: "absolute",
     top: 0,
-    left: "-9999px",
+    left: 0,
+    height: 0,
     width: "1700px",
+    overflow: "hidden",
+    visibility: "hidden",
     background: "#ffffff",
     padding: "30px 50px",
     fontFamily: "Cairo, Tahoma, sans-serif",
     direction: "rtl",
     color: "#111827",
     boxSizing: "border-box",
-    overflow: "hidden",
   },
   // نفس التصميم بالضبط، بس ظاهر فعلياً فوق كل شي وقت التصوير.
   // نستخدم absolute (مو fixed) عمداً — html2canvas فيه خلل معروف مع position:fixed
