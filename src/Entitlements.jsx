@@ -15,6 +15,15 @@ const PROPERTY_BADGE_COLOR = { bg: "#EAF2F8", color: "#1B4D7A", border: "#AED6F1
 const TENANT_BADGE_COLOR = { bg: "#FEF9E7", color: "#9A7D0A", border: "#F7DC6F" };
 const ACTIVITY_BADGE_COLOR = { bg: "#E8F6F3", color: "#148F77", border: "#A2D9CE" };
 
+// خيارات فلتر الحالة
+const STATUS_FILTERS = [
+  { key: "all", label: "الكل" },
+  { key: "paid", label: "مدفوع" },
+  { key: "overdue", label: "متأخر" },
+  { key: "partial", label: "جزئي" },
+  { key: "not_due", label: "غير مستحق بعد" },
+];
+
 function propertyBadge(name) {
   if (!name) return "-";
   return (
@@ -111,6 +120,7 @@ export default function Entitlements() {
   const [tenantSearchText, setTenantSearchText] = useState("");
   const [selectedUnitType, setSelectedUnitType] = useState("");
   const [results, setResults] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("all"); // فلتر الحالة الجديد
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(true);
   const filterBoxRef = useRef(null);
@@ -208,6 +218,7 @@ export default function Entitlements() {
   function handleSearch() {
     setShowPropDropdown(false);
     setShowTenantDropdown(false);
+    setStatusFilter("all"); // إعادة ضبط فلتر الحالة عند كل بحث جديد
     const filterYear = parseInt(selectedYear);
     const filterMonth = parseInt(selectedMonthNum);
     const found = [];
@@ -266,8 +277,23 @@ export default function Entitlements() {
     setSearched(true);
   }
 
-  const totalAmount = results.reduce((sum, r) => sum + (r.amount || 0), 0);
-  const totalCollected = results.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
+  // عدد كل حالة (لعرضه كعداد بجانب زر الفلتر)
+  const statusCounts = useMemo(() => {
+    const counts = { all: results.length, paid: 0, overdue: 0, partial: 0, not_due: 0 };
+    results.forEach((r) => {
+      if (counts[r.status] !== undefined) counts[r.status] += 1;
+    });
+    return counts;
+  }, [results]);
+
+  // النتائج بعد تطبيق فلتر الحالة — هذه هي التي تُعرض وتُطبع وتُصدَّر
+  const filteredResults = useMemo(() => {
+    if (statusFilter === "all") return results;
+    return results.filter((r) => r.status === statusFilter);
+  }, [results, statusFilter]);
+
+  const totalAmount = filteredResults.reduce((sum, r) => sum + (r.amount || 0), 0);
+  const totalCollected = filteredResults.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
   const totalRemaining = Math.max(totalAmount - totalCollected, 0);
 
   function statusBadge(status) {
@@ -464,8 +490,36 @@ export default function Entitlements() {
 
       {searched && results.length > 0 && (
         <div id="entitlements-table">
+          {/* شريط فلتر الحالة */}
+          <div className="no-print" style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
+            {STATUS_FILTERS.map((f) => {
+              const active = statusFilter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setStatusFilter(f.key)}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: "20px",
+                    border: active ? "2px solid #1B4D7A" : "1px solid #ddd",
+                    background: active ? "#1B4D7A" : "#fff",
+                    color: active ? "#fff" : "#333",
+                    fontSize: "13px",
+                    fontWeight: "bold",
+                    fontFamily: "Cairo, sans-serif",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {f.label} ({statusCounts[f.key] ?? 0})
+                </button>
+              );
+            })}
+          </div>
+
           <ExportToolbar
-            data={results}
+            data={filteredResults}
             columns={[
               { key: "property", label: "العقار" },
               { key: "tenant", label: "المستأجر" },
@@ -476,7 +530,7 @@ export default function Entitlements() {
               { key: "paidAmount", label: "المبلغ المدفوع" },
               { key: "statusLabel", label: "الحالة" },
             ]}
-            filename={`entitlements_${selectedYear}_${selectedMonthNum}`}
+            filename={`entitlements_${selectedYear}_${selectedMonthNum}${statusFilter !== "all" ? "_" + statusFilter : ""}`}
             stats={[
               { label: "إجمالي المحصّل", value: `${totalCollected.toLocaleString()} ريال`, color: "#27ae60" },
               { label: "إجمالي المتبقي", value: `${totalRemaining.toLocaleString()} ريال`, color: "#e74c3c" },
@@ -499,34 +553,40 @@ export default function Entitlements() {
             </div>
           </div>
 
-          <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
-              <thead>
-                <tr style={{ background: "#f8f9fa", borderBottom: "2px solid #e9ecef" }}>
-                  <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>العقار</th>
-                  <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>المستأجر</th>
-                  <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>النشاط</th>
-                  <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>الوحدة</th>
-                             <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>تاريخ الاستحقاق</th>
-                  <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>المبلغ</th>
-                  <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>الحالة</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: "1px solid #f0f0f0", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
-                    <td style={{ padding: "12px 16px" }}>{propertyBadge(r.property)}</td>
-                    <td style={{ padding: "12px 16px" }}>{tenantBadge(r.tenant)}</td>
-                    <td style={{ padding: "12px 16px" }}>{activityBadge(r.activity)}</td>
-                    <td style={{ padding: "12px 16px" }}>{unitBadges(r.units)}</td>
-                                <td style={{ padding: "12px 16px", color: "#6b7280", fontSize: 13 }}>{r.dueDateHijri} هـ</td>
-                    <td style={{ padding: "12px 16px" }}>{amountDisplay(r)}</td>
-                    <td style={{ padding: "12px 16px" }}>{statusBadge(r.status)}</td>
+          {filteredResults.length === 0 ? (
+            <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "48px", textAlign: "center", color: "#999" }}>
+              لا توجد نتائج لهذه الحالة
+            </div>
+          ) : (
+            <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+                <thead>
+                  <tr style={{ background: "#f8f9fa", borderBottom: "2px solid #e9ecef" }}>
+                    <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>العقار</th>
+                    <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>المستأجر</th>
+                    <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>النشاط</th>
+                    <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>الوحدة</th>
+                               <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>تاريخ الاستحقاق</th>
+                    <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>المبلغ</th>
+                    <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>الحالة</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredResults.map((r, i) => (
+                    <tr key={i} style={{ borderBottom: "1px solid #f0f0f0", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                      <td style={{ padding: "12px 16px" }}>{propertyBadge(r.property)}</td>
+                      <td style={{ padding: "12px 16px" }}>{tenantBadge(r.tenant)}</td>
+                      <td style={{ padding: "12px 16px" }}>{activityBadge(r.activity)}</td>
+                      <td style={{ padding: "12px 16px" }}>{unitBadges(r.units)}</td>
+                                  <td style={{ padding: "12px 16px", color: "#6b7280", fontSize: 13 }}>{r.dueDateHijri} هـ</td>
+                      <td style={{ padding: "12px 16px" }}>{amountDisplay(r)}</td>
+                      <td style={{ padding: "12px 16px" }}>{statusBadge(r.status)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
