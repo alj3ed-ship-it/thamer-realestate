@@ -141,11 +141,23 @@ export default function ExportToolbar({
       }
       await new Promise((resolve) => setTimeout(resolve, 150));
 
+      // إصلاح (يوليو 2026 - محاولة ثالثة): على شاشة جوال حقيقية ضيقة، html2canvas
+      // افتراضياً يصوّر بناءً على عرض الشاشة الفعلي (windowWidth) مو عرض العنصر
+      // (1700px)، فيقص الأعمدة الأخيرة بغض النظر عن overflow. نجبر windowWidth/
+      // windowHeight على حجم العنصر نفسه (node.scrollWidth/Height)، ونثبّت
+      // x/y/scrollX/scrollY بالصفر عشان نفادي انزياح الموقع (اللي صار بمحاولة
+      // سابقة وقصّ أول عمودين بدل الأخيرين).
       const canvas = await html2canvas(node, {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
         foreignObjectRendering: true,
+        windowWidth: node.scrollWidth,
+        windowHeight: node.scrollHeight,
+        x: 0,
+        y: 0,
+        scrollX: 0,
+        scrollY: 0,
       });
 
       if (canvas.width === 0 || canvas.height === 0) {
