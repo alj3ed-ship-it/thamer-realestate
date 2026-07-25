@@ -77,7 +77,24 @@ export default function Letters({ onBack }) {
   const [pdfLoading, setPdfLoading] = useState(false);
   const printRef = useRef(null);
 
+  // --- بحث المستأجر القابل للكتابة ---
+  const [leaseSearch, setLeaseSearch] = useState("");
+  const [showLeaseDropdown, setShowLeaseDropdown] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(-1);
+  const leaseBoxRef = useRef(null);
+
   useEffect(() => { fetchLeases(); initDate(); }, []);
+
+  // إغلاق القائمة عند الضغط خارجها
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (leaseBoxRef.current && !leaseBoxRef.current.contains(e.target)) {
+        setShowLeaseDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   function initDate() {
     const h = gregorianToHijriApprox(new Date());
@@ -123,6 +140,17 @@ export default function Letters({ onBack }) {
       .sort((a, b) => a.tenant.localeCompare(b.tenant, "ar"));
   }, [leases]);
 
+  // فلترة القائمة حسب النص المكتوب — يبحث بالاسم أو العقار أو الوحدة
+  const filteredLeaseOptions = useMemo(() => {
+    const q = leaseSearch.trim().toLowerCase();
+    if (!q) return leaseOptions;
+    return leaseOptions.filter((l) =>
+      l.tenant.toLowerCase().includes(q) ||
+      l.property.toLowerCase().includes(q) ||
+      (l.unit || "").toLowerCase().includes(q)
+    );
+  }, [leaseOptions, leaseSearch]);
+
   function applyTemplate(typeKey, overrides = {}) {
     const type = LETTER_TYPES.find((t) => t.key === typeKey) || LETTER_TYPES[0];
     const ctx = {
@@ -141,12 +169,41 @@ export default function Letters({ onBack }) {
       setTenantName(found.tenant);
       setPropertyName(found.property);
       setUnitText(found.unit);
+      setLeaseSearch(`${found.tenant} — ${found.property} (${found.unit || "بدون وحدة"})`);
       applyTemplate(letterTypeKey, {
         tenant: found.tenant,
         property: found.property,
         unit: found.unit,
         amount,
       });
+    }
+    setShowLeaseDropdown(false);
+    setHighlightIndex(-1);
+  }
+
+  function handleLeaseSearchChange(value) {
+    setLeaseSearch(value);
+    setShowLeaseDropdown(true);
+    setHighlightIndex(-1);
+    // لو المستخدم عدّل النص يدوياً، نلغي الربط بالعقد المختار سابقاً
+    if (selectedLeaseId) setSelectedLeaseId("");
+  }
+
+  function handleLeaseSearchKeyDown(e) {
+    if (!showLeaseDropdown) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIndex((i) => Math.min(i + 1, filteredLeaseOptions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightIndex >= 0 && filteredLeaseOptions[highlightIndex]) {
+        handleLeaseSelect(filteredLeaseOptions[highlightIndex].id);
+      }
+    } else if (e.key === "Escape") {
+      setShowLeaseDropdown(false);
     }
   }
 
@@ -155,7 +212,6 @@ export default function Letters({ onBack }) {
     applyTemplate(key);
   }
 
-  const selectedLease = leaseOptions.find((l) => String(l.id) === String(selectedLeaseId));
   const letterTitle = letterTypeKey === "other"
     ? (customTitle || "خطاب")
     : (LETTER_TYPES.find((t) => t.key === letterTypeKey)?.label || "خطاب");
@@ -246,16 +302,43 @@ export default function Letters({ onBack }) {
           )}
 
           <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>المستأجر (اختياري - للتعبئة التلقائية)</label>
-          <select
-            value={selectedLeaseId}
-            onChange={(e) => handleLeaseSelect(e.target.value)}
-            style={{ width: "100%", border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Cairo, sans-serif", marginBottom: "14px" }}
-          >
-            <option value="">اختر من القائمة أو عبّي يدوياً بالأسفل</option>
-            {leaseOptions.map((l) => (
-              <option key={l.id} value={l.id}>{l.tenant} — {l.property} ({l.unit || "بدون وحدة"})</option>
-            ))}
-          </select>
+          <div ref={leaseBoxRef} style={{ position: "relative", marginBottom: "14px" }}>
+            <input
+              value={leaseSearch}
+              onChange={(e) => handleLeaseSearchChange(e.target.value)}
+              onFocus={() => setShowLeaseDropdown(true)}
+              onKeyDown={handleLeaseSearchKeyDown}
+              placeholder="اكتب اسم المستأجر أو العقار أو رقم الوحدة..."
+              style={{ width: "100%", boxSizing: "border-box", border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Cairo, sans-serif" }}
+            />
+            {showLeaseDropdown && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 4px)", right: 0, left: 0,
+                background: "#fff", border: "1px solid #ddd", borderRadius: "8px",
+                maxHeight: "260px", overflowY: "auto", zIndex: 20,
+                boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+              }}>
+                {filteredLeaseOptions.length === 0 && (
+                  <div style={{ padding: "10px 12px", fontSize: "13px", color: "#9ca3af" }}>لا توجد نتائج مطابقة</div>
+                )}
+                {filteredLeaseOptions.map((l, idx) => (
+                  <div
+                    key={l.id}
+                    onMouseDown={(e) => { e.preventDefault(); handleLeaseSelect(l.id); }}
+                    onMouseEnter={() => setHighlightIndex(idx)}
+                    style={{
+                      padding: "8px 12px", fontSize: "13px", cursor: "pointer",
+                      background: idx === highlightIndex ? "#eef3ff" : "#fff",
+                      borderBottom: "1px solid #f3f4f6",
+                    }}
+                  >
+                    <div style={{ fontWeight: "bold", color: "#1B4D7A" }}>{l.tenant}</div>
+                    <div style={{ color: "#6b7280", fontSize: "12px" }}>{l.property} ({l.unit || "بدون وحدة"})</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <label style={{ display: "block", fontSize: "13px", color: "#555", marginBottom: "6px", fontWeight: "bold" }}>اسم المستأجر</label>
           <input value={tenantName} onChange={(e) => setTenantName(e.target.value)}
