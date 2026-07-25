@@ -13,7 +13,7 @@ export default function Defaulters({ onBack, onCreateLetter }) {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  const [form, setForm] = useState({ tenant_id: "", total_amount: "", notes: "" });
+  const [form, setForm] = useState({ tenant_id: "", total_amount: "", notes: "", due_date: "" });
   const [paymentForm, setPaymentForm] = useState({ amount: "", payment_date: "", notes: "" });
   const [editingId, setEditingId] = useState(null);
 
@@ -48,6 +48,15 @@ export default function Defaulters({ onBack, onCreateLetter }) {
     return Number(defaulter.total_amount) - getTotalPaid(defaulter.id);
   }
 
+  function getDueUrgency(dueDate) {
+    if (!dueDate) return null;
+    const days = Math.floor((new Date() - new Date(dueDate)) / (1000 * 60 * 60 * 24));
+    if (days < 0) return { label: `يستحق بعد ${Math.abs(days)} يوم`, color: "#6b7280", bg: "#f3f4f6", days };
+    if (days <= 30) return { label: `متأخر ${days} يوم`, color: "#854d0e", bg: "#fef9c3", days };
+    if (days <= 90) return { label: `متأخر ${days} يوم`, color: "#c2410c", bg: "#ffedd5", days };
+    return { label: `متأخر ${days} يوم ⚠️`, color: "#991b1b", bg: "#fee2e2", days };
+  }
+
   // إحصائيات
   const totalDebt = defaulters.reduce((s, d) => s + Number(d.total_amount), 0);
   const totalCollected = defaulters.reduce((s, d) => s + getTotalPaid(d.id), 0);
@@ -55,13 +64,13 @@ export default function Defaulters({ onBack, onCreateLetter }) {
 
   function openAddForm() {
     setEditingId(null);
-    setForm({ tenant_id: "", total_amount: "", notes: "" });
+    setForm({ tenant_id: "", total_amount: "", notes: "", due_date: "" });
     setShowForm(true);
   }
 
   function openEditForm(d) {
     setEditingId(d.id);
-    setForm({ tenant_id: d.tenant_id || "", total_amount: d.total_amount || "", notes: d.notes || "" });
+    setForm({ tenant_id: d.tenant_id || "", total_amount: d.total_amount || "", notes: d.notes || "", due_date: d.due_date || "" });
     setShowForm(true);
   }
 
@@ -72,6 +81,7 @@ export default function Defaulters({ onBack, onCreateLetter }) {
       tenant_id: form.tenant_id,
       total_amount: Number(form.total_amount),
       notes: form.notes || null,
+      due_date: form.due_date || null,
     };
     if (editingId) {
       await supabase.from("defaulters").update(payload).eq("id", editingId);
@@ -174,7 +184,14 @@ export default function Defaulters({ onBack, onCreateLetter }) {
       )}
 
       {/* قائمة المتعثرين */}
-      {!loading && defaulters.length > 0 && (
+      {!loading && defaulters.length > 0 && (() => {
+        const sortedDefaulters = [...defaulters].sort((a, b) => {
+          if (!a.due_date && !b.due_date) return 0;
+          if (!a.due_date) return 1;
+          if (!b.due_date) return -1;
+          return new Date(a.due_date) - new Date(b.due_date);
+        });
+        return (
         <div id="defaulters-table">
           <ExportToolbar
             data={exportData}
@@ -192,7 +209,7 @@ export default function Defaulters({ onBack, onCreateLetter }) {
           />
 
           <div style={{ display: "grid", gap: 12, marginBottom: 32 }}>
-            {defaulters.map(d => {
+            {sortedDefaulters.map(d => {
               const tenant = getTenant(d.tenant_id);
               const paid = getTotalPaid(d.id);
               const remaining = getRemaining(d);
@@ -202,7 +219,18 @@ export default function Defaulters({ onBack, onCreateLetter }) {
                   <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 16, cursor: "pointer" }}
                     onClick={() => setSelectedDefaulter(isSelected ? null : d)}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, color: "#1B4D7A", fontSize: 16 }}>{tenant?.name || "—"}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ fontWeight: 700, color: "#1B4D7A", fontSize: 16 }}>{tenant?.name || "—"}</div>
+                        {(() => {
+                          const urgency = getDueUrgency(d.due_date);
+                          if (!urgency) return null;
+                          return (
+                            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: urgency.bg, color: urgency.color, fontWeight: 700 }}>
+                              {urgency.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
                       <div style={{ color: "#6b7280", fontSize: 13, marginTop: 2 }}>{tenant?.phone || "—"}</div>
                       {d.notes && <div style={{ color: "#9ca3af", fontSize: 12, marginTop: 4 }}>{d.notes}</div>}
                     </div>
@@ -245,28 +273,28 @@ export default function Defaulters({ onBack, onCreateLetter }) {
 
                   {/* مدفوعات المتعثر */}
                   {isSelected && (
-    <div className="no-print" style={{ borderTop: "1px solid #f3f4f6", padding: "16px 20px", background: "#f9fafb" }}>
-      <ExportToolbar
-        data={getPaymentsForDefaulter(d.id).map(p => ({
-          date: p.payment_date || "—",
-          amount: `${Number(p.amount).toLocaleString()} ر.س`,
-          notes: p.notes || "—",
-        }))}
-        columns={[
-          { key: "date", label: "التاريخ" },
-          { key: "amount", label: "المبلغ" },
-          { key: "notes", label: "ملاحظات" },
-        ]}
-        filename={`كشف_حساب_${tenant?.name || "مستأجر"}`}
-        title={`كشف حساب - ${tenant?.name || "—"}`}
-        stats={[
-          { label: "المبلغ الأصلي", value: `${Number(d.total_amount).toLocaleString()} ريال`, color: "#1B4D7A" },
-          { label: "المسدد", value: `${paid.toLocaleString()} ريال`, color: "#166534" },
-          { label: "المتبقي", value: `${remaining.toLocaleString()} ريال`, color: "#991b1b" },
-        ]}
-      />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h4 style={{ margin: 0, color: "#1B4D7A" }}>سجل المدفوعات</h4>
+                    <div className="no-print" style={{ borderTop: "1px solid #f3f4f6", padding: "16px 20px", background: "#f9fafb" }}>
+                      <ExportToolbar
+                        data={getPaymentsForDefaulter(d.id).map(p => ({
+                          date: p.payment_date || "—",
+                          amount: `${Number(p.amount).toLocaleString()} ر.س`,
+                          notes: p.notes || "—",
+                        }))}
+                        columns={[
+                          { key: "date", label: "التاريخ" },
+                          { key: "amount", label: "المبلغ" },
+                          { key: "notes", label: "ملاحظات" },
+                        ]}
+                        filename={`كشف_حساب_${tenant?.name || "مستأجر"}`}
+                        title={`كشف حساب - ${tenant?.name || "—"}`}
+                        stats={[
+                          { label: "المبلغ الأصلي", value: `${Number(d.total_amount).toLocaleString()} ريال`, color: "#1B4D7A" },
+                          { label: "المسدد", value: `${paid.toLocaleString()} ريال`, color: "#166534" },
+                          { label: "المتبقي", value: `${remaining.toLocaleString()} ريال`, color: "#991b1b" },
+                        ]}
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                        <h4 style={{ margin: 0, color: "#1B4D7A" }}>سجل المدفوعات</h4>
                         <button onClick={() => { setShowPaymentForm(true); }}
                           style={{ padding: "6px 14px", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>
                           + إضافة دفعة
@@ -305,7 +333,8 @@ export default function Defaulters({ onBack, onCreateLetter }) {
             })}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* نموذج إضافة/تعديل متعثر */}
       {showForm && (
@@ -330,6 +359,11 @@ export default function Defaulters({ onBack, onCreateLetter }) {
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>ملاحظات (اختياري)</label>
                 <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2}
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>تاريخ الاستحقاق (اختياري)</label>
+                <input type="date" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })}
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
               </div>
             </div>
