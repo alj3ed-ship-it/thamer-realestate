@@ -306,7 +306,10 @@ export default function Letters({ onBack }) {
             <input
               value={leaseSearch}
               onChange={(e) => handleLeaseSearchChange(e.target.value)}
-              onFocus={() => setShowLeaseDropdown(true)}
+              onFocus={() => {
+                if (selectedLeaseId) setLeaseSearch("");
+                setShowLeaseDropdown(true);
+              }}
               onKeyDown={handleLeaseSearchKeyDown}
               placeholder="اكتب اسم المستأجر أو العقار أو رقم الوحدة..."
               style={{ width: "100%", boxSizing: "border-box", border: "1px solid #ddd", borderRadius: "8px", padding: "8px 12px", fontSize: "14px", fontFamily: "Cairo, sans-serif" }}
