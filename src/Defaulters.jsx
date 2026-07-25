@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import ExportToolbar from "./components/ExportToolbar";
 
-export default function Defaulters({ onBack }) {
+export default function Defaulters({ onBack, onCreateLetter }) {
   const [defaulters, setDefaulters] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -219,6 +219,21 @@ export default function Defaulters({ onBack }) {
                       <div style={{ fontWeight: 700, color: "#854d0e" }}>{remaining.toLocaleString()} ر.س</div>
                     </div>
                     <div className="no-print" style={{ display: "flex", gap: 6 }}>
+                      {onCreateLetter && (
+                        <button onClick={e => {
+                          e.stopPropagation();
+                          const t = getTenant(d.tenant_id);
+                          onCreateLetter({
+                            tenant: t?.name || "",
+                            amount: getRemaining(d).toLocaleString(),
+                            unit: d.notes || "",
+                            property: "",
+                          });
+                        }}
+                          style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0e8c8", background: "#eefff2", color: "#166534", cursor: "pointer" }}>
+                          📄 إنشاء خطاب
+                        </button>
+                      )}
                       <button onClick={e => { e.stopPropagation(); openEditForm(d); }}
                         style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer" }}>تعديل</button>
                       <button onClick={e => { e.stopPropagation(); handleDelete(d.id); }} disabled={deletingId === d.id}
