@@ -16,6 +16,8 @@ export default function Defaulters({ onBack, onCreateLetter }) {
   const [form, setForm] = useState({ tenant_id: "", total_amount: "", notes: "", due_date: "" });
   const [paymentForm, setPaymentForm] = useState({ amount: "", payment_date: "", notes: "" });
   const [editingId, setEditingId] = useState(null);
+const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all"); // all | unpaid | partial
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -185,7 +187,20 @@ export default function Defaulters({ onBack, onCreateLetter }) {
 
       {/* قائمة المتعثرين */}
       {!loading && defaulters.length > 0 && (() => {
-        const sortedDefaulters = [...defaulters].sort((a, b) => {
+        const filteredDefaulters = defaulters.filter(d => {
+          const tenant = getTenant(d.tenant_id);
+          const paid = getTotalPaid(d.id);
+          const matchesSearch = !searchQuery.trim() || (
+            (tenant?.name || "").toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+            (tenant?.phone || "").includes(searchQuery.trim())
+          );
+          const matchesStatus =
+            statusFilter === "all" ||
+            (statusFilter === "unpaid" && paid === 0) ||
+            (statusFilter === "partial" && paid > 0 && paid < Number(d.total_amount));
+          return matchesSearch && matchesStatus;
+        });
+        const sortedDefaulters = [...filteredDefaulters].sort((a, b) => {
           if (!a.due_date && !b.due_date) return 0;
           if (!a.due_date) return 1;
           if (!b.due_date) return -1;
@@ -193,6 +208,30 @@ export default function Defaulters({ onBack, onCreateLetter }) {
         });
         return (
         <div id="defaulters-table">
+          <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="ابحث بالاسم أو الجوال..."
+              style={{ flex: 1, minWidth: 200, padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14 }}
+            />
+            {[
+              { key: "all", label: "الكل" },
+              { key: "unpaid", label: "لم يتم السداد" },
+              { key: "partial", label: "مسدد جزئياً" },
+            ].map(f => (
+              <button key={f.key} onClick={() => setStatusFilter(f.key)}
+                style={{
+                  padding: "8px 14px", borderRadius: 8, border: statusFilter === f.key ? "1px solid #1B4D7A" : "1px solid #e5e7eb",
+                  background: statusFilter === f.key ? "#1B4D7A" : "#fff",
+                  color: statusFilter === f.key ? "#fff" : "#374151",
+                  cursor: "pointer", fontSize: 13, whiteSpace: "nowrap",
+                }}>
+                {f.label}
+              </button>
+            ))}
+          </div>
           <ExportToolbar
             data={exportData}
             columns={[
@@ -208,6 +247,11 @@ export default function Defaulters({ onBack, onCreateLetter }) {
             stats={exportStats}
           />
 
+          {sortedDefaulters.length === 0 && (
+            <div style={{ background: "#f9fafb", padding: 20, borderRadius: 10, color: "#6b7280", textAlign: "center", marginBottom: 20 }}>
+              لا توجد نتائج مطابقة للبحث/الفلتر
+            </div>
+          )}
           <div style={{ display: "grid", gap: 12, marginBottom: 32 }}>
             {sortedDefaulters.map(d => {
               const tenant = getTenant(d.tenant_id);
