@@ -14,35 +14,38 @@ import ViewerLimited from "./ViewerLimited";
 import PropertyDetail from "./PropertyDetail";
 import Units from "./Units";
 import Entitlements from "./Entitlements";
+import Letters from "./Letters";
 import DashboardCharts from "./components/DashboardCharts";
 
 const T = {
-  dashboard: "\u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645",
-  properties: "\u0627\u0644\u0639\u0642\u0627\u0631\u0627\u062A",
-  tenants: "\u0627\u0644\u0645\u0633\u062A\u0623\u062C\u0631\u0648\u0646",
-  leases: "\u0627\u0644\u0639\u0642\u0648\u062F",
-  payments: "\u0627\u0644\u062F\u0641\u0639\u0627\u062A",
-  reports: "\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631",
-  defaulters: "\u0627\u0644\u0645\u062A\u0639\u062B\u0631\u0648\u0646",
-  units: "\u0627\u0644\u0648\u062D\u062F\u0627\u062A",
-  entitlements: "\u0627\u0644\u0627\u0633\u062A\u062D\u0642\u0627\u0642\u0627\u062A",
-  projects: "\u0627\u0644\u0645\u0634\u0627\u0631\u064A\u0639",
-  bookings: "\u0642\u0627\u0639\u0629 \u0645\u0630\u0647\u0644\u0629",
-  logout: "\u062E\u0631\u0648\u062C",
+  dashboard: "لوحة التحكم",
+  properties: "العقارات",
+  tenants: "المستأجرون",
+  leases: "العقود",
+  payments: "الدفعات",
+  reports: "التقارير",
+  defaulters: "المتعثرون",
+  units: "الوحدات",
+  entitlements: "الاستحقاقات",
+  projects: "المشاريع",
+  bookings: "قاعة مذهلة",
+  letters: "الخطابات",
+  logout: "خروج",
 };
 
 const NAV_ITEMS = [
-  { key: "dashboard", label: T.dashboard, icon: "\uD83C\uDFE0" },
-  { key: "properties", label: T.properties, icon: "\uD83C\uDFE2" },
-  { key: "units", label: T.units, icon: "\uD83D\uDEAA" },
-  { key: "tenants", label: T.tenants, icon: "\uD83D\uDC64" },
-  { key: "leases", label: T.leases, icon: "\uD83D\uDCC4" },
-  { key: "payments", label: T.payments, icon: "\uD83D\uDCB0" },
-  { key: "entitlements", label: T.entitlements, icon: "\uD83D\uDCC5" },
-  { key: "reports", label: T.reports, icon: "\uD83D\uDCCA" },
-  { key: "defaulters", label: T.defaulters, icon: "\u26A0\uFE0F" },
-  { key: "projects", label: T.projects, icon: "\uD83D\uDEE0\uFE0F" },
-  { key: "bookings", label: T.bookings, icon: "\uD83C\uDF89" },
+  { key: "dashboard", label: T.dashboard, icon: "🏠" },
+  { key: "properties", label: T.properties, icon: "🏢" },
+  { key: "units", label: T.units, icon: "🚪" },
+  { key: "tenants", label: T.tenants, icon: "👤" },
+  { key: "leases", label: T.leases, icon: "📄" },
+  { key: "payments", label: T.payments, icon: "💰" },
+  { key: "entitlements", label: T.entitlements, icon: "📅" },
+  { key: "reports", label: T.reports, icon: "📊" },
+  { key: "defaulters", label: T.defaulters, icon: "⚠️" },
+  { key: "projects", label: T.projects, icon: "🛠️" },
+  { key: "bookings", label: T.bookings, icon: "🎉" },
+  { key: "letters", label: T.letters, icon: "✉️" },
 ];
 
 export default function App() {
@@ -176,11 +179,11 @@ export default function App() {
             <h2 style={{ color: "#1B4D7A", marginBottom: "12px", fontSize: "20px" }}>{T.dashboard}</h2>
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
               {[
-                { label: T.properties, value: stats.properties, icon: "\uD83C\uDFE2", color: "#2E6394", page: "properties" },
-                { label: T.units, value: stats.units, icon: "\uD83D\uDEAA\uD83D\uDEAA\uD83D\uDEAA", color: "#27ae60", page: "units" },
-                { label: T.tenants, value: stats.tenants, icon: "\uD83D\uDC64", color: "#8e44ad", page: "tenants" },
-                { label: T.leases, value: stats.leases, icon: "\uD83D\uDCC4", color: "#e67e22", page: "leases" },
-                { label: T.payments, value: stats.payments, icon: "\uD83D\uDCB0", color: "#c0392b", page: "payments" },
+                { label: T.properties, value: stats.properties, icon: "🏢", color: "#2E6394", page: "properties" },
+                { label: T.units, value: stats.units, icon: "🚪🚪🚪", color: "#27ae60", page: "units" },
+                { label: T.tenants, value: stats.tenants, icon: "👤", color: "#8e44ad", page: "tenants" },
+                { label: T.leases, value: stats.leases, icon: "📄", color: "#e67e22", page: "leases" },
+                { label: T.payments, value: stats.payments, icon: "💰", color: "#c0392b", page: "payments" },
               ].map(card => (
                 <div key={card.label} style={cardStyle} onClick={() => card.page && setActivePage(card.page)}>
                  <div style={{ fontSize: "22px" }}>{card.icon}</div>
@@ -205,6 +208,7 @@ export default function App() {
         {activePage === "leases" && <Leases onBack={goBack} />}
         {activePage === "payments" && <Payments onBack={goBack} />}
         {activePage === "entitlements" && <Entitlements onBack={goBack} />}
+        {activePage === "letters" && <Letters onBack={goBack} />}
         {activePage === "reports" && <Reports onBack={goBack} />}
         {activePage === "defaulters" && <Defaulters onBack={goBack} />}
       </div>
