@@ -245,9 +245,28 @@ export default function Defaulters({ onBack, onCreateLetter }) {
 
                   {/* مدفوعات المتعثر */}
                   {isSelected && (
-                    <div className="no-print" style={{ borderTop: "1px solid #f3f4f6", padding: "16px 20px", background: "#f9fafb" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                        <h4 style={{ margin: 0, color: "#1B4D7A" }}>سجل المدفوعات</h4>
+    <div className="no-print" style={{ borderTop: "1px solid #f3f4f6", padding: "16px 20px", background: "#f9fafb" }}>
+      <ExportToolbar
+        data={getPaymentsForDefaulter(d.id).map(p => ({
+          date: p.payment_date || "—",
+          amount: `${Number(p.amount).toLocaleString()} ر.س`,
+          notes: p.notes || "—",
+        }))}
+        columns={[
+          { key: "date", label: "التاريخ" },
+          { key: "amount", label: "المبلغ" },
+          { key: "notes", label: "ملاحظات" },
+        ]}
+        filename={`كشف_حساب_${tenant?.name || "مستأجر"}`}
+        title={`كشف حساب - ${tenant?.name || "—"}`}
+        stats={[
+          { label: "المبلغ الأصلي", value: `${Number(d.total_amount).toLocaleString()} ريال`, color: "#1B4D7A" },
+          { label: "المسدد", value: `${paid.toLocaleString()} ريال`, color: "#166534" },
+          { label: "المتبقي", value: `${remaining.toLocaleString()} ريال`, color: "#991b1b" },
+        ]}
+      />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h4 style={{ margin: 0, color: "#1B4D7A" }}>سجل المدفوعات</h4>
                         <button onClick={() => { setShowPaymentForm(true); }}
                           style={{ padding: "6px 14px", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>
                           + إضافة دفعة
