@@ -53,6 +53,7 @@ export default function App() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [activePage, setActivePage] = useState("dashboard");
   const [selectedPropertyId, setSelectedPropertyId] = useState(null);
+   const [letterPrefill, setLetterPrefill] = useState(null);
   const [stats, setStats] = useState({ properties: 0, units: 0, tenants: 0, leases: 0, payments: 0 });
 
   useEffect(() => {
@@ -208,9 +209,19 @@ export default function App() {
         {activePage === "leases" && <Leases onBack={goBack} />}
         {activePage === "payments" && <Payments onBack={goBack} />}
         {activePage === "entitlements" && <Entitlements onBack={goBack} />}
-        {activePage === "letters" && <Letters onBack={goBack} />}
+        {activePage === "letters" && (
+          <Letters onBack={goBack} prefillData={letterPrefill} onPrefillConsumed={() => setLetterPrefill(null)} />
+        )}
         {activePage === "reports" && <Reports onBack={goBack} />}
-        {activePage === "defaulters" && <Defaulters onBack={goBack} />}
+        {activePage === "defaulters" && (
+          <Defaulters
+            onBack={goBack}
+            onCreateLetter={(data) => {
+              setLetterPrefill(data);
+              setActivePage("letters");
+            }}
+          />
+        )}
       </div>
     </div>
   );

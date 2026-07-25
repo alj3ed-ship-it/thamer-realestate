@@ -60,7 +60,7 @@ function gregorianToHijriApprox(date) {
   return { year: hYear, month: hMonth, day: hDay };
 }
 
-export default function Letters({ onBack }) {
+export default function Letters({ onBack, prefillData, onPrefillConsumed }) {
   const [leases, setLeases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedLeaseId, setSelectedLeaseId] = useState("");
@@ -84,6 +84,24 @@ export default function Letters({ onBack }) {
   const leaseBoxRef = useRef(null);
 
   useEffect(() => { fetchLeases(); initDate(); }, []);
+useEffect(() => {
+    if (!prefillData) return;
+    setSelectedLeaseId("");
+    setLetterTypeKey("late_payment");
+    setTenantName(prefillData.tenant || "");
+    setPropertyName(prefillData.property || "");
+    setUnitText(prefillData.unit || "");
+    setAmount(prefillData.amount || "");
+    setLeaseSearch(prefillData.tenant || "");
+    applyTemplate("late_payment", {
+      tenant: prefillData.tenant || "",
+      property: prefillData.property || "",
+      unit: prefillData.unit || "",
+      amount: prefillData.amount || "",
+    });
+    if (onPrefillConsumed) onPrefillConsumed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillData]);
 
   // إغلاق القائمة عند الضغط خارجها
   useEffect(() => {
