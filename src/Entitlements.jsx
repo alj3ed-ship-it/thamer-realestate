@@ -10,6 +10,7 @@ const HIJRI_MONTHS = [
 ];
 
 const UNIT_TYPE_ORDER = { "محل": 1, "شقة": 2, "ورشة": 3 };
+const TAX_RATE = 0.15;
 
 const PROPERTY_BADGE_COLOR = { bg: "#EAF2F8", color: "#1B4D7A", border: "#AED6F1" };
 const TENANT_BADGE_COLOR = { bg: "#FEF9E7", color: "#9A7D0A", border: "#F7DC6F" };
@@ -108,6 +109,17 @@ function hijriToGregorian(hy, hm, hd) {
   } catch { return null; }
 }
 
+// مفتاح ترتيب رقمي لمقارنة تاريخين هجريين نصيين (يُستخدم لتحديد سريان الضريبة)
+function hijriSortKey(hijriText) {
+  if (!hijriText || hijriText === "—") return -1;
+  const parts = hijriText.split("/");
+  if (parts.length !== 3) return -1;
+  const y = parseInt(parts[0]) || 0;
+  const m = parseInt(parts[1]) || 0;
+  const d = parseInt(parts[2]) || 0;
+  return y * 10000 + m * 100 + d;
+}
+
 export default function Entitlements() {
   const [properties, setProperties] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -144,7 +156,7 @@ export default function Entitlements() {
     const { data: paymentsData } = await supabase.from("payments").select(`
       id, lease_id, amount_due, amount_paid, installment_number, total_installments,
       leases (
-        id, property_id, start_date_hijri,
+        id, property_id, start_date_hijri, tax_enabled, tax_effective_hijri,
         properties ( name, priority ),
         tenants ( name, note ),
         lease_units ( units ( unit_number, unit_type ) )
@@ -215,6 +227,14 @@ export default function Entitlements() {
     return "متأخر";
   }
 
+  // هل الضريبة تسري على هذه الدفعة، حسب إعداد العقد وتاريخ استحقاق الدفعة
+  function isTaxApplicable(lease, dueDateHijri) {
+    if (!lease?.tax_enabled) return false;
+    if (!dueDateHijri || dueDateHijri === "—") return false;
+    if (!lease.tax_effective_hijri) return true;
+    return hijriSortKey(dueDateHijri) >= hijriSortKey(lease.tax_effective_hijri);
+  }
+
   function handleSearch() {
     setShowPropDropdown(false);
     setShowTenantDropdown(false);
@@ -249,6 +269,9 @@ export default function Entitlements() {
         ? `${hijri.year}/${String(hijri.month).padStart(2, "0")}/${String(hijri.day).padStart(2, "0")}`
         : "—";
 
+      const taxApplies = isTaxApplicable(lease, dueDateHijri);
+      const taxAmount = taxApplies ? Math.round(Number(row.amount_due || 0) * TAX_RATE) : 0;
+
       found.push({
         tenant: lease.tenants?.name || "",
         activity: lease.tenants?.note || "—",
@@ -262,6 +285,8 @@ export default function Entitlements() {
         status,
         statusLabel: statusToArabic(status),
         dueDateHijri,
+        taxApplies,
+        taxAmount,
       });
 
       
@@ -295,6 +320,8 @@ export default function Entitlements() {
   const totalAmount = filteredResults.reduce((sum, r) => sum + (r.amount || 0), 0);
   const totalCollected = filteredResults.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
   const totalRemaining = Math.max(totalAmount - totalCollected, 0);
+  const totalTax = filteredResults.reduce((sum, r) => sum + (r.taxAmount || 0), 0);
+  const totalWithTax = totalAmount + totalTax;
 
   function statusBadge(status) {
     if (status === "paid") return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
@@ -323,26 +350,36 @@ export default function Entitlements() {
   }
 
   function amountDisplay(r) {
-  if (r.status === "partial") {
-    const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
+    let base;
+    if (r.status === "partial") {
+      const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
+      base = (
+        <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
+          <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
+          <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+          <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
+          <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+          <span style={{ color: "#1B4D7A", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
+        </div>
+      );
+    } else if (r.status === "paid") {
+      base = <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+    } else if (r.status === "not_due") {
+      base = <span style={{ color: "#7f8c8d", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+    } else {
+      base = <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+    }
     return (
-      <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
-        <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
-        <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
-        <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
-        <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
-        <span style={{ color: "#1B4D7A", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
+      <div>
+        {base}
+        {r.taxApplies && (
+          <div style={{ fontSize: 11, color: "#8e44ad", marginTop: 2, fontWeight: "bold" }}>
+            + ضريبة 15%: {r.taxAmount.toLocaleString()} = {(r.amount + r.taxAmount).toLocaleString()} ريال
+          </div>
+        )}
       </div>
     );
   }
-  if (r.status === "paid") {
-    return <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
-  }
-  if (r.status === "not_due") {
-    return <span style={{ color: "#7f8c8d", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
-  }
-  return <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
-}
 
   if (loading) return <div style={{ padding: "32px", textAlign: "center" }}>جاري التحميل...</div>;
 
@@ -519,15 +556,21 @@ export default function Entitlements() {
           </div>
 
           <ExportToolbar
-            data={filteredResults}
+            data={filteredResults.map(r => ({
+              ...r,
+              taxLabel: r.taxApplies ? `${r.taxAmount.toLocaleString()} ريال` : "—",
+              totalWithTax: r.taxApplies ? `${(r.amount + r.taxAmount).toLocaleString()} ريال` : `${r.amount.toLocaleString()} ريال`,
+            }))}
             columns={[
               { key: "property", label: "العقار" },
               { key: "tenant", label: "المستأجر" },
               { key: "activity", label: "النشاط" },
               { key: "unit", label: "الوحدة" },
-                      { key: "dueDateHijri", label: "تاريخ الاستحقاق" },
+              { key: "dueDateHijri", label: "تاريخ الاستحقاق" },
               { key: "amount", label: "المبلغ المستحق" },
               { key: "paidAmount", label: "المبلغ المدفوع" },
+              { key: "taxLabel", label: "الضريبة" },
+              { key: "totalWithTax", label: "الإجمالي شامل الضريبة" },
               { key: "statusLabel", label: "الحالة" },
             ]}
             filename={`entitlements_${selectedYear}_${selectedMonthNum}${statusFilter !== "all" ? "_" + statusFilter : ""}`}
@@ -535,22 +578,30 @@ export default function Entitlements() {
               { label: "إجمالي المحصّل", value: `${totalCollected.toLocaleString()} ريال`, color: "#27ae60" },
               { label: "إجمالي المتبقي", value: `${totalRemaining.toLocaleString()} ريال`, color: "#e74c3c" },
               { label: "إجمالي المستحق", value: `${totalAmount.toLocaleString()} ريال`, color: "#1B4D7A" },
+              { label: "إجمالي الضريبة", value: `${totalTax.toLocaleString()} ريال`, color: "#8e44ad" },
+              { label: "الإجمالي شامل الضريبة", value: `${totalWithTax.toLocaleString()} ريال`, color: "#1B4D7A" },
             ]}
           />
 
-          <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>
-            <div style={{ flex: 1, background: "#EAFAF1", border: "1px solid #A9DFBF", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+          <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 150, background: "#EAFAF1", border: "1px solid #A9DFBF", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
               <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المحصّل</div>
               <div style={{ fontWeight: "bold", color: "#27ae60", fontSize: "18px" }}>{totalCollected.toLocaleString()} ريال</div>
             </div>
-            <div style={{ flex: 1, background: "#FDEDEC", border: "1px solid #F1948A", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+            <div style={{ flex: 1, minWidth: 150, background: "#FDEDEC", border: "1px solid #F1948A", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
               <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المتبقي</div>
               <div style={{ fontWeight: "bold", color: "#e74c3c", fontSize: "18px" }}>{totalRemaining.toLocaleString()} ريال</div>
             </div>
-            <div style={{ flex: 1, background: "#EBF5FB", border: "1px solid #AED6F1", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+            <div style={{ flex: 1, minWidth: 150, background: "#EBF5FB", border: "1px solid #AED6F1", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
               <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المستحق</div>
               <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>{totalAmount.toLocaleString()} ريال</div>
             </div>
+            {totalTax > 0 && (
+              <div style={{ flex: 1, minWidth: 150, background: "#F4ECF7", border: "1px solid #E1C6ED", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                <div style={{ fontSize: "13px", color: "#555" }}>إجمالي الضريبة</div>
+                <div style={{ fontWeight: "bold", color: "#8e44ad", fontSize: "18px" }}>{totalTax.toLocaleString()} ريال</div>
+              </div>
+            )}
           </div>
 
           {filteredResults.length === 0 ? (

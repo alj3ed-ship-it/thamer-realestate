@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import ExportToolbar from "./components/ExportToolbar";
 
@@ -49,6 +49,25 @@ function hijriPartsToGregorian(hy, hm, hd) {
 function hijriPartsToText(hy, hm, hd) {
   if (!hy || !hm || !hd) return null;
   return `${hy}/${String(hm).padStart(2,'0')}/${String(hd).padStart(2,'0')}`;
+}
+
+// يفكك نص هجري "1447/01/01" لأجزاء { year, month, day } - يُستخدم لتعبئة فورم التعديل
+function parseHijriText(text) {
+  if (!text) return { year: "", month: "", day: "" };
+  const parts = text.split("/");
+  if (parts.length !== 3) return { year: "", month: "", day: "" };
+  return { year: Number(parts[0]), month: Number(parts[1]), day: Number(parts[2]) };
+}
+
+// مفتاح ترتيب رقمي لمقارنة تاريخين هجريين نصيين (يُستخدم لتحديد سريان الضريبة)
+function hijriSortKey(hijriText) {
+  if (!hijriText) return -1;
+  const parts = hijriText.split("/");
+  if (parts.length !== 3) return -1;
+  const y = parseInt(parts[0]) || 0;
+  const m = parseInt(parts[1]) || 0;
+  const d = parseInt(parts[2]) || 0;
+  return y * 10000 + m * 100 + d;
 }
 
 // إضافة عدد أشهر هجرية على تاريخ هجري (لتوليد تواريخ الدفعات المقترحة)
@@ -189,6 +208,7 @@ export default function Leases({ onBack }) {
   const [deletingId, setDeletingId] = useState(null);
   const [filterProperty, setFilterProperty] = useState("الكل");
   const [filterTenants, setFilterTenants] = useState([]);
+  const [filterUnitType, setFilterUnitType] = useState("");
   const [showTenantDropdown, setShowTenantDropdown] = useState(false);
   const [tenantSearchText, setTenantSearchText] = useState("");
   const tenantBoxRef = useRef(null);
@@ -200,6 +220,8 @@ export default function Leases({ onBack }) {
     start_date_hijri: "", end_date_hijri: "",
     rent_amount: "", payment_type: "سنوي", notes: "",
     installments: [],
+    tax_enabled: false,
+    tax_effective_hijri: { year: "", month: "", day: "" },
   });
 
   useEffect(() => { fetchAll(); }, []);
@@ -254,6 +276,30 @@ export default function Leases({ onBack }) {
     return leaseUnits.filter(lu => lu.lease_id === leaseId).map(lu => lu.unit_id);
   }
 
+  // معرّفات الوحدات المؤهلة لفرز النوع (تستثني أي وحدة عليها علم الاستثناء لهذا العقد تحديداً)
+  function getEligibleUnitIdsForTypeFilter(leaseId) {
+    const lease = leases.find(l => l.id === leaseId);
+    const luIds = getLeaseUnitIds(leaseId);
+    const allIds = lease?.unit_id ? [...new Set([lease.unit_id, ...luIds])] : luIds;
+    const excludedIds = new Set(
+      leaseUnits.filter(lu => lu.lease_id === leaseId && lu.excluded_from_type_filter).map(lu => lu.unit_id)
+    );
+    return allIds.filter(id => !excludedIds.has(id));
+  }
+
+  function isUnitExcluded(leaseId, unitId) {
+    const row = leaseUnits.find(lu => lu.lease_id === leaseId && lu.unit_id === unitId);
+    return !!row?.excluded_from_type_filter;
+  }
+
+  async function toggleUnitExclusion(leaseId, unitId) {
+    const row = leaseUnits.find(lu => lu.lease_id === leaseId && lu.unit_id === unitId);
+    if (!row) return;
+    const newVal = !row.excluded_from_type_filter;
+    await supabase.from("lease_units").update({ excluded_from_type_filter: newVal }).eq("id", row.id);
+    fetchAll();
+  }
+
   function getInstallmentDate(leaseId, num) {
     const row = payments.find(p => p.lease_id === leaseId && p.installment_number === num);
     if (!row) return "—";
@@ -264,13 +310,54 @@ export default function Leases({ onBack }) {
     return payments.filter(p => p.lease_id === leaseId && p.installment_number > 4).length;
   }
 
-  function getLeaseUnitsDisplay(leaseId) {
+  function getLeaseUnitObjs(leaseId) {
     const lease = leases.find(l => l.id === leaseId);
     const luIds = getLeaseUnitIds(leaseId);
     const allIds = lease?.unit_id ? [...new Set([lease.unit_id, ...luIds])] : luIds;
     return allIds.map(id => units.find(u => u.id === id)).filter(Boolean)
-      .sort((a, b) => getUnitSortKey(a) - getUnitSortKey(b))
-      .map(u => u.unit_number + " " + u.unit_type).join(" + ") || "—";
+      .sort((a, b) => getUnitSortKey(a) - getUnitSortKey(b));
+  }
+
+  function getLeaseUnitsDisplay(leaseId) {
+    return getLeaseUnitObjs(leaseId).map(u => u.unit_number + " " + u.unit_type).join(" + ") || "—";
+  }
+
+  // خلية الوحدات بجدول العقود — كل وحدة زر قابل للضغط لاستثنائها/إرجاعها من فرز النوع
+  function unitsCell(leaseId) {
+    const objs = getLeaseUnitObjs(leaseId);
+    if (objs.length === 0) return "—";
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {objs.map(u => {
+          const excluded = isUnitExcluded(leaseId, u.id);
+          return (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => toggleUnitExclusion(leaseId, u.id)}
+              title={excluded ? "مستثناة من فرز النوع — اضغط لإرجاعها" : "اضغط لاستثنائها من فرز النوع"}
+              style={{
+                border: excluded ? "1px dashed #9ca3af" : "1px solid #ddd6fe",
+                background: excluded ? "#f3f4f6" : "#efe9fe",
+                color: excluded ? "#9ca3af" : "#7c3aed",
+                padding: "2px 8px", borderRadius: 10, fontSize: 12, fontWeight: 700,
+                cursor: "pointer", whiteSpace: "nowrap",
+                textDecoration: excluded ? "line-through" : "none",
+                fontFamily: "Cairo, sans-serif",
+              }}>
+              {u.unit_number} {u.unit_type}{excluded ? " 🚫" : ""}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // نص وصف حالة الضريبة لعقد معيّن، يُستخدم بالجدول والتصدير
+  function getTaxSummary(lease) {
+    if (!lease.tax_enabled) return "بدون ضريبة";
+    if (lease.tax_effective_hijri) return `15% من ${lease.tax_effective_hijri} هـ`;
+    return "15% من بداية العقد";
   }
 
   function openAddForm() {
@@ -283,6 +370,8 @@ export default function Leases({ onBack }) {
       start_date_hijri: "", end_date_hijri: "",
       rent_amount: "", payment_type: "سنوي", notes: "",
       installments: [],
+      tax_enabled: false,
+      tax_effective_hijri: { year: "", month: "", day: "" },
     });
     setFilteredUnits([]);
     setShowForm(true);
@@ -305,6 +394,8 @@ export default function Leases({ onBack }) {
       payment_type: lease.payment_type || "سنوي",
       notes: lease.notes || "",
       installments: [],
+      tax_enabled: lease.tax_enabled || false,
+      tax_effective_hijri: parseHijriText(lease.tax_effective_hijri),
     });
     setFilteredUnits(
       units.filter(u => u.property_id === lease.property_id && (u.status === "شاغرة" || currentUnitIds.includes(u.id)))
@@ -418,6 +509,11 @@ export default function Leases({ onBack }) {
   async function handleSave() {
     if (!form.tenant_id || !form.rent_amount || form.selected_unit_ids.length === 0) return;
     setSaving(true);
+
+    const taxEffectiveText = hijriPartsToText(
+      form.tax_effective_hijri.year, form.tax_effective_hijri.month, form.tax_effective_hijri.day
+    );
+
     const payload = {
       property_id: form.property_id || null,
       unit_id: form.selected_unit_ids[0] || null,
@@ -429,6 +525,8 @@ export default function Leases({ onBack }) {
       rent_amount: Number(form.rent_amount),
       payment_type: form.payment_type,
       notes: form.notes || null,
+      tax_enabled: form.tax_enabled || false,
+      tax_effective_hijri: form.tax_enabled ? (taxEffectiveText || null) : null,
     };
     let leaseId = editingId;
     if (editingId) {
@@ -462,6 +560,7 @@ export default function Leases({ onBack }) {
       }
     }
     if (leaseId) {
+      // ملاحظة: كل عقد جديد أو مُعاد بناؤه يبدأ بربط نظيف بدون أي استثناء (excluded_from_type_filter = false افتراضياً)
       const luRows = form.selected_unit_ids.map(uid => ({ lease_id: leaseId, unit_id: uid }));
       await supabase.from("lease_units").insert(luRows);
     }
@@ -483,11 +582,33 @@ export default function Leases({ onBack }) {
     fetchAll();
   }
 
-  // فلترة بالعقار + المستأجر مع بعض
+  // كل أنواع الوحدات الموجودة فعلياً بالعقود (لتعبئة قائمة الفلتر) — تستثني الوحدات المعلّمة كاستثناء
+  const uniqueUnitTypes = useMemo(() => {
+    const set = new Set();
+    leases.forEach(l => {
+      const eligibleIds = getEligibleUnitIdsForTypeFilter(l.id);
+      eligibleIds.forEach(id => {
+        const t = units.find(u => u.id === id)?.unit_type;
+        if (t) set.add(t.trim());
+      });
+    });
+    const known = ["محل", "شقة", "ورشة"];
+    const knownPresent = known.filter(k => set.has(k));
+    const others = Array.from(set).filter(t => !known.includes(t)).sort((a, b) => a.localeCompare(b, "ar"));
+    return [...knownPresent, ...others];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leases, leaseUnits, units]);
+
+  // فلترة بالعقار + المستأجر + نوع الوحدة (يستثني أي وحدة معلّمة كاستثناء لهذا العقد)
   const filteredLeases = leases.filter(l => {
     const matchProperty = filterProperty === "الكل" || l.property_id === filterProperty;
     const matchTenant = filterTenants.length === 0 || filterTenants.includes(l.tenant_id);
-    return matchProperty && matchTenant;
+    let matchUnitType = true;
+    if (filterUnitType) {
+      const eligibleIds = getEligibleUnitIdsForTypeFilter(l.id);
+      matchUnitType = eligibleIds.some(id => (units.find(u => u.id === id)?.unit_type || "").trim() === filterUnitType);
+    }
+    return matchProperty && matchTenant && matchUnitType;
   });
 
   // قائمة المستأجرين مرتبطين فعلياً بالعقار المختار فقط (أو الكل لو ما فيه فلتر عقار)
@@ -527,6 +648,7 @@ export default function Leases({ onBack }) {
       installment2: getInstallmentDate(l.id, 2),
       installment3: getInstallmentDate(l.id, 3),
       installment4: getInstallmentDate(l.id, 4),
+      tax: getTaxSummary(l),
       notes: l.notes || "—",
     };
   });
@@ -606,6 +728,11 @@ export default function Leases({ onBack }) {
             </div>
           )}
         </div>
+        <select value={filterUnitType} onChange={e => setFilterUnitType(e.target.value)}
+          style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, fontFamily: "Cairo, sans-serif" }}>
+          <option value="">كل أنواع الوحدات</option>
+          {uniqueUnitTypes.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
         <select value={filterProperty} onChange={e => setFilterProperty(e.target.value)}
           style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, fontFamily: "Cairo, sans-serif", marginRight: "auto" }}>
           <option value="الكل">كل العقارات</option>
@@ -650,6 +777,7 @@ export default function Leases({ onBack }) {
               { key: "installment2", label: "الدفعة 2" },
               { key: "installment3", label: "الدفعة 3" },
               { key: "installment4", label: "الدفعة 4" },
+              { key: "tax", label: "الضريبة" },
               { key: "notes", label: "الملاحظات" },
             ]}
             filename="leases_report"
@@ -657,11 +785,15 @@ export default function Leases({ onBack }) {
             stats={exportStats}
           />
 
+          <div className="no-print" style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+            💡 اضغط على أي وحدة بعمود "الوحدات" لاستثنائها من فرز النوع (مفيد للعقود المختلطة مثل محلات + شقة).
+          </div>
+
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
                 <tr style={{ background: "#1B4D7A", textAlign: "right" }}>
-                  {["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الملاحظات", ""].map(h => (
+                  {["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الضريبة", "الملاحظات", ""].map(h => (
                     <th key={h} style={{ padding: "12px", color: "#fff", fontWeight: 600, fontSize: 13 }}>{h}</th>
                   ))}
                 </tr>
@@ -674,7 +806,8 @@ export default function Leases({ onBack }) {
                     <tr key={l.id} style={{ background: idx % 2 === 0 ? "#fff" : "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
                       <td style={{ padding: "12px", fontWeight: 600, color: "#1B4D7A" }}>{tenant?.name || "—"}</td>
                       <td style={{ padding: "12px", color: "#0e7490", fontWeight: 600 }}>{property?.name || "—"}</td>
-                      <td style={{ padding: "12px", color: "#7c3aed", fontWeight: 600 }}>{getLeaseUnitsDisplay(l.id)}</td>
+                      <td style={{ padding: "12px" }} className="no-print">{unitsCell(l.id)}</td>
+                      <td style={{ padding: "12px", color: "#7c3aed", fontWeight: 600 }} data-print-only>{getLeaseUnitsDisplay(l.id)}</td>
                       <td style={{ padding: "12px" }}>
                         <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "3px 10px", borderRadius: 6, fontSize: 12, whiteSpace: "nowrap", display: "inline-block" }}>
                           {l.payment_type || "—"}
@@ -690,6 +823,15 @@ export default function Leases({ onBack }) {
                           <div style={{ color: "#9ca3af", fontSize: 10, fontWeight: 400 }}>
                             +{getExtraInstallmentsCount(l.id)} دفعة أخرى (بصفحة الدفعات)
                           </div>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px" }}>
+                        {l.tax_enabled ? (
+                          <span style={{ background: "#F4ECF7", color: "#8e44ad", padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", display: "inline-block" }}>
+                            {getTaxSummary(l)}
+                          </span>
+                        ) : (
+                          <span style={{ color: "#9ca3af", fontSize: 12 }}>—</span>
                         )}
                       </td>
                       <td style={{ padding: "12px", color: "#6b7280", maxWidth: "160px", whiteSpace: "normal", wordBreak: "break-word" }}>{l.notes || "—"}</td>
@@ -777,6 +919,30 @@ export default function Leases({ onBack }) {
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
               </div>
             </div>
+
+            <div style={{ margin: "12px 0", background: "#F4ECF7", border: "1px solid #E1C6ED", borderRadius: 8, padding: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  id="leaseTaxEnabled"
+                  checked={form.tax_enabled}
+                  onChange={e => setForm(f => ({ ...f, tax_enabled: e.target.checked }))}
+                />
+                <label htmlFor="leaseTaxEnabled" style={{ fontSize: 14, cursor: "pointer", color: "#8e44ad", fontWeight: 700 }}>
+                  هذا العقد عليه ضريبة القيمة المضافة (15%)
+                </label>
+              </div>
+              {form.tax_enabled && (
+                <div style={{ marginTop: 10 }}>
+                  <HijriPicker
+                    label="تسري الضريبة من تاريخ (اتركه فارغاً لتسري من بداية العقد)"
+                    value={form.tax_effective_hijri}
+                    onChange={(v) => setForm(f => ({ ...f, tax_effective_hijri: v }))}
+                  />
+                </div>
+              )}
+            </div>
+
             {total && (
               <div style={{ margin: "12px 0", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "12px 16px", display: "flex", justifyContent: "space-between" }}>
                 <div><span style={{ color: "#6b7280", fontSize: 13 }}>الإيجار السنوي: </span><span style={{ fontWeight: 700, fontSize: 16, color: "#1d4ed8" }}>{total.annual.toLocaleString()} ريال</span></div>
@@ -794,27 +960,40 @@ export default function Leases({ onBack }) {
                   </button>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {form.installments.map((inst, i) => (
-                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-end", background: "#f9fafb", padding: 8, borderRadius: 8 }}>
-                      <div style={{ width: 70, fontSize: 12, color: "#6b7280", paddingBottom: 8 }}>الدفعة {i + 1}</div>
-                      <div style={{ flex: 1 }}>
-                        <HijriPicker label="التاريخ" value={inst.hijri} onChange={(v) => updateInstallmentHijri(i, v)} />
+                  {form.installments.map((inst, i) => {
+                    const instHijriText = hijriPartsToText(inst.hijri.year, inst.hijri.month, inst.hijri.day);
+                    const taxApplies = form.tax_enabled && (
+                      !form.tax_effective_hijri.year
+                        ? true
+                        : hijriSortKey(instHijriText) >= hijriSortKey(hijriPartsToText(form.tax_effective_hijri.year, form.tax_effective_hijri.month, form.tax_effective_hijri.day))
+                    );
+                    return (
+                      <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-end", background: "#f9fafb", padding: 8, borderRadius: 8 }}>
+                        <div style={{ width: 70, fontSize: 12, color: "#6b7280", paddingBottom: 8 }}>الدفعة {i + 1}</div>
+                        <div style={{ flex: 1 }}>
+                          <HijriPicker label="التاريخ" value={inst.hijri} onChange={(v) => updateInstallmentHijri(i, v)} />
+                        </div>
+                        <div style={{ width: 110 }}>
+                          <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>المبلغ</label>
+                          <input type="number" value={inst.amount}
+                            onChange={(e) => updateInstallmentAmount(i, e.target.value)}
+                            style={{ width: "100%", padding: "8px 6px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, boxSizing: "border-box" }} />
+                          {taxApplies && (
+                            <div style={{ fontSize: 10, color: "#8e44ad", marginTop: 3, fontWeight: 700 }}>
+                              +15%: {Math.round(Number(inst.amount || 0) * 0.15).toLocaleString()}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div style={{ width: 110 }}>
-                        <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>المبلغ</label>
-                        <input type="number" value={inst.amount}
-                          onChange={(e) => updateInstallmentAmount(i, e.target.value)}
-                          style={{ width: "100%", padding: "8px 6px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, boxSizing: "border-box" }} />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
 
             {editingId && (
               <div style={{ margin: "12px 0", fontSize: 12, color: "#0e7490", background: "#f0f9ff", padding: 10, borderRadius: 8, border: "1px solid #bae6fd" }}>
-                ملاحظة: تعديل المبلغ هنا سيحدّث تلقائياً كل الأقساط <strong>غير المدفوعة</strong> بنفس المبلغ الجديد موزّعاً بالتساوي على عدد الدفعات الأصلي. أي دفعة سبق سدادها تبقى بمبلغها التاريخي كما هو.
+                ملاحظة: تعديل المبلغ هنا سيحدّث تلقائياً كل الأقساط <strong>غير المدفوعة</strong> بنفس المبلغ الجديد موزّعاً بالتساوي على عدد الدفعات الأصلي. أي دفعة سبق سدادها تبقى بمبلغها التاريخي كما هو. تفعيل/تعديل الضريبة هنا يطبّق فوراً على حساب كل الدفعات (القديمة والجديدة) في صفحتي الدفعات والاستحقاقات حسب تاريخ كل دفعة. ملاحظة: حفظ التعديل هنا يعيد بناء ربط الوحدات من الصفر، فأي استثناء من فرز النوع كنت قد فعّلته على وحدة معينة سيُلغى تلقائياً — أعد تفعيله من جدول العقود بعد الحفظ إذا احتجته.
               </div>
             )}
 
