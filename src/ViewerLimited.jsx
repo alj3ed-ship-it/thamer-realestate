@@ -652,13 +652,16 @@ export default function ViewerLimited() {
   const entStatusCounts = useMemo(() => {
     const counts = { all: entResults.length, paid: 0, overdue: 0, partial: 0, not_due: 0 };
     entResults.forEach((r) => { counts[r.status] = (counts[r.status] || 0) + 1; });
+    counts.overdue_partial = counts.overdue + counts.partial;
     return counts;
   }, [entResults]);
 
-  // النتائج بعد تطبيق فلتر الحالة (تبويبات: الكل/مدفوع/متأخر/جزئي/غير مستحق بعد)
+  // النتائج بعد تطبيق فلتر الحالة (تبويبات: الكل/مدفوع/متأخر+جزئي/غير مستحق بعد)
   const entResultsFiltered = entStatusFilter === "all"
     ? entResults
-    : entResults.filter((r) => r.status === entStatusFilter);
+    : entStatusFilter === "overdue_partial"
+      ? entResults.filter((r) => r.status === "overdue" || r.status === "partial")
+      : entResults.filter((r) => r.status === entStatusFilter);
 
   const totalAmount = entResultsFiltered.reduce((s, r) => s + (r.amount || 0), 0);
   const totalCollected = entResultsFiltered.reduce((s, r) => s + (r.paidAmount || 0), 0);
@@ -1595,16 +1598,11 @@ export default function ViewerLimited() {
                         background: entStatusFilter === "paid" ? "#27ae60" : "#fff", color: entStatusFilter === "paid" ? "#fff" : "#27ae60",
                         fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
                       }}>مدفوع ({entStatusCounts.paid})</button>
-                      <button onClick={() => setEntStatusFilter("overdue")} style={{
-                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "overdue" ? "none" : "1px solid #ddd",
-                        background: entStatusFilter === "overdue" ? "#e74c3c" : "#fff", color: entStatusFilter === "overdue" ? "#fff" : "#e74c3c",
+                      <button onClick={() => setEntStatusFilter("overdue_partial")} style={{
+                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "overdue_partial" ? "none" : "1px solid #ddd",
+                        background: entStatusFilter === "overdue_partial" ? "#e74c3c" : "#fff", color: entStatusFilter === "overdue_partial" ? "#fff" : "#e74c3c",
                         fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
-                      }}>متأخر ({entStatusCounts.overdue})</button>
-                      <button onClick={() => setEntStatusFilter("partial")} style={{
-                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "partial" ? "none" : "1px solid #ddd",
-                        background: entStatusFilter === "partial" ? "#f39c12" : "#fff", color: entStatusFilter === "partial" ? "#fff" : "#f39c12",
-                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
-                      }}>جزئي ({entStatusCounts.partial})</button>
+                      }}>متأخر وجزئي ({entStatusCounts.overdue_partial})</button>
                       <button onClick={() => setEntStatusFilter("not_due")} style={{
                         padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "not_due" ? "none" : "1px solid #ddd",
                         background: entStatusFilter === "not_due" ? "#7f8c8d" : "#fff", color: entStatusFilter === "not_due" ? "#fff" : "#7f8c8d",
