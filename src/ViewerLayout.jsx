@@ -222,6 +222,7 @@ const [bookingsShowExtraDetails, setBookingsShowExtraDetails] = useState(false);
   const [selectedMonthNum, setSelectedMonthNum] = useState("1");
   const [entResults, setEntResults] = useState([]);
   const [entSearched, setEntSearched] = useState(false);
+  const [entStatusFilter, setEntStatusFilter] = useState("all");
 
   const [entSelectedProperties, setEntSelectedProperties] = useState([]);
   const [showEntPropDropdown, setShowEntPropDropdown] = useState(false);
@@ -550,6 +551,7 @@ const bookingsAvailableYears = useMemo(() => {
   function handleEntitlementsSearch() {
     setShowEntPropDropdown(false);
     setShowEntTenantDropdown(false);
+    setEntStatusFilter("all");
     const filterYear = parseInt(selectedYear);
     const filterMonth = parseInt(selectedMonthNum);
     const found = [];
@@ -585,8 +587,23 @@ const bookingsAvailableYears = useMemo(() => {
     setEntSearched(true);
   }
 
-  const totalAmount = entResults.reduce((s, r) => s + (r.amount || 0), 0);
-  const totalCollected = entResults.reduce((s, r) => s + (r.paidAmount || 0), 0);
+  // عدّادات كل حالة (محسوبة من كل نتائج البحث بغض النظر عن التبويب المختار)
+  const entStatusCounts = useMemo(() => {
+    const counts = { all: entResults.length, paid: 0, partial: 0, unpaid: 0 };
+    entResults.forEach((r) => { counts[r.status] = (counts[r.status] || 0) + 1; });
+    counts.unpaid_partial = counts.unpaid + counts.partial;
+    return counts;
+  }, [entResults]);
+
+  // النتائج بعد تطبيق فلتر الحالة (تبويبات: الكل/مدفوع/متأخر وجزئي)
+  const entResultsFiltered = entStatusFilter === "all"
+    ? entResults
+    : entStatusFilter === "unpaid_partial"
+      ? entResults.filter((r) => r.status === "unpaid" || r.status === "partial")
+      : entResults.filter((r) => r.status === entStatusFilter);
+
+  const totalAmount = entResultsFiltered.reduce((s, r) => s + (r.amount || 0), 0);
+  const totalCollected = entResultsFiltered.reduce((s, r) => s + (r.paidAmount || 0), 0);
   const totalRemaining = Math.max(totalAmount - totalCollected, 0);
 
   // إجماليات تبويب "الدفعات" الجديد
@@ -664,7 +681,7 @@ const bookingsAvailableYears = useMemo(() => {
     { label: "إجمالي المستحق", value: `${paymentsTotalAmount.toLocaleString()} ريال`, color: "#1B4D7A" },
   ];
 
-  const entExportData = entResults.map(r => ({
+  const entExportData = entResultsFiltered.map(r => ({
     property: r.property || "—",
     tenant: r.tenant || "—",
     activity: r.activity || "—",
@@ -1590,6 +1607,25 @@ const bookingsAvailableYears = useMemo(() => {
 
                 {entSearched && entResults.length > 0 && (
                   <div id="entitlements-table">
+                    {/* تبويبات فلتر الحالة: الكل / مدفوع / متأخر وجزئي */}
+                    <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
+                      <button onClick={() => setEntStatusFilter("all")} style={{
+                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "all" ? "none" : "1px solid #ddd",
+                        background: entStatusFilter === "all" ? "#1B4D7A" : "#fff", color: entStatusFilter === "all" ? "#fff" : "#555",
+                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
+                      }}>الكل ({entStatusCounts.all})</button>
+                      <button onClick={() => setEntStatusFilter("paid")} style={{
+                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "paid" ? "none" : "1px solid #ddd",
+                        background: entStatusFilter === "paid" ? "#27ae60" : "#fff", color: entStatusFilter === "paid" ? "#fff" : "#27ae60",
+                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
+                      }}>مدفوع ({entStatusCounts.paid})</button>
+                      <button onClick={() => setEntStatusFilter("unpaid_partial")} style={{
+                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "unpaid_partial" ? "none" : "1px solid #ddd",
+                        background: entStatusFilter === "unpaid_partial" ? "#e74c3c" : "#fff", color: entStatusFilter === "unpaid_partial" ? "#fff" : "#e74c3c",
+                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
+                      }}>متأخر وجزئي ({entStatusCounts.unpaid_partial})</button>
+                    </div>
+
                     <ExportToolbar
                       data={entExportData}
                       columns={[
@@ -1632,7 +1668,9 @@ const bookingsAvailableYears = useMemo(() => {
                         </tr>
                       </thead>
                       <tbody>
-                        {entResults.map((r, i) => (
+                        {entResultsFiltered.length === 0 ? (
+                          <tr><td colSpan="6" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج لهذه الحالة</td></tr>
+                        ) : entResultsFiltered.map((r, i) => (
                           <tr key={i} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
                             <td style={{ padding: "12px" }}>{propertyBadge(r.property)}</td>
                             <td style={{ padding: "12px" }}>{tenantBadge(r.tenant)}</td>
