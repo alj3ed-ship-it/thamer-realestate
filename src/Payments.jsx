@@ -21,6 +21,7 @@ const HIJRI_YEARS = Array.from({ length: 21 }, (_, i) => 1445 + i)
 const HIJRI_DAYS = Array.from({ length: 30 }, (_, i) => i + 1)
 
 const STATUS_OPTIONS = ['مدفوع', 'جزئي', 'unpaid']
+const TAX_RATE = 0.15
 
 function hijriToGregorian(hy, hm, hd) {
   try {
@@ -111,6 +112,17 @@ function computeInstallmentHijri(startDateHijri, totalInstallments, installmentN
   return addHijriMonths(start, Math.round(monthsToAdd))
 }
 
+// مفتاح ترتيب رقمي لمقارنة تاريخين هجريين نصيين (يُستخدم لتحديد سريان الضريبة)
+function hijriSortKey(hijriText) {
+  if (!hijriText) return -1
+  const parts = hijriText.split('/')
+  if (parts.length !== 3) return -1
+  const y = parseInt(parts[0]) || 0
+  const m = parseInt(parts[1]) || 0
+  const d = parseInt(parts[2]) || 0
+  return y * 10000 + m * 100 + d
+}
+
 function HijriPicker({ label, value, onChange }) {
   return (
     <div>
@@ -175,7 +187,7 @@ function Payments({ onBack }) {
     setStatus('loading')
     const [pay, lea, ten, pro, uni, lu] = await Promise.all([
       supabase.from('payments').select('*').order('payment_date', { ascending: true }),
-      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id, start_date_hijri'),
+      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id, start_date_hijri, tax_enabled, tax_effective_hijri'),
       supabase.from('tenants').select('id, name, note'),
       supabase.from('properties').select('id, name').order('name'),
       supabase.from('units').select('id, unit_number'),
@@ -202,27 +214,31 @@ function Payments({ onBack }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  function getLease(leaseId) {
+    return leases.find(l => l.id === leaseId)
+  }
+
   function getTenantName(leaseId) {
-    const lease = leases.find(l => l.id === leaseId)
+    const lease = getLease(leaseId)
     return tenants.find(t => t.id === lease?.tenant_id)?.name || '—'
   }
 
   function getTenantActivity(leaseId) {
-    const lease = leases.find(l => l.id === leaseId)
+    const lease = getLease(leaseId)
     return tenants.find(t => t.id === lease?.tenant_id)?.note || '—'
   }
 
   function getPropertyName(leaseId) {
-    const lease = leases.find(l => l.id === leaseId)
+    const lease = getLease(leaseId)
     return properties.find(p => p.id === lease?.property_id)?.name || '—'
   }
 
   function getPropertyId(leaseId) {
-    return leases.find(l => l.id === leaseId)?.property_id || null
+    return getLease(leaseId)?.property_id || null
   }
 
   function getUnitNumbers(leaseId) {
-    const lease = leases.find(l => l.id === leaseId)
+    const lease = getLease(leaseId)
     if (!lease) return '—'
     const unitIds = leaseUnits.filter(lu => lu.lease_id === leaseId).map(lu => lu.unit_id)
     if (lease.unit_id && !unitIds.includes(lease.unit_id)) unitIds.push(lease.unit_id)
@@ -231,26 +247,16 @@ function Payments({ onBack }) {
   }
 
   function getInstallmentAmount(leaseId) {
-    const lease = leases.find(l => l.id === leaseId)
+    const lease = getLease(leaseId)
     if (!lease || !lease.rent_amount) return ''
     const freq = FREQUENCY_MAP[lease.payment_type] || FREQUENCY_MAP[lease.payment_frequency] || 1
     return Math.round(lease.rent_amount / freq)
   }
 
   function getTotalInstallments(leaseId) {
-    const lease = leases.find(l => l.id === leaseId)
+    const lease = getLease(leaseId)
     if (!lease) return null
     return FREQUENCY_MAP[lease.payment_type] || FREQUENCY_MAP[lease.payment_frequency] || null
-  }
-
-  function hijriSortKey(hijriText) {
-    if (!hijriText) return 99999999
-    const parts = hijriText.split('/')
-    if (parts.length !== 3) return 99999999
-    const y = parseInt(parts[0]) || 0
-    const m = parseInt(parts[1]) || 0
-    const d = parseInt(parts[2]) || 0
-    return y * 10000 + m * 100 + d
   }
 
   function getPaymentIndex(payment) {
@@ -262,7 +268,7 @@ function Payments({ onBack }) {
   }
 
   function getUnpaidDueInfo(p) {
-    const lease = leases.find(l => l.id === p.lease_id)
+    const lease = getLease(p.lease_id)
     if (!lease || !lease.start_date_hijri) return { hijriText: null, subStatus: 'overdue' }
     const total = p.total_installments || getTotalInstallments(p.lease_id)
     const instNum = p.installment_number || getPaymentIndex(p)
@@ -364,7 +370,41 @@ function Payments({ onBack }) {
   }
 
   function getTenantId(leaseId) {
-    return leases.find(l => l.id === leaseId)?.tenant_id || null
+    return getLease(leaseId)?.tenant_id || null
+  }
+
+  function getPaymentHijriDisplay(p) {
+    const computed = computePaymentStatus(p)
+    const isUnpaid = computed === 'overdue' || computed === 'not_due'
+    let hijriText = p.payment_date_hijri
+    let isEstimated = false
+    if (!hijriText && p.payment_date) {
+      const h = gregorianToHijri(p.payment_date)
+      if (h) hijriText = hijriPartsToText(h.year, h.month, h.day)
+    } else if (!hijriText && !p.payment_date && isUnpaid) {
+      const { hijriText: estText } = getUnpaidDueInfo(p)
+      if (estText) { hijriText = estText; isEstimated = true }
+    }
+    return { hijriText, isEstimated }
+  }
+
+  // هل الضريبة تسري على هذه الدفعة بالذات، حسب إعداد العقد وتاريخ الدفعة
+  function isTaxApplicable(p) {
+    const lease = getLease(p.lease_id)
+    if (!lease || !lease.tax_enabled) return false
+    const { hijriText } = getPaymentHijriDisplay(p)
+    if (!hijriText) return false
+    if (!lease.tax_effective_hijri) return true
+    return hijriSortKey(hijriText) >= hijriSortKey(lease.tax_effective_hijri)
+  }
+
+  function getTaxAmount(p) {
+    if (!isTaxApplicable(p)) return 0
+    return Math.round(Number(p.amount || 0) * TAX_RATE)
+  }
+
+  function getTotalWithTax(p) {
+    return Number(p.amount || 0) + getTaxAmount(p)
   }
 
   const filteredPayments = (filterProperty === 'الكل'
@@ -383,6 +423,8 @@ function Payments({ onBack }) {
   )
 
   const totalFiltered = filteredPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
+  const totalTax = filteredPayments.reduce((s, p) => s + getTaxAmount(p), 0)
+  const totalWithTax = totalFiltered + totalTax
 
   function computePaymentStatus(p) {
     const due = Number(p.amount || 0)
@@ -412,9 +454,12 @@ function Payments({ onBack }) {
     const computed = computePaymentStatus(p)
     const due = Number(p.amount || 0)
     const paid = Number(p.amount_paid || 0)
+    const taxApplies = isTaxApplicable(p)
+    const tax = getTaxAmount(p)
+    let base
     if (computed === 'partial') {
       const remaining = due - paid
-      return (
+      base = (
         <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>
           <span style={{ color: '#f39c12' }}>{paid.toLocaleString()}</span>
           <span style={{ color: '#9ca3af', margin: '0 4px' }}>|</span>
@@ -423,23 +468,19 @@ function Payments({ onBack }) {
           <span style={{ color: '#27ae60' }}>{due.toLocaleString()}</span>
         </span>
       )
+    } else {
+      base = <span style={{ fontWeight: 700, color: '#27ae60' }}>{due.toLocaleString()} ريال</span>
     }
-    return <span style={{ fontWeight: 700, color: '#27ae60' }}>{due.toLocaleString()} ريال</span>
-  }
-
-  function getPaymentHijriDisplay(p) {
-    const computed = computePaymentStatus(p)
-    const isUnpaid = computed === 'overdue' || computed === 'not_due'
-    let hijriText = p.payment_date_hijri
-    let isEstimated = false
-    if (!hijriText && p.payment_date) {
-      const h = gregorianToHijri(p.payment_date)
-      if (h) hijriText = hijriPartsToText(h.year, h.month, h.day)
-    } else if (!hijriText && !p.payment_date && isUnpaid) {
-      const { hijriText: estText } = getUnpaidDueInfo(p)
-      if (estText) { hijriText = estText; isEstimated = true }
-    }
-    return { hijriText, isEstimated }
+    return (
+      <div>
+        {base}
+        {taxApplies && (
+          <div style={{ fontSize: 11, color: '#8e44ad', marginTop: 2, fontWeight: 700 }}>
+            + ضريبة 15%: {tax.toLocaleString()} = {getTotalWithTax(p).toLocaleString()} ريال
+          </div>
+        )}
+      </div>
+    )
   }
 
   // بيانات مسطّحة للتصدير والطباعة
@@ -450,6 +491,7 @@ function Payments({ onBack }) {
     const due = Number(p.amount || 0)
     const paid = Number(p.amount_paid || 0)
     const { hijriText } = getPaymentHijriDisplay(p)
+    const taxApplies = isTaxApplicable(p)
     return {
       tenant: getTenantName(p.lease_id),
       property: getPropertyName(p.lease_id),
@@ -459,6 +501,8 @@ function Payments({ onBack }) {
       amount: computed === 'partial'
         ? `${paid.toLocaleString()} | ${(due - paid).toLocaleString()} | ${due.toLocaleString()}`
         : `${due.toLocaleString()} ريال`,
+      tax: taxApplies ? `${getTaxAmount(p).toLocaleString()} ريال` : '—',
+      totalWithTax: taxApplies ? `${getTotalWithTax(p).toLocaleString()} ريال` : `${due.toLocaleString()} ريال`,
       statusLabel: statusToArabic(computed),
       date: hijriText ? hijriText + ' هـ' : '—',
       method: p.payment_method || '—',
@@ -543,6 +587,11 @@ function Payments({ onBack }) {
         <div style={{ background: '#e8f5e9', padding: '8px 16px', borderRadius: 8, fontWeight: 700, color: '#27ae60', fontSize: 15 }}>
           المجموع: {totalFiltered.toLocaleString()} ريال
         </div>
+        {totalTax > 0 && (
+          <div style={{ background: '#F4ECF7', padding: '8px 16px', borderRadius: 8, fontWeight: 700, color: '#8e44ad', fontSize: 15 }}>
+            الضريبة: {totalTax.toLocaleString()} ريال — الإجمالي شامل الضريبة: {totalWithTax.toLocaleString()} ريال
+          </div>
+        )}
       </div>
 
       {status === 'loading' && <p>جاري التحميل...</p>}
@@ -562,6 +611,8 @@ function Payments({ onBack }) {
               { key: 'unit', label: 'الوحدة' },
               { key: 'installment', label: 'الدفعة' },
               { key: 'amount', label: 'المبلغ' },
+              { key: 'tax', label: 'الضريبة' },
+              { key: 'totalWithTax', label: 'الإجمالي شامل الضريبة' },
               { key: 'statusLabel', label: 'الحالة' },
               { key: 'date', label: 'التاريخ' },
               { key: 'method', label: 'طريقة الدفع' },
@@ -570,6 +621,8 @@ function Payments({ onBack }) {
             filename={`payments_${filterProperty === 'الكل' ? 'all' : filterProperty}`}
             stats={[
               { label: 'المجموع', value: `${totalFiltered.toLocaleString()} ريال`, color: '#27ae60' },
+              { label: 'الضريبة', value: `${totalTax.toLocaleString()} ريال`, color: '#8e44ad' },
+              { label: 'الإجمالي شامل الضريبة', value: `${totalWithTax.toLocaleString()} ريال`, color: '#1B4D7A' },
             ]}
           />
 
@@ -634,7 +687,7 @@ function Payments({ onBack }) {
               {leases.map(l => {
                 const tname = tenants.find(t => t.id === l.tenant_id)?.name || ''
                 const pname = properties.find(p => p.id === l.property_id)?.name || ''
-                return <option key={l.id} value={l.id}>{tname} — {pname}</option>
+                return <option key={l.id} value={l.id}>{tname} — {pname}{l.tax_enabled ? ' (عليه ضريبة)' : ''}</option>
               })}
             </select>
 
@@ -659,6 +712,16 @@ function Payments({ onBack }) {
             <div style={{ marginBottom: 15 }}>
               <HijriPicker label="تاريخ الدفع (هجري)" value={form.payment_hijri} onChange={handleHijriChange} />
             </div>
+
+            {form.lease_id && (() => {
+              const lease = getLease(form.lease_id)
+              if (!lease?.tax_enabled) return null
+              return (
+                <div style={{ background: '#F4ECF7', border: '1px solid #E1C6ED', borderRadius: 8, padding: 10, marginBottom: 15, fontSize: 12, color: '#8e44ad' }}>
+                  ℹ هذا العقد عليه ضريبة 15% {lease.tax_effective_hijri ? `تسري من ${lease.tax_effective_hijri} هـ` : '(من بداية العقد)'} — تُحسب تلقائياً حسب تاريخ هذه الدفعة بعد الحفظ.
+                </div>
+              )
+            })()}
 
             <div style={{ marginTop: 15 }}>
               <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>طريقة الدفع</label>

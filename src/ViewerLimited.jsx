@@ -291,6 +291,7 @@ export default function ViewerLimited() {
   const [showEntTenantDropdown, setShowEntTenantDropdown] = useState(false);
   const [entTenantSearchText, setEntTenantSearchText] = useState("");
   const [entSelectedUnitType, setEntSelectedUnitType] = useState("");
+  const [entStatusFilter, setEntStatusFilter] = useState("all");
 
   function reloadBookings(currentHallId) {
     const idToUse = currentHallId || hallId;
@@ -611,6 +612,7 @@ export default function ViewerLimited() {
   function handleEntitlementsSearch() {
     setShowEntPropDropdown(false);
     setShowEntTenantDropdown(false);
+    setEntStatusFilter("all");
     const filterYear = parseInt(selectedYear);
     const filterMonth = parseInt(selectedMonthNum);
     const found = [];
@@ -646,11 +648,23 @@ export default function ViewerLimited() {
     setEntSearched(true);
   }
 
-  const totalAmount = entResults.reduce((s, r) => s + (r.amount || 0), 0);
-  const totalCollected = entResults.reduce((s, r) => s + (r.paidAmount || 0), 0);
+  // عدّادات كل حالة (محسوبة من كل نتائج البحث بغض النظر عن التبويب المختار)
+  const entStatusCounts = useMemo(() => {
+    const counts = { all: entResults.length, paid: 0, overdue: 0, partial: 0, not_due: 0 };
+    entResults.forEach((r) => { counts[r.status] = (counts[r.status] || 0) + 1; });
+    return counts;
+  }, [entResults]);
+
+  // النتائج بعد تطبيق فلتر الحالة (تبويبات: الكل/مدفوع/متأخر/جزئي/غير مستحق بعد)
+  const entResultsFiltered = entStatusFilter === "all"
+    ? entResults
+    : entResults.filter((r) => r.status === entStatusFilter);
+
+  const totalAmount = entResultsFiltered.reduce((s, r) => s + (r.amount || 0), 0);
+  const totalCollected = entResultsFiltered.reduce((s, r) => s + (r.paidAmount || 0), 0);
   const totalRemaining = Math.max(totalAmount - totalCollected, 0);
 
-  const entExportData = entResults.map(r => ({
+  const entExportData = entResultsFiltered.map(r => ({
     property: r.property || "—",
     tenant: r.tenant || "—",
     activity: r.activity || "—",
@@ -1569,6 +1583,35 @@ export default function ViewerLimited() {
 
                 {entSearched && entResults.length > 0 && (
                   <div id="entitlements-table">
+                    {/* تبويبات فلتر الحالة: الكل / مدفوع / متأخر / جزئي / غير مستحق بعد */}
+                    <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
+                      <button onClick={() => setEntStatusFilter("all")} style={{
+                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "all" ? "none" : "1px solid #ddd",
+                        background: entStatusFilter === "all" ? "#1B4D7A" : "#fff", color: entStatusFilter === "all" ? "#fff" : "#555",
+                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
+                      }}>الكل ({entStatusCounts.all})</button>
+                      <button onClick={() => setEntStatusFilter("paid")} style={{
+                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "paid" ? "none" : "1px solid #ddd",
+                        background: entStatusFilter === "paid" ? "#27ae60" : "#fff", color: entStatusFilter === "paid" ? "#fff" : "#27ae60",
+                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
+                      }}>مدفوع ({entStatusCounts.paid})</button>
+                      <button onClick={() => setEntStatusFilter("overdue")} style={{
+                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "overdue" ? "none" : "1px solid #ddd",
+                        background: entStatusFilter === "overdue" ? "#e74c3c" : "#fff", color: entStatusFilter === "overdue" ? "#fff" : "#e74c3c",
+                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
+                      }}>متأخر ({entStatusCounts.overdue})</button>
+                      <button onClick={() => setEntStatusFilter("partial")} style={{
+                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "partial" ? "none" : "1px solid #ddd",
+                        background: entStatusFilter === "partial" ? "#f39c12" : "#fff", color: entStatusFilter === "partial" ? "#fff" : "#f39c12",
+                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
+                      }}>جزئي ({entStatusCounts.partial})</button>
+                      <button onClick={() => setEntStatusFilter("not_due")} style={{
+                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "not_due" ? "none" : "1px solid #ddd",
+                        background: entStatusFilter === "not_due" ? "#7f8c8d" : "#fff", color: entStatusFilter === "not_due" ? "#fff" : "#7f8c8d",
+                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
+                      }}>غير مستحق بعد ({entStatusCounts.not_due})</button>
+                    </div>
+
                     <ExportToolbar
                       data={entExportData}
                       columns={[
@@ -1611,7 +1654,9 @@ export default function ViewerLimited() {
                         </tr>
                       </thead>
                       <tbody>
-                        {entResults.map((r, i) => (
+                        {entResultsFiltered.length === 0 ? (
+                          <tr><td colSpan="6" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج لهذه الحالة</td></tr>
+                        ) : entResultsFiltered.map((r, i) => (
                           <tr key={i} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
                             <td style={{ padding: "12px" }}>{propertyBadge(r.property)}</td>
                             <td style={{ padding: "12px" }}>{tenantBadge(r.tenant)}</td>
