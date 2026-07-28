@@ -5,6 +5,17 @@ import ExportToolbar from './components/ExportToolbar'
 const PROPERTY_TYPES = ['فيلا', 'أرض', 'عمارة', 'مجمع تجاري', 'عمارة سكنية']
 const OTHER_OPTION = 'أخرى'
 
+// تصنيف ضريبة القيمة المضافة
+const VAT_STATUS_OPTIONS = [
+  { value: 'exempt', label: 'سكني - معفى', color: '#166534', bg: '#dcfce7', border: '#bbf7d0' },
+  { value: 'taxable', label: 'تجاري - خاضع 15%', color: '#b91c1c', bg: '#fee2e2', border: '#fecaca' },
+  { value: 'mixed', label: 'مزدوج الاستخدام', color: '#92400e', bg: '#fef3c7', border: '#fde68a' },
+]
+
+function getVatStatusInfo(value) {
+  return VAT_STATUS_OPTIONS.find(o => o.value === value) || VAT_STATUS_OPTIONS[0]
+}
+
 // أولوية العقار (نفس ترتيب صفحة العرض /view وصفحة الوحدات)
 function getPropertyPriority(name) {
   if (!name) return 99
@@ -28,6 +39,7 @@ function Properties({ onBack, onSelectProperty }) {
   const [formAddress, setFormAddress] = useState('')
   const [formType, setFormType] = useState('')
   const [formCustomType, setFormCustomType] = useState('')
+  const [formVatStatus, setFormVatStatus] = useState('exempt')
   const [formError, setFormError] = useState('')
 
   async function fetchProperties() {
@@ -57,7 +69,8 @@ function Properties({ onBack, onSelectProperty }) {
   useEffect(() => { fetchProperties() }, [])
 
   function openAddForm() {
-    setEditingId(null); setFormName(''); setFormAddress(''); setFormType(''); setFormCustomType(''); setFormError(''); setShowForm(true)
+    setEditingId(null); setFormName(''); setFormAddress(''); setFormType(''); setFormCustomType('')
+    setFormVatStatus('exempt'); setFormError(''); setShowForm(true)
   }
 
   function openEditForm(property) {
@@ -72,6 +85,7 @@ function Properties({ onBack, onSelectProperty }) {
       setFormType(existingType)
       setFormCustomType('')
     }
+    setFormVatStatus(property.vat_status || 'exempt')
     setFormError(''); setShowForm(true)
   }
 
@@ -80,7 +94,12 @@ function Properties({ onBack, onSelectProperty }) {
     const finalType = formType === OTHER_OPTION ? formCustomType.trim() : formType
     if (formType === OTHER_OPTION && !finalType) { setFormError('يرجى كتابة نوع العقار'); return }
     setSaving(true); setFormError('')
-    const payload = { name: formName.trim(), address: formAddress.trim() || null, property_type: finalType || null }
+    const payload = {
+      name: formName.trim(),
+      address: formAddress.trim() || null,
+      property_type: finalType || null,
+      vat_status: formVatStatus,
+    }
     let error
     if (editingId) { const res = await supabase.from('properties').update(payload).eq('id', editingId); error = res.error }
     else { const res = await supabase.from('properties').insert([payload]); error = res.error }
@@ -101,6 +120,7 @@ function Properties({ onBack, onSelectProperty }) {
   const exportData = sortedProperties.map((p) => ({
     name: p.name || '—',
     type: p.property_type || '—',
+    vatStatus: getVatStatusInfo(p.vat_status).label,
     address: p.address || '—',
     unitCount: unitCounts[p.id] || 0,
   }))
@@ -108,6 +128,7 @@ function Properties({ onBack, onSelectProperty }) {
   const exportStats = [
     { label: 'عدد العقارات', value: sortedProperties.length, color: '#1B4D7A' },
     { label: 'إجمالي الوحدات', value: Object.values(unitCounts).reduce((a, b) => a + b, 0), color: '#166534' },
+    { label: 'عقارات خاضعة للضريبة', value: sortedProperties.filter(p => p.vat_status === 'taxable').length, color: '#b91c1c' },
   ]
 
   return (
@@ -138,6 +159,7 @@ function Properties({ onBack, onSelectProperty }) {
             columns={[
               { key: 'name', label: 'اسم العقار' },
               { key: 'type', label: 'النوع' },
+              { key: 'vatStatus', label: 'تصنيف الضريبة' },
               { key: 'address', label: 'العنوان' },
               { key: 'unitCount', label: 'عدد الوحدات' },
             ]}
@@ -150,38 +172,47 @@ function Properties({ onBack, onSelectProperty }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
               <thead>
                 <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                  {['اسم العقار', 'النوع', 'العنوان', 'عدد الوحدات', ''].map(h => (
+                  {['اسم العقار', 'النوع', 'تصنيف الضريبة', 'العنوان', 'عدد الوحدات', ''].map(h => (
                     <th key={h} style={{ padding: '13px 14px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {sortedProperties.map((p, idx) => (
-                  <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #eef1f5' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#eef4fb'}
-                    onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : '#f8fafc'}>
-                    <td style={{ padding: '12px 14px' }}>
-                      <span onClick={() => onSelectProperty && onSelectProperty(p.id)}
-                        style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 700 }}>
-                        {p.name}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.property_type || '—'}</td>
-                    <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.address || '—'}</td>
-                    <td style={{ padding: '12px 14px' }}>
-                      <span style={{
-                        background: '#eef4fb', color: '#1B4D7A', border: '1px solid #cfe0f2',
-                        padding: '3px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700
-                      }}>{unitCounts[p.id] || 0}</span>
-                    </td>
-                    <td className="no-print" style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                      <button onClick={() => openEditForm(p)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
-                      <button onClick={() => handleDelete(p)} disabled={deletingId === p.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
-                        {deletingId === p.id ? '...' : 'حذف'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {sortedProperties.map((p, idx) => {
+                  const vatInfo = getVatStatusInfo(p.vat_status)
+                  return (
+                    <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #eef1f5' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#eef4fb'}
+                      onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? '#fff' : '#f8fafc'}>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span onClick={() => onSelectProperty && onSelectProperty(p.id)}
+                          style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 700 }}>
+                          {p.name}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.property_type || '—'}</td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span style={{
+                          background: vatInfo.bg, color: vatInfo.color, border: `1px solid ${vatInfo.border}`,
+                          padding: '3px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap'
+                        }}>{vatInfo.label}</span>
+                      </td>
+                      <td style={{ padding: '12px 14px', color: '#6b7280' }}>{p.address || '—'}</td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span style={{
+                          background: '#eef4fb', color: '#1B4D7A', border: '1px solid #cfe0f2',
+                          padding: '3px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700
+                        }}>{unitCounts[p.id] || 0}</span>
+                      </td>
+                      <td className="no-print" style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
+                        <button onClick={() => openEditForm(p)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
+                        <button onClick={() => handleDelete(p)} disabled={deletingId === p.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
+                          {deletingId === p.id ? '...' : 'حذف'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -209,6 +240,12 @@ function Properties({ onBack, onSelectProperty }) {
                 style={{ width: '100%', padding: 10, marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box', fontSize: 14 }}
                 placeholder="اكتب نوع العقار (مثال: استراحة)" />
             )}
+
+            <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 13 }}>تصنيف ضريبة القيمة المضافة</label>
+            <select value={formVatStatus} onChange={e => setFormVatStatus(e.target.value)}
+              style={{ width: '100%', padding: 10, marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
+              {VAT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
 
             <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 13 }}>العنوان</label>
             <input type="text" value={formAddress} onChange={e => setFormAddress(e.target.value)}
