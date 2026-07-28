@@ -109,6 +109,27 @@ function hijriToGregorian(hy, hm, hd) {
   } catch { return null; }
 }
 
+// تحويل ميلادي إلى هجري (عكس hijriToGregorian) لعرض تاريخ الدفع المخزَّن كتاريخ ميلادي
+function gregorianToHijri(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate();
+  let jd = Math.floor((1461 * (y + 4800 + Math.floor((m - 14) / 12))) / 4) +
+    Math.floor((367 * (m - 2 - 12 * Math.floor((m - 14) / 12))) / 12) -
+    Math.floor((3 * Math.floor((y + 4900 + Math.floor((m - 14) / 12)) / 100)) / 4) +
+    day - 32075;
+  const l = jd - 1948440 + 10632;
+  const n = Math.floor((l - 1) / 10631);
+  const ll = l - 10631 * n + 354;
+  const j = Math.floor((10985 - ll) / 5316) * Math.floor((50 * ll) / 17719) + Math.floor(ll / 5670) * Math.floor((43 * ll) / 15238);
+  const ll2 = ll - Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) - Math.floor(j / 16) * Math.floor((15238 * j) / 43) + 29;
+  const hm = Math.floor((24 * ll2) / 709);
+  const hd = ll2 - Math.floor((709 * hm) / 24);
+  const hy = 30 * n + j - 30;
+  return `${hy}/${String(hm).padStart(2, "0")}/${String(hd).padStart(2, "0")}`;
+}
+
 // مفتاح ترتيب رقمي لمقارنة تاريخين هجريين نصيين (يُستخدم لتحديد سريان الضريبة)
 function hijriSortKey(hijriText) {
   if (!hijriText || hijriText === "—") return -1;
@@ -154,9 +175,9 @@ export default function Entitlements() {
     setLoading(true);
     const { data: propsData } = await supabase.from("properties").select("id, name, priority").order("priority");
     const { data: paymentsData } = await supabase.from("payments").select(`
-      id, lease_id, amount_due, amount_paid, installment_number, total_installments,
-      leases (
-        id, property_id, start_date_hijri, tax_enabled, tax_effective_hijri,
+      id, lease_id, amount_due, amount_paid, payment_date_hijri, installment_number, total_installments,
+    leases (
+      id, property_id, start_date_hijri, tax_enabled, tax_effective_hijri,
         properties ( name, priority ),
         tenants ( name, note ),
         lease_units ( units ( unit_number, unit_type ) )
@@ -272,6 +293,8 @@ export default function Entitlements() {
       const taxApplies = isTaxApplicable(lease, dueDateHijri);
       const taxAmount = taxApplies ? Math.round(Number(row.amount_due || 0) * TAX_RATE) : 0;
 
+      const paymentDateHijri = row.payment_date_hijri || null;
+
       found.push({
         tenant: lease.tenants?.name || "",
         activity: lease.tenants?.note || "—",
@@ -285,6 +308,7 @@ export default function Entitlements() {
         status,
         statusLabel: statusToArabic(status),
         dueDateHijri,
+        paymentDateHijri,
         taxApplies,
         taxAmount,
       });
@@ -556,11 +580,22 @@ export default function Entitlements() {
           </div>
 
           <ExportToolbar
-            data={filteredResults.map(r => ({
-              ...r,
-              taxLabel: r.taxApplies ? `${r.taxAmount.toLocaleString()} ريال` : "—",
-              totalWithTax: r.taxApplies ? `${(r.amount + r.taxAmount).toLocaleString()} ريال` : `${r.amount.toLocaleString()} ريال`,
-            }))}
+            data={filteredResults.map(r => {
+      const amountColor = r.status === "paid" ? "#27ae60" : r.status === "not_due" ? "#7f8c8d" : "#e74c3c";
+      return {
+        ...r,
+        dueDateHijri: {
+          value: `${r.dueDateHijri} هـ`,
+          color: "#e74c3c",
+          subtext: r.paymentDateHijri ? `✓ ${r.paymentDateHijri} هـ` : null,
+          subtextColor: "#27ae60",
+        },
+        amount: { value: `${r.amount.toLocaleString()} ريال`, color: amountColor },
+        statusLabel: { value: r.statusLabel, color: r.status === "paid" ? "#27ae60" : r.status === "overdue" ? "#e74c3c" : r.status === "partial" ? "#f39c12" : "#7f8c8d" },
+        taxLabel: r.taxApplies ? `${r.taxAmount.toLocaleString()} ريال` : "—",
+        totalWithTax: r.taxApplies ? `${(r.amount + r.taxAmount).toLocaleString()} ريال` : `${r.amount.toLocaleString()} ريال`,
+      };
+    })}
             columns={[
               { key: "property", label: "العقار" },
               { key: "tenant", label: "المستأجر" },
@@ -629,9 +664,14 @@ export default function Entitlements() {
                       <td style={{ padding: "12px 16px" }}>{tenantBadge(r.tenant)}</td>
                       <td style={{ padding: "12px 16px" }}>{activityBadge(r.activity)}</td>
                       <td style={{ padding: "12px 16px" }}>{unitBadges(r.units)}</td>
-                                  <td style={{ padding: "12px 16px", color: "#6b7280", fontSize: 13 }}>{r.dueDateHijri} هـ</td>
-                      <td style={{ padding: "12px 16px" }}>{amountDisplay(r)}</td>
-                      <td style={{ padding: "12px 16px" }}>{statusBadge(r.status)}</td>
+                                  <td style={{ padding: "12px 16px", fontSize: 13 }}>
+                                    <div style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.dueDateHijri} هـ</div>
+                                    {r.paymentDateHijri && (
+                                      <div style={{ color: "#27ae60", fontWeight: "bold", marginTop: 3 }}>✓ {r.paymentDateHijri} هـ</div>
+                                    )}
+                                  </td>
+                    <td style={{ padding: "12px 16px" }}>{amountDisplay(r)}</td>
+                    <td style={{ padding: "12px 16px" }}>{statusBadge(r.status)}</td>
                     </tr>
                   ))}
                 </tbody>

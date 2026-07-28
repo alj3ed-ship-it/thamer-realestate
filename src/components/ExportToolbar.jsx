@@ -267,11 +267,24 @@ export default function ExportToolbar({
                   background: idx % 2 === 0 ? "#ffffff" : "#f5f7fa",
                 }}
               >
-                {columns.map((col) => (
-                  <td key={col.key} style={styles.td}>
-                    {row[col.key] ?? "—"}
-                  </td>
-                ))}
+                {columns.map((col) => {
+                  const cell = row[col.key];
+                  const isRich = cell && typeof cell === "object" && "value" in cell;
+                  const cellValue = isRich ? cell.value : (cell ?? "—");
+                  const cellColor = isRich ? cell.color : undefined;
+                  const cellSubtext = isRich ? cell.subtext : null;
+                  const cellSubColor = isRich ? cell.subtextColor : undefined;
+                  return (
+                    <td key={col.key} style={{ ...styles.td, color: cellColor || styles.td.color, fontWeight: cellColor ? "bold" : "normal" }}>
+                      <div>{cellValue}</div>
+                      {cellSubtext && (
+                        <div style={{ fontSize: "11px", marginTop: "3px", color: cellSubColor || "#27ae60", fontWeight: "bold" }}>
+                          {cellSubtext}
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
