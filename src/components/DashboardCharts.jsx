@@ -60,21 +60,36 @@ function DashboardCharts() {
     }
   };
 
+  // يحسب صافي دخل المالك الفعلي من مبلغ عقد واحد، حسب حالة الضريبة عليه:
+  // - عقد غير خاضع للضريبة: الصافي = المبلغ كامل
+  // - عقد خاضع وشامل الضريبة (مثل المجاهدين): الصافي = المبلغ الأساسي بعد فرز الـ15% من الداخل (الضريبة مو من جيبه)
+  // - عقد خاضع وغير شامل: الصافي = المبلغ ناقص الـ15% اللي يتحملها المالك من جيبه لصالح الحكومة
+  function computeNetRevenue(rentAmount, taxEnabled, amountIncludesVat) {
+    const amt = Number(rentAmount || 0);
+    if (!taxEnabled) return amt;
+    if (amountIncludesVat) return amt / 1.15;
+    return amt * 0.85;
+  }
+
   const loadRevenue = async () => {
     if (selectedProperty === 'all') {
-      const { data: leases, error } = await supabase.from('leases').select('rent_amount, property_id, properties(name)');
+      const { data: leases, error } = await supabase.from('leases').select('rent_amount, property_id, tax_enabled, amount_includes_vat, properties(name)');
       if (!error && leases) {
         const totals = {};
         leases.forEach((l) => {
           const pname = l.properties?.name || 'غير محدد';
-          totals[pname] = (totals[pname] || 0) + Number(l.rent_amount || 0);
+          const net = computeNetRevenue(l.rent_amount, l.tax_enabled, l.amount_includes_vat);
+          totals[pname] = (totals[pname] || 0) + net;
         });
-        setRevenue(Object.entries(totals).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value));
+        setRevenue(Object.entries(totals).map(([name, value]) => ({ name, value: Math.round(value) })).sort((a, b) => b.value - a.value));
       }
     } else {
-      const { data: leases, error } = await supabase.from('leases').select('rent_amount, tenant_id, tenants(name)').eq('property_id', selectedProperty);
+      const { data: leases, error } = await supabase.from('leases').select('rent_amount, tenant_id, tax_enabled, amount_includes_vat, tenants(name)').eq('property_id', selectedProperty);
       if (!error && leases) {
-        setRevenue(leases.map((l) => ({ name: l.tenants?.name || 'غير محدد', value: Number(l.rent_amount || 0) })).sort((a, b) => b.value - a.value));
+        setRevenue(leases.map((l) => ({
+          name: l.tenants?.name || 'غير محدد',
+          value: Math.round(computeNetRevenue(l.rent_amount, l.tax_enabled, l.amount_includes_vat))
+        })).sort((a, b) => b.value - a.value));
       }
     }
   };
@@ -158,7 +173,7 @@ function DashboardCharts() {
           <div style={styles.kpiRow}>
             <div style={styles.kpiCard}>
               <div style={{ ...styles.kpiValue, color: '#2563eb' }}>{totalRevenue.toLocaleString()}</div>
-              <div style={styles.kpiLabel}>إجمالي الإيراد السنوي (ريال)</div>
+              <div style={styles.kpiLabel}>صافي الإيراد السنوي (ريال) — بعد خصم الضريبة</div>
             </div>
             <div style={styles.kpiCard}>
               <div style={{ ...styles.kpiValue, color: '#10b981' }}>{occupancyPct}%</div>
@@ -181,7 +196,7 @@ function DashboardCharts() {
 
             {revenue.length > 0 && (
               <div style={styles.middleChartSection}>
-                <div style={styles.sectionTitle}>الإيراد السنوي</div>
+                <div style={styles.sectionTitle}>صافي الإيراد السنوي</div>
                 <RevenueBars />
               </div>
             )}

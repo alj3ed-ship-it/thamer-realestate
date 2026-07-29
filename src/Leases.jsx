@@ -93,7 +93,6 @@ function getInstallmentPlan(paymentType) {
 }
 
 // قائمة مستأجرين قابلة للبحث بالكتابة (بدل قائمة منسدلة طويلة)
-// allowAll: يظهر خيار "كل المستأجرين" (يُستخدم بفلتر الجدول)، يُخفى عند استخدامه داخل فورم اختيار مستأجر واحد محدد
 function TenantSearchSelect({ tenants, value, onChange, allowAll = true }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -276,7 +275,6 @@ export default function Leases({ onBack }) {
     return leaseUnits.filter(lu => lu.lease_id === leaseId).map(lu => lu.unit_id);
   }
 
-  // معرّفات الوحدات المؤهلة لفرز النوع (تستثني أي وحدة عليها علم الاستثناء لهذا العقد تحديداً)
   function getEligibleUnitIdsForTypeFilter(leaseId) {
     const lease = leases.find(l => l.id === leaseId);
     const luIds = getLeaseUnitIds(leaseId);
@@ -322,7 +320,6 @@ export default function Leases({ onBack }) {
     return getLeaseUnitObjs(leaseId).map(u => u.unit_number + " " + u.unit_type).join(" + ") || "—";
   }
 
-  // خلية الوحدات بجدول العقود — كل وحدة زر قابل للضغط لاستثنائها/إرجاعها من فرز النوع
   function unitsCell(leaseId) {
     const objs = getLeaseUnitObjs(leaseId);
     if (objs.length === 0) return "—";
@@ -353,7 +350,6 @@ export default function Leases({ onBack }) {
     );
   }
 
-  // نص وصف حالة الضريبة لعقد معيّن، يُستخدم بالجدول والتصدير
   function getTaxSummary(lease) {
     if (!lease.tax_enabled) return "بدون ضريبة";
     if (lease.tax_effective_hijri) return `15% من ${lease.tax_effective_hijri} هـ`;
@@ -439,7 +435,6 @@ export default function Leases({ onBack }) {
     });
   }
 
-  // يولّد جدول الدفعات تلقائياً (مبلغ متساوٍ + تواريخ مقترحة بفاصل منتظم) - قابل للتعديل بالكامل بعدها
   function regenerateInstallments(overrides = {}) {
     const paymentType = overrides.payment_type ?? form.payment_type;
     const rentAmount = Number(overrides.rent_amount ?? form.rent_amount) || 0;
@@ -482,9 +477,6 @@ export default function Leases({ onBack }) {
     return { annual: amount, installment, count: type?.multiplier || 1 };
   }
 
-  // تحديث تلقائي لمبلغ الأقساط غير المدفوعة عند تعديل إيجار عقد موجود
-  // - يحافظ على مبلغ أي قسط سبق سداده كما هو (تاريخي، ما يتغيّر)
-  // - يوزّع المبلغ الجديد بالتساوي على عدد الأقساط الأصلي لنفس العقد
   async function syncUnpaidInstallments(leaseId, newRentAmount) {
     const { data: existingPayments, error } = await supabase
       .from("payments")
@@ -535,12 +527,10 @@ export default function Leases({ onBack }) {
       for (const uid of oldUnitIds) await supabase.from("units").update({ status: "شاغرة" }).eq("id", uid);
       await supabase.from("lease_units").delete().eq("lease_id", editingId);
       await supabase.from("leases").update(payload).eq("id", editingId);
-      // تحديث تلقائي لأقساط الدفعات غير المدفوعة بنفس المبلغ الجديد
       await syncUnpaidInstallments(editingId, form.rent_amount);
     } else {
       const { data } = await supabase.from("leases").insert([payload]).select("id");
       leaseId = data?.[0]?.id;
-      // كتابة جدول الدفعات الثابت (المدخل يدوياً بالنموذج) - فقط عند إنشاء عقد جديد
       if (leaseId && form.installments.length > 0) {
         const paymentRows = form.installments.map((inst, i) => {
           const dueHijriText = hijriPartsToText(inst.hijri.year, inst.hijri.month, inst.hijri.day);
@@ -560,7 +550,6 @@ export default function Leases({ onBack }) {
       }
     }
     if (leaseId) {
-      // ملاحظة: كل عقد جديد أو مُعاد بناؤه يبدأ بربط نظيف بدون أي استثناء (excluded_from_type_filter = false افتراضياً)
       const luRows = form.selected_unit_ids.map(uid => ({ lease_id: leaseId, unit_id: uid }));
       await supabase.from("lease_units").insert(luRows);
     }
@@ -582,7 +571,6 @@ export default function Leases({ onBack }) {
     fetchAll();
   }
 
-  // كل أنواع الوحدات الموجودة فعلياً بالعقود (لتعبئة قائمة الفلتر) — تستثني الوحدات المعلّمة كاستثناء
   const uniqueUnitTypes = useMemo(() => {
     const set = new Set();
     leases.forEach(l => {
@@ -599,7 +587,6 @@ export default function Leases({ onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leases, leaseUnits, units]);
 
-  // فلترة بالعقار + المستأجر + نوع الوحدة (يستثني أي وحدة معلّمة كاستثناء لهذا العقد)
   const filteredLeases = leases.filter(l => {
     const matchProperty = filterProperty === "الكل" || l.property_id === filterProperty;
     const matchTenant = filterTenants.length === 0 || filterTenants.includes(l.tenant_id);
@@ -611,7 +598,6 @@ export default function Leases({ onBack }) {
     return matchProperty && matchTenant && matchUnitType;
   });
 
-  // قائمة المستأجرين مرتبطين فعلياً بالعقار المختار فقط (أو الكل لو ما فيه فلتر عقار)
   const tenantIdsInProperty = filterProperty === "الكل"
     ? null
     : new Set(leases.filter(l => l.property_id === filterProperty).map(l => l.tenant_id));
@@ -619,10 +605,8 @@ export default function Leases({ onBack }) {
   const sortedTenants = [...availableTenants].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
   const filteredTenantOptions = sortedTenants.filter(t => (t.name || "").toLowerCase().includes(tenantSearchText.toLowerCase()));
 
-  // كل المستأجرين مرتّبين أبجدياً (تُستخدم داخل فورم إضافة/تعديل العقد، بدون فلترة بعقار معيّن)
   const allTenantsSorted = [...tenants].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ar"));
 
-  // لو غيّرنا العقار وصار فيه مستأجرين محددين مو تابعين له، ننضّف الفلتر من غير التابعين تلقائياً
   useEffect(() => {
     if (filterTenants.length > 0 && tenantIdsInProperty) {
       setFilterTenants(prev => prev.filter(id => tenantIdsInProperty.has(id)));
@@ -630,7 +614,6 @@ export default function Leases({ onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterProperty]);
 
-  // إجمالي مبلغ العقود الظاهرة حالياً (يتغيّر تلقائياً حسب الفلاتر)
   const totalAmount = filteredLeases.reduce((sum, l) => sum + Number(l.rent_amount || 0), 0);
 
   const total = getTotal();
@@ -659,7 +642,7 @@ export default function Leases({ onBack }) {
   ];
 
   return (
-    <div dir="rtl" style={{ fontFamily: "Cairo, sans-serif", padding: "40px", maxWidth: "1200px", margin: "0 auto" }}>
+    <div dir="rtl" style={{ fontFamily: "Cairo, sans-serif", padding: "40px", maxWidth: "1500px", margin: "0 auto" }}>
       <button onClick={onBack} className="no-print" style={{ padding: "8px 16px", marginBottom: "20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
         ← رجوع للوحة التحكم
       </button>
@@ -807,7 +790,7 @@ export default function Leases({ onBack }) {
                       <td style={{ padding: "12px", fontWeight: 600, color: "#1B4D7A" }}>{tenant?.name || "—"}</td>
                       <td style={{ padding: "12px", color: "#0e7490", fontWeight: 600 }}>{property?.name || "—"}</td>
                       <td style={{ padding: "12px" }} className="no-print">{unitsCell(l.id)}</td>
-                      <td style={{ padding: "12px", color: "#7c3aed", fontWeight: 600 }} data-print-only>{getLeaseUnitsDisplay(l.id)}</td>
+                      <td style={{ padding: "12px", color: "#7c3aed", fontWeight: 600, display: "none" }} data-print-only>{getLeaseUnitsDisplay(l.id)}</td>
                       <td style={{ padding: "12px" }}>
                         <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "3px 10px", borderRadius: 6, fontSize: 12, whiteSpace: "nowrap", display: "inline-block" }}>
                           {l.payment_type || "—"}
@@ -834,7 +817,15 @@ export default function Leases({ onBack }) {
                           <span style={{ color: "#9ca3af", fontSize: 12 }}>—</span>
                         )}
                       </td>
-                      <td style={{ padding: "12px", color: "#6b7280", maxWidth: "160px", whiteSpace: "normal", wordBreak: "break-word" }}>{l.notes || "—"}</td>
+                      <td
+                        style={{
+                          padding: "12px", color: "#6b7280", maxWidth: "260px", minWidth: "140px",
+                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", cursor: l.notes ? "help" : "default"
+                        }}
+                        title={l.notes || ""}
+                      >
+                        {l.notes || "—"}
+                      </td>
                       <td className="no-print" style={{ padding: "12px" }}>
                         <button onClick={() => openEditForm(l)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer", marginLeft: 6 }}>تعديل</button>
                         <button onClick={() => handleDelete(l)} disabled={deletingId === l.id} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>

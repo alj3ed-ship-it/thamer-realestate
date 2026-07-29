@@ -187,7 +187,7 @@ function Payments({ onBack }) {
     setStatus('loading')
     const [pay, lea, ten, pro, uni, lu] = await Promise.all([
       supabase.from('payments').select('*').order('payment_date', { ascending: true }),
-      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id, start_date_hijri, tax_enabled, tax_effective_hijri'),
+      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id, start_date_hijri, tax_enabled, tax_effective_hijri, amount_includes_vat'),
       supabase.from('tenants').select('id, name, note'),
       supabase.from('properties').select('id, name').order('name'),
       supabase.from('units').select('id, unit_number'),
@@ -398,13 +398,38 @@ function Payments({ onBack }) {
     return hijriSortKey(hijriText) >= hijriSortKey(lease.tax_effective_hijri)
   }
 
-  function getTaxAmount(p) {
-    if (!isTaxApplicable(p)) return 0
-    return Math.round(Number(p.amount || 0) * TAX_RATE)
+  // هل مبلغ هذا العقد مُدخل شاملاً الضريبة أصلاً (مثل عقد المجاهدين/فايف سنتر)
+  function isAmountVatInclusive(p) {
+    const lease = getLease(p.lease_id)
+    return !!lease?.amount_includes_vat
   }
 
+  // المبلغ الأساسي (بدون ضريبة) — يُستخرج من الداخل لو العقد شامل، أو هو نفسه المبلغ لو غير شامل
+  function getBaseAmount(p) {
+    const amt = Number(p.amount || 0)
+    if (isTaxApplicable(p) && isAmountVatInclusive(p)) {
+      return amt / 1.15
+    }
+    return amt
+  }
+
+  // قيمة الضريبة: تُستقطع من الداخل لو العقد شامل، أو تُضاف فوق المبلغ لو غير شامل (يتحملها المالك)
+  function getTaxAmount(p) {
+    if (!isTaxApplicable(p)) return 0
+    const amt = Number(p.amount || 0)
+    if (isAmountVatInclusive(p)) {
+      return Math.round(amt - (amt / 1.15))
+    }
+    return Math.round(amt * TAX_RATE)
+  }
+
+  // الإجمالي الفعلي المستلم من المستأجر: لو شامل الضريبة يبقى نفس المبلغ، لو غير شامل يُضاف عليه 15%
   function getTotalWithTax(p) {
-    return Number(p.amount || 0) + getTaxAmount(p)
+    const amt = Number(p.amount || 0)
+    if (isTaxApplicable(p) && isAmountVatInclusive(p)) {
+      return amt
+    }
+    return amt + getTaxAmount(p)
   }
 
   const filteredPayments = (filterProperty === 'الكل'
@@ -424,7 +449,7 @@ function Payments({ onBack }) {
 
   const totalFiltered = filteredPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
   const totalTax = filteredPayments.reduce((s, p) => s + getTaxAmount(p), 0)
-  const totalWithTax = totalFiltered + totalTax
+  const totalWithTax = filteredPayments.reduce((s, p) => s + getTotalWithTax(p), 0)
 
   function computePaymentStatus(p) {
     const due = Number(p.amount || 0)
@@ -456,6 +481,7 @@ function Payments({ onBack }) {
     const paid = Number(p.amount_paid || 0)
     const taxApplies = isTaxApplicable(p)
     const tax = getTaxAmount(p)
+    const inclusive = isAmountVatInclusive(p)
     let base
     if (computed === 'partial') {
       const remaining = due - paid
@@ -474,9 +500,14 @@ function Payments({ onBack }) {
     return (
       <div>
         {base}
-        {taxApplies && (
+        {taxApplies && inclusive && (
           <div style={{ fontSize: 11, color: '#8e44ad', marginTop: 2, fontWeight: 700 }}>
-            + ضريبة 15%: {tax.toLocaleString()} = {getTotalWithTax(p).toLocaleString()} ريال
+            شامل الضريبة: أساسي {Math.round(getBaseAmount(p)).toLocaleString()} + ضريبة {tax.toLocaleString()}
+          </div>
+        )}
+        {taxApplies && !inclusive && (
+          <div style={{ fontSize: 11, color: '#8e44ad', marginTop: 2, fontWeight: 700 }}>
+            + ضريبة 15% (يتحملها المالك): {tax.toLocaleString()} = {getTotalWithTax(p).toLocaleString()} ريال
           </div>
         )}
       </div>
@@ -503,6 +534,7 @@ function Payments({ onBack }) {
         : `${due.toLocaleString()} ريال`,
       tax: taxApplies ? `${getTaxAmount(p).toLocaleString()} ريال` : '—',
       totalWithTax: taxApplies ? `${getTotalWithTax(p).toLocaleString()} ريال` : `${due.toLocaleString()} ريال`,
+      vatType: taxApplies ? (isAmountVatInclusive(p) ? 'شامل الضريبة' : 'الضريبة على المالك') : '—',
       statusLabel: statusToArabic(computed),
       date: hijriText ? hijriText + ' هـ' : '—',
       method: p.payment_method || '—',
@@ -589,7 +621,7 @@ function Payments({ onBack }) {
         </div>
         {totalTax > 0 && (
           <div style={{ background: '#F4ECF7', padding: '8px 16px', borderRadius: 8, fontWeight: 700, color: '#8e44ad', fontSize: 15 }}>
-            الضريبة: {totalTax.toLocaleString()} ريال — الإجمالي شامل الضريبة: {totalWithTax.toLocaleString()} ريال
+            الضريبة: {totalTax.toLocaleString()} ريال — الإجمالي الفعلي المستلم: {totalWithTax.toLocaleString()} ريال
           </div>
         )}
       </div>
@@ -612,7 +644,8 @@ function Payments({ onBack }) {
               { key: 'installment', label: 'الدفعة' },
               { key: 'amount', label: 'المبلغ' },
               { key: 'tax', label: 'الضريبة' },
-              { key: 'totalWithTax', label: 'الإجمالي شامل الضريبة' },
+              { key: 'vatType', label: 'نوع الضريبة' },
+              { key: 'totalWithTax', label: 'الإجمالي الفعلي' },
               { key: 'statusLabel', label: 'الحالة' },
               { key: 'date', label: 'التاريخ' },
               { key: 'method', label: 'طريقة الدفع' },
@@ -622,7 +655,7 @@ function Payments({ onBack }) {
             stats={[
               { label: 'المجموع', value: `${totalFiltered.toLocaleString()} ريال`, color: '#27ae60' },
               { label: 'الضريبة', value: `${totalTax.toLocaleString()} ريال`, color: '#8e44ad' },
-              { label: 'الإجمالي شامل الضريبة', value: `${totalWithTax.toLocaleString()} ريال`, color: '#1B4D7A' },
+              { label: 'الإجمالي الفعلي', value: `${totalWithTax.toLocaleString()} ريال`, color: '#1B4D7A' },
             ]}
           />
 
@@ -718,7 +751,7 @@ function Payments({ onBack }) {
               if (!lease?.tax_enabled) return null
               return (
                 <div style={{ background: '#F4ECF7', border: '1px solid #E1C6ED', borderRadius: 8, padding: 10, marginBottom: 15, fontSize: 12, color: '#8e44ad' }}>
-                  ℹ هذا العقد عليه ضريبة 15% {lease.tax_effective_hijri ? `تسري من ${lease.tax_effective_hijri} هـ` : '(من بداية العقد)'} — تُحسب تلقائياً حسب تاريخ هذه الدفعة بعد الحفظ.
+                  ℹ هذا العقد عليه ضريبة 15% {lease.tax_effective_hijri ? `تسري من ${lease.tax_effective_hijri} هـ` : '(من بداية العقد)'} — {lease.amount_includes_vat ? 'المبلغ المدخل شامل الضريبة (تُستقطع من الداخل).' : 'الضريبة تُضاف فوق المبلغ ويتحملها المالك حالياً.'}
                 </div>
               )
             })()}
