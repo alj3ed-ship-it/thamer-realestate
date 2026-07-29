@@ -8,6 +8,17 @@ const statusColor = {
   'صيانة': { background: '#fee2e2', color: '#991b1b' }
 }
 
+// تصنيف ضريبة القيمة المضافة
+const VAT_STATUS_OPTIONS = [
+  { value: 'exempt', label: 'معفى', color: '#166534', bg: '#dcfce7', border: '#bbf7d0' },
+  { value: 'taxable', label: 'خاضع', color: '#b91c1c', bg: '#fee2e2', border: '#fecaca' },
+  { value: 'mixed', label: 'مزدوج', color: '#92400e', bg: '#fef3c7', border: '#fde68a' },
+]
+
+function getVatStatusInfo(value) {
+  return VAT_STATUS_OPTIONS.find(o => o.value === value) || VAT_STATUS_OPTIONS[0]
+}
+
 // أولوية العقار (نفس ترتيب صفحة العرض /view)
 function getPropertyPriority(name) {
   if (!name) return 99
@@ -40,6 +51,8 @@ export default function Units({ onBack }) {
   const [loading, setLoading] = useState(true)
   const [filterStatus, setFilterStatus] = useState('الكل')
   const [filterProperty, setFilterProperty] = useState('الكل')
+  const [filterVat, setFilterVat] = useState('الكل')
+  const [updatingId, setUpdatingId] = useState(null)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -54,10 +67,19 @@ export default function Units({ onBack }) {
     setLoading(false)
   }
 
+  async function handleVatChange(unitId, newValue) {
+    setUpdatingId(unitId)
+    const { error } = await supabase.from('units').update({ vat_status: newValue }).eq('id', unitId)
+    setUpdatingId(null)
+    if (error) { alert('فشل التحديث: ' + error.message); return }
+    setUnits(prev => prev.map(u => u.id === unitId ? { ...u, vat_status: newValue } : u))
+  }
+
   const filtered = units.filter(u => {
     const matchStatus = filterStatus === 'الكل' || u.status === filterStatus
     const matchProperty = filterProperty === 'الكل' || u.property_id === filterProperty
-    return matchStatus && matchProperty
+    const matchVat = filterVat === 'الكل' || (u.vat_status || 'exempt') === filterVat
+    return matchStatus && matchProperty && matchVat
   })
 
   // الترتيب: العقار (بالأولوية) → النوع (محل > شقة > ورشة) → رقم الوحدة تصاعدي
@@ -85,6 +107,7 @@ export default function Units({ onBack }) {
   const rented = units.filter(u => u.status === 'مؤجرة').length
   const vacant = units.filter(u => u.status === 'شاغرة').length
   const maintenance = units.filter(u => u.status === 'صيانة').length
+  const taxableCount = units.filter(u => u.vat_status === 'taxable').length
 
   const exportData = sorted.map((u) => {
     const prop = properties.find(p => p.id === u.property_id)
@@ -95,6 +118,7 @@ export default function Units({ onBack }) {
       floor: u.floor ?? '—',
       area: u.area_sqm ? u.area_sqm + ' م²' : '—',
       status: u.status || '—',
+      vatStatus: getVatStatusInfo(u.vat_status).label,
       notes: u.notes || '—',
     }
   })
@@ -104,6 +128,7 @@ export default function Units({ onBack }) {
     { label: 'مؤجرة', value: rented, color: '#166534' },
     { label: 'شاغرة', value: vacant, color: '#854d0e' },
     { label: 'صيانة', value: maintenance, color: '#991b1b' },
+    { label: 'خاضعة للضريبة', value: taxableCount, color: '#b91c1c' },
   ]
 
   return (
@@ -121,6 +146,7 @@ export default function Units({ onBack }) {
           { label: 'مؤجرة', value: rented, bg: '#dcfce7', color: '#166534' },
           { label: 'شاغرة', value: vacant, bg: '#fef9c3', color: '#854d0e' },
           { label: 'صيانة', value: maintenance, bg: '#fee2e2', color: '#991b1b' },
+          { label: 'خاضعة للضريبة', value: taxableCount, bg: '#fee2e2', color: '#b91c1c' },
         ].map(c => (
           <div key={c.label} style={{ background: c.bg, borderRadius: 10, padding: '14px 20px', minWidth: 140 }}>
             <div style={{ fontSize: 13, color: c.color, marginBottom: 4 }}>{c.label}</div>
@@ -141,6 +167,11 @@ export default function Units({ onBack }) {
           <option value="شاغرة">شاغرة</option>
           <option value="مؤجرة">مؤجرة</option>
           <option value="صيانة">صيانة</option>
+        </select>
+        <select value={filterVat} onChange={e => setFilterVat(e.target.value)}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
+          <option value="الكل">كل تصنيفات الضريبة</option>
+          {VAT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <button onClick={fetchAll} style={{ padding: '8px 16px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
       </div>
@@ -164,6 +195,7 @@ export default function Units({ onBack }) {
               { key: 'floor', label: 'الدور' },
               { key: 'area', label: 'المساحة' },
               { key: 'status', label: 'الحالة' },
+              { key: 'vatStatus', label: 'تصنيف الضريبة' },
               { key: 'notes', label: 'ملاحظات' },
             ]}
             filename="units_report"
@@ -175,7 +207,7 @@ export default function Units({ onBack }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                  {['العقار', 'رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'ملاحظات'].map(h => (
+                  {['العقار', 'رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'تصنيف الضريبة', 'ملاحظات'].map(h => (
                     <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
                   ))}
                 </tr>
@@ -183,6 +215,8 @@ export default function Units({ onBack }) {
               <tbody>
                 {sorted.map((u, idx) => {
                   const prop = properties.find(p => p.id === u.property_id)
+                  const vatValue = u.vat_status || 'exempt'
+                  const vatInfo = getVatStatusInfo(vatValue)
                   return (
                     <tr key={u.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
                       <td style={{ padding: '12px', color: '#1B4D7A', fontWeight: 600 }}>{prop?.name || '—'}</td>
@@ -194,6 +228,19 @@ export default function Units({ onBack }) {
                         <span style={{ ...statusColor[u.status], padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
                           {u.status || '—'}
                         </span>
+                      </td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <select
+                          value={vatValue}
+                          disabled={updatingId === u.id}
+                          onChange={e => handleVatChange(u.id, e.target.value)}
+                          style={{
+                            background: vatInfo.bg, color: vatInfo.color, border: `1px solid ${vatInfo.border}`,
+                            padding: '4px 8px', borderRadius: 6, fontSize: 12, fontWeight: 700,
+                            fontFamily: 'Cairo, sans-serif', cursor: 'pointer'
+                          }}>
+                          {VAT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
                       </td>
                       <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{u.notes || '—'}</td>
                     </tr>
