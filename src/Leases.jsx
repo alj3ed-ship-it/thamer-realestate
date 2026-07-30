@@ -51,6 +51,54 @@ function hijriPartsToText(hy, hm, hd) {
   return `${hy}/${String(hm).padStart(2,'0')}/${String(hd).padStart(2,'0')}`;
 }
 
+// ===== تحويل ميلادي -> هجري (للعرض التوثيقي فقط، مو أساس الحساب) =====
+function gregorianToJDN(year, month, day) {
+  const a = Math.floor((14 - month) / 12);
+  const y = year + 4800 - a;
+  const m = month + 12 * a - 3;
+  return day + Math.floor((153 * m + 2) / 5) + 365 * y + Math.floor(y / 4) - Math.floor(y / 100) + Math.floor(y / 400) - 32045;
+}
+
+function jdnToHijriParts(jdn) {
+  let l = jdn - 1948440 + 10632;
+  const n = Math.floor((l - 1) / 10631);
+  l = l - 10631 * n + 354;
+  const j = Math.floor((10985 - l) / 5316) * Math.floor((50 * l) / 17719) + Math.floor(l / 5670) * Math.floor((43 * l) / 15238);
+  l = l - Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) - Math.floor(j / 16) * Math.floor((15238 * j) / 43) + 29;
+  const month = Math.floor((24 * l) / 709);
+  const day = l - Math.floor((709 * month) / 24);
+  const year = 30 * n + j - 30;
+  return { year, month, day };
+}
+
+// تاريخ ميلادي "YYYY-MM-DD" -> { year, month, day } هجري تقريبي
+function gregorianToHijriParts(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  try {
+    const jdn = gregorianToJDN(y, m, d);
+    return jdnToHijriParts(jdn);
+  } catch { return null; }
+}
+
+function gregorianToHijriText(dateStr) {
+  const p = gregorianToHijriParts(dateStr);
+  if (!p) return null;
+  return hijriPartsToText(p.year, p.month, p.day);
+}
+
+// إضافة أشهر ميلادية على تاريخ ميلادي "YYYY-MM-DD"
+function addGregorianMonths(dateStr, monthsToAdd) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  d.setMonth(d.getMonth() + monthsToAdd);
+  const y = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${mm}-${dd}`;
+}
+
 // يفكك نص هجري "1447/01/01" لأجزاء { year, month, day } - يُستخدم لتعبئة فورم التعديل
 function parseHijriText(text) {
   if (!text) return { year: "", month: "", day: "" };
@@ -221,6 +269,7 @@ export default function Leases({ onBack }) {
     installments: [],
     tax_enabled: false,
     tax_effective_hijri: { year: "", month: "", day: "" },
+    tax_effective_date: "",
   });
 
   useEffect(() => { fetchAll(); }, []);
@@ -368,6 +417,7 @@ export default function Leases({ onBack }) {
       installments: [],
       tax_enabled: false,
       tax_effective_hijri: { year: "", month: "", day: "" },
+      tax_effective_date: "",
     });
     setFilteredUnits([]);
     setShowForm(true);
@@ -392,6 +442,12 @@ export default function Leases({ onBack }) {
       installments: [],
       tax_enabled: lease.tax_enabled || false,
       tax_effective_hijri: parseHijriText(lease.tax_effective_hijri),
+      tax_effective_date: lease.tax_effective_hijri
+        ? (() => {
+            const p = parseHijriText(lease.tax_effective_hijri);
+            return p.year ? (hijriPartsToGregorian(p.year, p.month, p.day) || "") : "";
+          })()
+        : "",
     });
     setFilteredUnits(
       units.filter(u => u.property_id === lease.property_id && (u.status === "شاغرة" || currentUnitIds.includes(u.id)))
@@ -408,17 +464,20 @@ export default function Leases({ onBack }) {
     );
   }
 
-  function handleStartHijri(val) {
-    const g = hijriPartsToGregorian(val.year, val.month, val.day);
-    const h = hijriPartsToText(val.year, val.month, val.day);
-    setForm(prev => ({ ...prev, start_hijri: val, start_date: g || "", start_date_hijri: h || "" }));
-    if (!editingId) regenerateInstallments({ start_hijri: val });
+  // الميلادي هو الأساس الآن؛ الهجري يُحسب منه للعرض التوثيقي فقط
+  function handleStartGregorian(dateStr) {
+    const h = gregorianToHijriText(dateStr);
+    setForm(prev => ({ ...prev, start_date: dateStr, start_date_hijri: h || "" }));
+    if (!editingId) regenerateInstallments({ start_date: dateStr });
   }
 
-  function handleEndHijri(val) {
-    const g = hijriPartsToGregorian(val.year, val.month, val.day);
-    const h = hijriPartsToText(val.year, val.month, val.day);
-    setForm(prev => ({ ...prev, end_hijri: val, end_date: g || "", end_date_hijri: h || "" }));
+  function handleEndGregorian(dateStr) {
+    const h = gregorianToHijriText(dateStr);
+    setForm(prev => ({ ...prev, end_date: dateStr, end_date_hijri: h || "" }));
+  }
+
+  function handleTaxEffectiveGregorian(dateStr) {
+    setForm(prev => ({ ...prev, tax_effective_date: dateStr }));
   }
 
   function handlePaymentTypeChange(paymentType) {
@@ -438,18 +497,18 @@ export default function Leases({ onBack }) {
   function regenerateInstallments(overrides = {}) {
     const paymentType = overrides.payment_type ?? form.payment_type;
     const rentAmount = Number(overrides.rent_amount ?? form.rent_amount) || 0;
-    const startHijri = overrides.start_hijri ?? form.start_hijri;
+    const startDate = overrides.start_date ?? form.start_date;
 
     const { count, stepMonths } = getInstallmentPlan(paymentType);
-    if (!rentAmount || !startHijri.year || !startHijri.month || !startHijri.day) {
+    if (!rentAmount || !startDate) {
       setForm(prev => ({ ...prev, installments: [] }));
       return;
     }
     const amountPer = Math.round(rentAmount / count);
-    const newInstallments = Array.from({ length: count }, (_, i) => ({
-      amount: amountPer,
-      hijri: addHijriMonths(startHijri, i * stepMonths),
-    }));
+    const newInstallments = Array.from({ length: count }, (_, i) => {
+      const gDate = addGregorianMonths(startDate, i * stepMonths);
+      return { amount: amountPer, date: gDate };
+    });
     setForm(prev => ({ ...prev, installments: newInstallments }));
   }
 
@@ -461,10 +520,10 @@ export default function Leases({ onBack }) {
     });
   }
 
-  function updateInstallmentHijri(index, value) {
+  function updateInstallmentDate(index, value) {
     setForm(prev => {
       const list = [...prev.installments];
-      list[index] = { ...list[index], hijri: value };
+      list[index] = { ...list[index], date: value };
       return { ...prev, installments: list };
     });
   }
@@ -502,9 +561,9 @@ export default function Leases({ onBack }) {
     if (!form.tenant_id || !form.rent_amount || form.selected_unit_ids.length === 0) return;
     setSaving(true);
 
-    const taxEffectiveText = hijriPartsToText(
-      form.tax_effective_hijri.year, form.tax_effective_hijri.month, form.tax_effective_hijri.day
-    );
+    const taxEffectiveText = form.tax_effective_date
+      ? gregorianToHijriText(form.tax_effective_date)
+      : null;
 
     const payload = {
       property_id: form.property_id || null,
@@ -533,8 +592,7 @@ export default function Leases({ onBack }) {
       leaseId = data?.[0]?.id;
       if (leaseId && form.installments.length > 0) {
         const paymentRows = form.installments.map((inst, i) => {
-          const dueHijriText = hijriPartsToText(inst.hijri.year, inst.hijri.month, inst.hijri.day);
-          const dueGregorian = hijriPartsToGregorian(inst.hijri.year, inst.hijri.month, inst.hijri.day);
+          const dueHijriText = gregorianToHijriText(inst.date);
           return {
             lease_id: leaseId,
             installment_number: i + 1,
@@ -542,7 +600,7 @@ export default function Leases({ onBack }) {
             amount_due: Number(inst.amount) || 0,
             amount_paid: 0,
             due_date_hijri: dueHijriText,
-            due_date_gregorian: dueGregorian,
+            due_date_gregorian: inst.date,
             status: "لم يُسدَّد",
           };
         });
@@ -893,8 +951,22 @@ export default function Leases({ onBack }) {
                   allowAll={false}
                 />
               </div>
-              <HijriPicker label="تاريخ البداية (هجري)" value={form.start_hijri} onChange={handleStartHijri} />
-              <HijriPicker label="تاريخ النهاية (هجري)" value={form.end_hijri} onChange={handleEndHijri} />
+              <div>
+                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>تاريخ البداية</label>
+                <input type="date" value={form.start_date} onChange={e => handleStartGregorian(e.target.value)}
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
+                {form.start_date_hijri && (
+                  <div style={{ fontSize: 11, color: "#059669", marginTop: 3 }}>هجري تقريبي: {form.start_date_hijri}</div>
+                )}
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>تاريخ النهاية</label>
+                <input type="date" value={form.end_date} onChange={e => handleEndGregorian(e.target.value)}
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
+                {form.end_date_hijri && (
+                  <div style={{ fontSize: 11, color: "#059669", marginTop: 3 }}>هجري تقريبي: {form.end_date_hijri}</div>
+                )}
+              </div>
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>نوع الدفع</label>
                 <select value={form.payment_type} onChange={e => handlePaymentTypeChange(e.target.value)}
@@ -925,11 +997,11 @@ export default function Leases({ onBack }) {
               </div>
               {form.tax_enabled && (
                 <div style={{ marginTop: 10 }}>
-                  <HijriPicker
-                    label="تسري الضريبة من تاريخ (اتركه فارغاً لتسري من بداية العقد)"
-                    value={form.tax_effective_hijri}
-                    onChange={(v) => setForm(f => ({ ...f, tax_effective_hijri: v }))}
-                  />
+                  <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>
+                    تسري الضريبة من تاريخ (اتركه فارغاً لتسري من بداية العقد)
+                  </label>
+                  <input type="date" value={form.tax_effective_date} onChange={e => handleTaxEffectiveGregorian(e.target.value)}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
                 </div>
               )}
             </div>
@@ -952,17 +1024,22 @@ export default function Leases({ onBack }) {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {form.installments.map((inst, i) => {
-                    const instHijriText = hijriPartsToText(inst.hijri.year, inst.hijri.month, inst.hijri.day);
+                    const instHijriText = gregorianToHijriText(inst.date);
                     const taxApplies = form.tax_enabled && (
-                      !form.tax_effective_hijri.year
+                      !form.tax_effective_date
                         ? true
-                        : hijriSortKey(instHijriText) >= hijriSortKey(hijriPartsToText(form.tax_effective_hijri.year, form.tax_effective_hijri.month, form.tax_effective_hijri.day))
+                        : new Date(inst.date) >= new Date(form.tax_effective_date)
                     );
                     return (
                       <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-end", background: "#f9fafb", padding: 8, borderRadius: 8 }}>
                         <div style={{ width: 70, fontSize: 12, color: "#6b7280", paddingBottom: 8 }}>الدفعة {i + 1}</div>
                         <div style={{ flex: 1 }}>
-                          <HijriPicker label="التاريخ" value={inst.hijri} onChange={(v) => updateInstallmentHijri(i, v)} />
+                          <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>التاريخ</label>
+                          <input type="date" value={inst.date} onChange={(e) => updateInstallmentDate(i, e.target.value)}
+                            style={{ width: "100%", padding: "8px 6px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 13, boxSizing: "border-box" }} />
+                          {instHijriText && (
+                            <div style={{ fontSize: 10, color: "#059669", marginTop: 3 }}>هجري تقريبي: {instHijriText}</div>
+                          )}
                         </div>
                         <div style={{ width: 110 }}>
                           <label style={{ fontSize: 12, color: "#6b7280", display: "block", marginBottom: 4 }}>المبلغ</label>
