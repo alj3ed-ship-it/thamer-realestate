@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import ExportToolbar from './components/ExportToolbar'
+import { useReadOnly } from './ReadOnlyContext'
 
 const TAX_RATE = 0.15
 
@@ -72,6 +73,7 @@ function formatDateShort(d) {
 }
 
 export default function VatReturns({ onBack }) {
+  const isReadOnly = useReadOnly()
   const [payments, setPayments] = useState([])
   const [leases, setLeases] = useState([])
   const [properties, setProperties] = useState([])
@@ -297,14 +299,14 @@ export default function VatReturns({ onBack }) {
   const exportData = buildExportRows(exportScope)
   const exportStatsScoped = exportScope === 'all'
     ? [
-        { label: 'إجمالي الضريبة', value: `${grandTotalTax.toLocaleString()} ريال`, color: '#8e44ad' },
+        { label: 'إجمالي الضريبة', value: `${grandTotalTax.toLocaleString()} ريال`, color: '#dc2626' },
         { label: 'غير مقدَّم', value: `${unfiledTax.toLocaleString()} ريال`, color: '#e74c3c' },
       ]
     : (() => {
         const q = quarters.find(x => x.key === exportScope)
         return q ? [
           { label: 'الإيراد الأساسي', value: `${q.baseTotal.toLocaleString()} ريال`, color: '#1d4ed8' },
-          { label: 'الضريبة المستحقة', value: `${q.taxTotal.toLocaleString()} ريال`, color: '#8e44ad' },
+          { label: 'الضريبة المستحقة', value: `${q.taxTotal.toLocaleString()} ريال`, color: '#dc2626' },
         ] : []
       })()
 
@@ -318,8 +320,8 @@ export default function VatReturns({ onBack }) {
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
         <div style={{ background: '#F4ECF7', borderRadius: 10, padding: '10px 18px', minWidth: 180 }}>
-          <div style={{ fontSize: 12, color: '#8e44ad', marginBottom: 3 }}>إجمالي الضريبة (كل الأرباع)</div>
-          <div style={{ fontSize: 19, fontWeight: 700, color: '#8e44ad' }}>{grandTotalTax.toLocaleString()} ريال</div>
+          <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 3 }}>إجمالي الضريبة (كل الأرباع)</div>
+          <div style={{ fontSize: 19, fontWeight: 700, color: '#dc2626' }}>{grandTotalTax.toLocaleString()} ريال</div>
         </div>
         <div style={{ background: '#FDEDEC', borderRadius: 10, padding: '10px 18px', minWidth: 180 }}>
           <div style={{ fontSize: 12, color: '#e74c3c', marginBottom: 3 }}>غير مقدَّم بعد</div>
@@ -395,7 +397,7 @@ export default function VatReturns({ onBack }) {
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: '#6b7280' }}>الضريبة</div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: '#8e44ad' }}>{q.taxTotal.toLocaleString()}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#dc2626' }}>{q.taxTotal.toLocaleString()}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <div style={{ textAlign: 'center' }}>
@@ -423,12 +425,15 @@ export default function VatReturns({ onBack }) {
                       {breakdownList.map((b, i) => (
                         <div key={i} style={{ fontSize: 11.5, color: '#6b7280', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                           <span><strong style={{ color: '#374151' }}>{b.property}</strong> — {b.tenant}</span>
-                          <span>أساسي {b.base.toLocaleString()} + ضريبة {b.tax.toLocaleString()} ريال</span>
+                          <span>
+                            أساسي <strong style={{ color: '#1d4ed8' }}>{b.base.toLocaleString()}</strong> + ضريبة <strong style={{ color: '#dc2626' }}>{b.tax.toLocaleString()}</strong> ريال
+                          </span>
                         </div>
                       ))}
                     </div>
                   )}
 
+                  {!isReadOnly && (
                   <div className="no-print" style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <button
                       onClick={() => toggleFiled(q)}
@@ -452,6 +457,10 @@ export default function VatReturns({ onBack }) {
                       style={{ flex: 1, minWidth: 140, padding: '5px 10px', borderRadius: 7, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: 'Cairo, sans-serif' }}
                     />
                   </div>
+                  )}
+                  {isReadOnly && filing?.filed && filing?.filed_date && (
+                    <div style={{ marginTop: 10, fontSize: 11, color: '#27ae60' }}>تم التقديم بتاريخ: {filing.filed_date}</div>
+                  )}
                 </div>
               )
             })}

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -12,23 +12,20 @@ import html2canvas from "html2canvas";
  * - filename: اسم الملف بدون امتداد
  * - title: عنوان التقرير (يظهر أعلى PDF/الطباعة)
  * - stats: (اختياري) [{ label: "الإجمالي", value: "95,700 ريال", color: "#1B4D7A" }, ...]
- *          إحصائيات ملخّصة تظهر بأعلى التقرير المطبوع
- * - officeName: (اختياري) اسم المكتب بالترويسة، افتراضياً "مكتب ثامر بن سلمان العقاري"
- * - officeSubtitle: (اختياري) وصف فرعي، افتراضياً "إدارة الأملاك"
- * - logoSrc: (اختياري) مسار شعار يظهر بالترويسة
+ * - officeName / officeSubtitle / logoSrc: (اختياري) ترويسة PDF/الطباعة
  *
- * ملاحظة تصميمية مهمة:
- * التقرير المطبوع/PDF يُبنى من عنصر مخفي مستقل (مو من الجدول الظاهر بالشاشة)،
- * مصمم خصيصاً للطباعة (خط أكبر، تباعد أوسع، ترويسة رسمية، ملخص أرقام واضح).
- * هذا يفادي مشكلة تشوّه النص العربي اللي تصير أحياناً عند تصوير عناصر الشاشة المزدحمة،
- * ويضمن شكل احترافي ثابت بغض النظر عن تصميم الصفحة الظاهرة.
+ * ملاحظة إصلاح تصدير Excel (يوليو 2026):
+ * استبدلنا مكتبة xlsx (SheetJS) بـ exceljs، لأن النسخة المجانية من xlsx ما تدعم
+ * التلوين/البولد عند الكتابة (هذا حصري بنسختها المدفوعة). exceljs مجانية بالكامل
+ * وتدعم كل شي احتجناه.
  *
- * ملاحظة إصلاح الطباعة (يوليو 2026):
- * زر الطباعة العادي (window.print) يستخدم قواعد @media print أدناه — تعمل تمام.
- * زر PDF (html2canvas) رجعناه لإعداداته الأصلية البسيطة بعد ما تبيّن إن أي إجبار على
- * width/windowWidth/scrollX/scrollY كان يكسر حساب موقع العنصر (position:absolute)
- * ويسبب قص أول عمودين. الإصلاح الوحيد المحتفظ به هو overflow:"visible" في
- * printRootVisible، عشان ما تنقص الشارات الملونة عريضة النص وقت التصوير.
+ * منطق التصدير الجديد "يكتشف تلقائياً" من شكل البيانات (columns/data) بدون ما
+ * يحتاج أي تعديل بالصفحات اللي تستخدم هذا المكوّن:
+ * - عمود اسمه "الربع" (label أو key === "quarter") → تُجمَّع الصفوف تحته بعنوان قسم
+ *   لكل ربع + صف إجمالي فرعي بصيغة SUM حقيقية + إجمالي كلي بالنهاية.
+ * - أي عمود قيمه كلها بصيغة "187,500 ريال" → يتحوّل لرقم حقيقي بصيغة عرض
+ *   مخصصة (numFmt) تبقي شكله "187,500 ريال" لكنه رقم فعلي يقبل SUM/فلترة.
+ * - عمود اسمه "الحالة" → تلوين أخضر خفيف للصفوف "مقدَّم"، أحمر خفيف لـ"متأخر".
  */
 export default function ExportToolbar({
   data,
@@ -41,6 +38,7 @@ export default function ExportToolbar({
   logoSrc = null,
 }) {
   const [loading, setLoading] = useState(false);
+  const [excelLoading, setExcelLoading] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const printRef = useRef(null);
 
@@ -50,9 +48,79 @@ export default function ExportToolbar({
     day: "numeric",
   });
 
-  // يبني نسخة الطباعة/PDF من عنصر مخفي مستقل عشان يفادي مشاكل تصوير الشاشة
-  // (نص متراكب/متقطّع) ويضمن شكل واضح واسع دائماً بغض النظر عن تصميم الشاشة.
   const buildPrintNode = () => printRef.current;
+
+  // === منطق مشترك بين Excel والطباعة/PDF (يوليو 2026) ===
+  // نفس "الاكتشاف التلقائي" المستخدم بتصدير Excel نطبّقه هنا كمان، عشان تقرير
+  // الطباعة/PDF يطلع بنفس التجميع والألوان بدل الجدول المسطّح القديم.
+  const groupCol = columns.find((c) => c.label === "الربع" || c.key === "quarter");
+  const statusCol = columns.find((c) => c.label === "الحالة" || c.key === "status");
+  // عمود التجميع نفسه لا يتكرر بكل صف — يظهر بعنوان القسم بدل ذلك
+  const displayCols = groupCol ? columns.filter((c) => c.key !== groupCol.key) : columns;
+
+  // يحوّل "187,500 ريال" أو "٢٨,١٢٥ ريال" لرقم حقيقي. يرجع null لأي شي غير ذلك
+  // (مثل التواريخ) عشان ما نلخبط أعمدة غير مالية.
+  const parseRiyalNumber = (val) => {
+    if (typeof val !== "string") return null;
+    const trimmed = val.trim();
+    if (!/ريال\s*$/.test(trimmed)) return null;
+    const westernDigits = trimmed
+      .replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
+      .replace(/[^\d.]/g, "");
+    if (westernDigits === "") return null;
+    const num = Number(westernDigits);
+    return Number.isNaN(num) ? null : num;
+  };
+
+  const numericKeys = new Set(
+    displayCols
+      .filter(
+        (col) =>
+          data.length > 0 &&
+          data.every((row) => {
+            const v = row[col.key];
+            return v == null || v === "" || parseRiyalNumber(v) !== null;
+          }) &&
+          data.some((row) => parseRiyalNumber(row[col.key]) !== null)
+      )
+      .map((c) => c.key)
+  );
+
+  const colLetter = (n) => {
+    let s = "";
+    let num = n;
+    while (num > 0) {
+      const m = (num - 1) % 26;
+      s = String.fromCharCode(65 + m) + s;
+      num = Math.floor((num - 1) / 26);
+    }
+    return s;
+  };
+
+  // إصلاح ترتيب النص: نعيد بناء "2026-Q1 (يناير - مارس 2026)" بصيغة عربية
+  // بالكامل "الربع الأول 2026 (يناير - مارس)" عشان ما يصير تصادم بين حروف
+  // لاتينية ("Q1") وقوس عربي يلخبط خوارزمية Bidi ببرامج زي WPS/Excel.
+  const quarterNames = { "1": "الأول", "2": "الثاني", "3": "الثالث", "4": "الرابع" };
+  const formatQuarterLabel = (label) => {
+    if (typeof label !== "string") return label;
+    const m = label.match(/^(\d{4})-Q([1-4])\s*\(([^)]+)\)\s*$/);
+    if (!m) return label;
+    const [, year, q, inner] = m;
+    return `الربع ${quarterNames[q] || q} ${year} (${inner})`;
+  };
+
+  // تلوين ثابت حسب نوع العمود (تفضيل المستخدم): الإيراد الأساسي أزرق،
+  // الضريبة أحمر — يُطبّق بالإكسل وبالطباعة/PDF على حد سواء.
+  const amountFontColor = (col) => {
+    if (col.label.includes("الأساسي")) return "#1B4D7A";
+    if (col.label.includes("الضريبة")) return "#B42318";
+    return null;
+  };
+  const amountFontColorArgb = (col) => {
+    if (col.label.includes("الأساسي")) return "FF1B4D7A";
+    if (col.label.includes("الضريبة")) return "FFB42318";
+    return null;
+  };
 
   const handlePrint = () => {
     const node = buildPrintNode();
@@ -90,19 +158,179 @@ export default function ExportToolbar({
     }, 500);
   };
 
-  const handleExcel = () => {
-    const rows = data.map((row) => {
-      const obj = {};
-      columns.forEach((col) => {
-        obj[col.label] = row[col.key];
+  const handleExcel = async () => {
+    setExcelLoading(true);
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet("البيانات", {
+        views: [{ rightToLeft: true }],
       });
-      return obj;
-    });
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    worksheet["!cols"] = columns.map(() => ({ wch: 20 }));
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "البيانات");
-    XLSX.writeFile(workbook, `${filename}.xlsx`);
+
+      sheet.columns = displayCols.map((col) => ({
+        key: col.key,
+        width: col.label.includes("مستأجر") || col.label.includes("عقار") ? 26 : 18,
+      }));
+
+      const headerRow = sheet.addRow(displayCols.map((c) => c.label));
+      headerRow.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial" };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1B4D7A" } };
+        cell.alignment = { horizontal: "center", vertical: "middle" };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FF163D61" } },
+          bottom: { style: "thin", color: { argb: "FF163D61" } },
+          left: { style: "thin", color: { argb: "FF163D61" } },
+          right: { style: "thin", color: { argb: "FF163D61" } },
+        };
+      });
+
+      const numFmtRiyal = '#,##0" ريال"';
+      const rtlFix = (s) => (typeof s === "string" ? "\u200F" + s : s);
+
+      const writeDataRow = (rowData) => {
+        const rowValues = displayCols.map((col) => {
+          const raw = rowData[col.key];
+          if (numericKeys.has(col.key)) {
+            const num = parseRiyalNumber(raw);
+            return num === null ? raw ?? "" : num;
+          }
+          return raw ?? "";
+        });
+        const row = sheet.addRow(rowValues);
+        row.eachCell((cell, colNumber) => {
+          cell.font = { name: "Arial" };
+          cell.alignment = { horizontal: "center", vertical: "middle" };
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFE5E7EB" } },
+            bottom: { style: "thin", color: { argb: "FFE5E7EB" } },
+            left: { style: "thin", color: { argb: "FFE5E7EB" } },
+            right: { style: "thin", color: { argb: "FFE5E7EB" } },
+          };
+          const colKey = displayCols[colNumber - 1]?.key;
+          if (numericKeys.has(colKey)) cell.numFmt = numFmtRiyal;
+        });
+        if (statusCol) {
+          const statusIdx = displayCols.findIndex((c) => c.key === statusCol.key);
+          if (statusIdx !== -1) {
+            const cell = row.getCell(statusIdx + 1);
+            const val = String(rowData[statusCol.key] || "");
+            if (val.includes("مقدَّم") || val.includes("✓")) {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2F5E9" } };
+              cell.font = { color: { argb: "FF1E7A46" }, bold: true, name: "Arial" };
+            } else if (val.includes("متأخر")) {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFCE8E8" } };
+              cell.font = { color: { argb: "FFB42318" }, bold: true, name: "Arial" };
+            }
+          }
+        }
+        return row;
+      };
+
+      if (groupCol) {
+        const groups = [];
+        const groupIndex = new Map();
+        data.forEach((row) => {
+          const key = row[groupCol.key];
+          if (!groupIndex.has(key)) {
+            groupIndex.set(key, groups.length);
+            groups.push({ key, rows: [] });
+          }
+          groups[groupIndex.get(key)].rows.push(row);
+        });
+
+        const subtotalRowNumbers = [];
+
+        groups.forEach((group) => {
+          const titleRow = sheet.addRow([rtlFix(formatQuarterLabel(group.key))]);
+          sheet.mergeCells(titleRow.number, 1, titleRow.number, displayCols.length);
+          const titleCell = titleRow.getCell(1);
+          titleCell.font = { bold: true, name: "Arial" };
+          titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E2F3" } };
+          titleCell.alignment = { horizontal: "center", vertical: "middle" };
+
+          const firstDataRowNum = titleRow.number + 1;
+          group.rows.forEach((r) => writeDataRow(r));
+          const lastDataRowNum = firstDataRowNum + group.rows.length - 1;
+
+          // مهم: نكتب قيمة بخلية العنوان بس، وما نحط "" بباقي الخلايا —
+          // خلية فيها "" تُعتبر "مشغولة" بنظر إكسل/WPS وتمنع فيض النص الطويل
+          // (overflow) لليسار، فيصير النص محشور ومقصوص من جهة اليمين.
+          const subtotalRow = sheet.addRow([rtlFix(`إجمالي ${formatQuarterLabel(group.key)}`)]);
+          const firstNumericIdx = displayCols.findIndex((c) => numericKeys.has(c.key));
+          if (firstNumericIdx > 1) {
+            sheet.mergeCells(subtotalRow.number, 1, subtotalRow.number, firstNumericIdx);
+          }
+          subtotalRow.getCell(1).font = { bold: true, name: "Arial", color: { argb: "FFB42318" } };
+          subtotalRow.getCell(1).alignment = { horizontal: "center", vertical: "middle" };
+          displayCols.forEach((col, i) => {
+            if (numericKeys.has(col.key)) {
+              const letter = colLetter(i + 1);
+              const cell = subtotalRow.getCell(i + 1);
+              cell.value = { formula: `SUM(${letter}${firstDataRowNum}:${letter}${lastDataRowNum})` };
+              cell.numFmt = numFmtRiyal;
+              const color = amountFontColorArgb(col);
+              cell.font = color
+                ? { bold: true, name: "Arial", color: { argb: color } }
+                : { bold: true, name: "Arial" };
+              cell.alignment = { horizontal: "center", vertical: "middle" };
+            }
+          });
+          subtotalRowNumbers.push(subtotalRow.number);
+          sheet.addRow([]);
+        });
+
+        const grandRow = sheet.addRow(["الإجمالي الكلي"]);
+        const firstNumericIdxGrand = displayCols.findIndex((c) => numericKeys.has(c.key));
+        if (firstNumericIdxGrand > 1) {
+          sheet.mergeCells(grandRow.number, 1, grandRow.number, firstNumericIdxGrand);
+        }
+        grandRow.getCell(1).font = { bold: true, size: 13, name: "Arial" };
+        grandRow.getCell(1).alignment = { horizontal: "center", vertical: "middle" };
+        displayCols.forEach((col, i) => {
+          if (numericKeys.has(col.key)) {
+            const letter = colLetter(i + 1);
+            const formula = subtotalRowNumbers.map((rn) => `${letter}${rn}`).join("+");
+            const cell = grandRow.getCell(i + 1);
+            cell.value = { formula };
+            cell.numFmt = numFmtRiyal;
+            const color = amountFontColorArgb(col);
+            cell.font = color
+              ? { bold: true, size: 13, name: "Arial", color: { argb: color } }
+              : { bold: true, size: 13, name: "Arial" };
+            cell.alignment = { horizontal: "center", vertical: "middle" };
+          }
+        });
+      } else {
+        data.forEach((r, idx) => {
+          const row = writeDataRow(r);
+          if (idx % 2 === 1) {
+            row.eachCell((cell) => {
+              if (!cell.fill || cell.fill.fgColor?.argb !== "FFE2F5E9") {
+                cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF5F7FA" } };
+              }
+            });
+          }
+        });
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${filename}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Excel export error:", err);
+      alert("حدث خطأ أثناء إنشاء ملف Excel: " + err.message);
+    } finally {
+      setExcelLoading(false);
+    }
   };
 
   const handlePDF = async () => {
@@ -112,42 +340,19 @@ export default function ExportToolbar({
       return;
     }
     setLoading(true);
-    // إصلاح (يوليو 2026): على الشاشات الضيقة (جوال)، قاعدة overflow-x:hidden
-    // بملف index.css (المستخدمة لمنع التمرير الأفقي العام بالموقع) كانت تقص
-    // فعلياً أي جزء من طبقة التصوير (عرضها 1700px) يتجاوز عرض الشاشة الظاهر،
-    // وهذا يسبب اختفاء الأعمدة الأخيرة بتقرير PDF. نلغيها مؤقتاً بس أثناء
-    // لحظة التصوير الفعلية، ونرجعها فوراً بعد كذا بالـ finally أدناه —
-    // هذا ما يرجّع مشكلة الصفحة البيضاء لأنه مؤقت جداً ومحصور بلحظة التصوير.
     const prevHtmlOverflowX = document.documentElement.style.overflowX;
     const prevBodyOverflowX = document.body.style.overflowX;
     try {
-      // نُظهر العنصر فعلياً فوق الشاشة (طبقة بيضاء كاملة) وقت التصوير بالضبط.
-      // هذا يضمن إن المتصفح رسم المحتوى فعلياً قبل أي محاولة تصوير —
-      // التخبئة البعيدة عن الشاشة كانت تعطي أحياناً صورة فارغة رغم عدم وجود أي خطأ برمجي.
-      // نرجّع الصفحة لأعلى قبل التصوير — مكتبة html2canvas فيها خلل معروف
-      // مع عناصر position:fixed لما تكون الصفحة ممرّرة (scrolled)، يسبب قطع
-      // بأعلى الصورة الملتقطة بمقدار مسافة التمرير بالضبط.
       window.scrollTo(0, 0);
       document.documentElement.style.overflowX = "visible";
       document.body.style.overflowX = "visible";
       setIsCapturing(true);
-      // ننتظر إعادة الرسم (repaint) فعلياً بعد تغيير الحالة، وتحميل الخطوط كاملة.
-      // ضفنا انتظار إضافي (150ms) لأن العنصر الكبير (الترويسة + الجدول) يحتاج وقت أطول
-      // ليخلص المتصفح رسمه بالكامل بعد ظهوره المفاجئ — لاحظنا قطع بأعلى الترويسة
-      // بدون هالانتظار الإضافي رغم عدم وجود أي خطأ برمجي.
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (document.fonts && document.fonts.ready) {
         await document.fonts.ready;
       }
       await new Promise((resolve) => setTimeout(resolve, 150));
 
-      // إصلاح (يوليو 2026 - محاولة رابعة، مبنية على تشخيص فعلي): تأكدنا إن حجم
-      // الكانفاس صحيح تماماً (3400x838 = 1700x419 * scale 2) على الجهاز الحقيقي،
-      // يعني المشكلة مو بحجم الالتقاط، لكن بمحتواه — foreignObjectRendering:true
-      // (يعتمد على SVG لرسم المحتوى) معروف بخلل على متصفحات الجوال (Safari/
-      // Chrome iOS) يسبب رسم جزئي/فاضي لمحتوى أعرض من الشاشة الفعلية. نعطّله
-      // هنا ونخلي المكتبة تستخدم طريقتها الاحتياطية (رسم كل عنصر يدوياً)، أكثر
-      // توافقاً مع الجوال ولو أبطأ شوي.
       const canvas = await html2canvas(node, {
         scale: 2,
         useCORS: true,
@@ -159,28 +364,43 @@ export default function ExportToolbar({
         throw new Error("التقاط التقرير رجع فارغ (canvas بلا أبعاد)");
       }
 
-      const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({
         orientation: "landscape",
         unit: "mm",
         format: "a4",
       });
 
-      // هامش موحّد حول المحتوى بكل الجهات (بدل ما يلتصق بحواف الصفحة)
       const MARGIN_MM = 10;
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       const usableWidth = pageWidth - MARGIN_MM * 2;
       const usableHeight = pageHeight - MARGIN_MM * 2;
-      const imgHeight = (canvas.height * usableWidth) / canvas.width;
 
-      let heightLeft = imgHeight;
+      // نقص شريحة بكسلات مضبوطة من الكانفس الأصلي لكل صفحة، بدل ما نرسم
+      // الصورة كاملة بإزاحة سالبة ونعتمد على قص جسPDF التلقائي عند حافة
+      // الصفحة — هذا الأسلوب القديم كان يكرر جزء (بمقدار الهامش السفلي)
+      // من نهاية كل صفحة ببداية الصفحة اللي بعدها، لأن حساب الخطوة
+      // (usableHeight) كان يطرح الهامشين، بينما القص الفعلي بجسPDF ما كان
+      // يحترم إلا الهامش العلوي.
+      const pxPerMM = canvas.width / usableWidth;
+      const sliceHeightPx = Math.floor(usableHeight * pxPerMM);
+
+      let renderedPx = 0;
       let pageIndex = 0;
-      while (heightLeft > 0) {
+      while (renderedPx < canvas.height) {
+        const sliceHeight = Math.min(sliceHeightPx, canvas.height - renderedPx);
+        const sliceCanvas = document.createElement("canvas");
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sliceHeight;
+        const ctx = sliceCanvas.getContext("2d");
+        ctx.drawImage(canvas, 0, renderedPx, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+        const sliceData = sliceCanvas.toDataURL("image/png");
+
         if (pageIndex > 0) pdf.addPage();
-        const yOffset = MARGIN_MM - pageIndex * usableHeight;
-        pdf.addImage(imgData, "PNG", MARGIN_MM, yOffset, usableWidth, imgHeight);
-        heightLeft -= usableHeight;
+        const sliceHeightMM = sliceHeight / pxPerMM;
+        pdf.addImage(sliceData, "PNG", MARGIN_MM, MARGIN_MM, usableWidth, sliceHeightMM);
+
+        renderedPx += sliceHeight;
         pageIndex += 1;
       }
       pdf.save(`${filename}.pdf`);
@@ -205,12 +425,11 @@ export default function ExportToolbar({
         <button onClick={handlePDF} style={styles.btn} disabled={loading}>
           {loading ? "جارٍ التجهيز..." : "📄 PDF"}
         </button>
-        <button onClick={handleExcel} style={styles.btn}>
-          📊 Excel
+        <button onClick={handleExcel} style={styles.btn} disabled={excelLoading}>
+          {excelLoading ? "جارٍ التجهيز..." : "📊 Excel"}
         </button>
       </div>
 
-      {/* عنصر الطباعة/PDF المخفي — مستقل تماماً عن تصميم الشاشة، مبني خصيصاً للوضوح */}
       <div
         id="export-print-area"
         ref={printRef}
@@ -249,46 +468,184 @@ export default function ExportToolbar({
           </div>
         )}
 
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              {columns.map((col) => (
-                <th key={col.key} style={styles.th}>
-                  {col.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((row, idx) => (
-              <tr
-                key={idx}
-                style={{
-                  background: idx % 2 === 0 ? "#ffffff" : "#f5f7fa",
-                }}
-              >
-                {columns.map((col) => {
-                  const cell = row[col.key];
-                  const isRich = cell && typeof cell === "object" && "value" in cell;
-                  const cellValue = isRich ? cell.value : (cell ?? "—");
-                  const cellColor = isRich ? cell.color : undefined;
-                  const cellSubtext = isRich ? cell.subtext : null;
-                  const cellSubColor = isRich ? cell.subtextColor : undefined;
-                  return (
-                    <td key={col.key} style={{ ...styles.td, color: cellColor || styles.td.color, fontWeight: cellColor ? "bold" : "normal" }}>
-                      <div>{cellValue}</div>
-                      {cellSubtext && (
-                        <div style={{ fontSize: "11px", marginTop: "3px", color: cellSubColor || "#27ae60", fontWeight: "bold" }}>
-                          {cellSubtext}
-                        </div>
-                      )}
-                    </td>
-                  );
-                })}
+        {groupCol ? (
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                {displayCols.map((col) => (
+                  <th key={col.key} style={styles.th}>
+                    {col.label}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {(() => {
+                const groups = [];
+                const groupIndex = new Map();
+                data.forEach((row) => {
+                  const key = row[groupCol.key];
+                  if (!groupIndex.has(key)) {
+                    groupIndex.set(key, groups.length);
+                    groups.push({ key, rows: [] });
+                  }
+                  groups[groupIndex.get(key)].rows.push(row);
+                });
+
+                const grandTotals = {};
+                displayCols.forEach((col) => {
+                  if (numericKeys.has(col.key)) grandTotals[col.key] = 0;
+                });
+
+                const elements = [];
+
+                groups.forEach((group, gi) => {
+                  elements.push(
+                    <tr key={`title-${gi}`}>
+                      <td colSpan={displayCols.length} style={styles.groupTitleCell}>
+                        {formatQuarterLabel(group.key)}
+                      </td>
+                    </tr>
+                  );
+
+                  const subtotal = {};
+                  displayCols.forEach((col) => {
+                    if (numericKeys.has(col.key)) subtotal[col.key] = 0;
+                  });
+
+                  group.rows.forEach((row, ri) => {
+                    elements.push(
+                      <tr key={`row-${gi}-${ri}`} style={{ background: ri % 2 === 0 ? "#ffffff" : "#f5f7fa" }}>
+                        {displayCols.map((col) => {
+                          const cell = row[col.key];
+                          const isRich = cell && typeof cell === "object" && "value" in cell;
+                          const cellValue = isRich ? cell.value : cell ?? "—";
+                          let tdStyle = styles.td;
+                          if (numericKeys.has(col.key)) {
+                            const num = parseRiyalNumber(cell);
+                            if (num !== null) subtotal[col.key] += num;
+                          }
+                          if (statusCol && col.key === statusCol.key) {
+                            const val = String(cellValue || "");
+                            if (val.includes("مقدَّم") || val.includes("✓")) {
+                              tdStyle = { ...tdStyle, background: "#E2F5E9", color: "#1E7A46", fontWeight: "bold" };
+                            } else if (val.includes("متأخر")) {
+                              tdStyle = { ...tdStyle, background: "#FCE8E8", color: "#B42318", fontWeight: "bold" };
+                            }
+                          }
+                          return (
+                            <td key={col.key} style={tdStyle}>
+                              {cellValue}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  });
+
+                  Object.keys(subtotal).forEach((k) => {
+                    grandTotals[k] += subtotal[k];
+                  });
+
+                  elements.push(
+                    <tr key={`subtotal-${gi}`}>
+                      {displayCols.map((col, i) => {
+                        if (i === 0) {
+                          return (
+                            <td key={col.key} style={styles.subtotalLabelCell}>
+                              {`إجمالي ${formatQuarterLabel(group.key)}`}
+                            </td>
+                          );
+                        }
+                        if (numericKeys.has(col.key)) {
+                          const color = amountFontColor(col);
+                          return (
+                            <td
+                              key={col.key}
+                              style={{ ...styles.subtotalValueCell, color: color || styles.subtotalValueCell.color }}
+                            >
+                              {subtotal[col.key].toLocaleString()} ريال
+                            </td>
+                          );
+                        }
+                        return <td key={col.key} style={styles.subtotalValueCell}></td>;
+                      })}
+                    </tr>
+                  );
+                });
+
+                elements.push(
+                  <tr key="grand-total">
+                    {displayCols.map((col, i) => {
+                      if (i === 0) {
+                        return (
+                          <td key={col.key} style={styles.grandTotalLabelCell}>
+                            الإجمالي الكلي
+                          </td>
+                        );
+                      }
+                      if (numericKeys.has(col.key)) {
+                        const color = amountFontColor(col);
+                        return (
+                          <td
+                            key={col.key}
+                            style={{ ...styles.grandTotalValueCell, color: color || styles.grandTotalValueCell.color }}
+                          >
+                            {grandTotals[col.key].toLocaleString()} ريال
+                          </td>
+                        );
+                      }
+                      return <td key={col.key} style={styles.grandTotalValueCell}></td>;
+                    })}
+                  </tr>
+                );
+
+                return elements;
+              })()}
+            </tbody>
+          </table>
+        ) : (
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                {columns.map((col) => (
+                  <th key={col.key} style={styles.th}>
+                    {col.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((row, idx) => (
+                <tr
+                  key={idx}
+                  style={{
+                    background: idx % 2 === 0 ? "#ffffff" : "#f5f7fa",
+                  }}
+                >
+                  {columns.map((col) => {
+                    const cell = row[col.key];
+                    const isRich = cell && typeof cell === "object" && "value" in cell;
+                    const cellValue = isRich ? cell.value : (cell ?? "—");
+                    const cellColor = isRich ? cell.color : undefined;
+                    const cellSubtext = isRich ? cell.subtext : null;
+                    const cellSubColor = isRich ? cell.subtextColor : undefined;
+                    return (
+                      <td key={col.key} style={{ ...styles.td, color: cellColor || styles.td.color, fontWeight: cellColor ? "bold" : "normal" }}>
+                        <div>{cellValue}</div>
+                        {cellSubtext && (
+                          <div style={{ fontSize: "11px", marginTop: "3px", color: cellSubColor || "#27ae60", fontWeight: "bold" }}>
+                            {cellSubtext}
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
 
         <div style={styles.footer}>
           <span>عدد السجلات: {data.length}</span>
@@ -319,13 +676,6 @@ const styles = {
     cursor: "pointer",
     fontSize: "14px",
   },
-
-  // العنصر المخفي (مُستخدم فقط وقت الطباعة/التصدير)
-  // إصلاح (يوليو 2026): استبدلنا left:-9999px بـ height:0 + overflow:hidden +
-  // visibility:hidden. الإحداثيات السالبة (left:-9999px) تخدع بعض المتصفحات
-  // (خصوصاً على الشاشات الضيقة) فتوسّع مساحة الصفحة (html/body) الفعلية لتشمل
-  // هذا العنصر البعيد، وتسبب فراغ أبيض ضخم وتمرير غير طبيعي. هذي الطريقة تبقي
-  // العنصر بمكانه بالتدفق الطبيعي (top/left:0) لكن بدون أي ارتفاع أو ظهور.
   printRoot: {
     position: "absolute",
     top: 0,
@@ -341,9 +691,6 @@ const styles = {
     color: "#111827",
     boxSizing: "border-box",
   },
-  // نفس التصميم بالضبط، بس ظاهر فعلياً فوق كل شي وقت التصوير.
-  // نستخدم absolute (مو fixed) عمداً — html2canvas فيه خلل معروف مع position:fixed
-  // عند وجود تمرير بالصفحة، يسبب قطع الجزء العلوي من الصورة الملتقطة.
   printRootVisible: {
     position: "absolute",
     top: 0,
@@ -405,6 +752,52 @@ const styles = {
     textAlign: "right",
     border: "1px solid #e5e7eb",
     wordBreak: "break-word",
+  },
+  groupTitleCell: {
+    background: "#D9E2F3",
+    color: "#111827",
+    fontWeight: "bold",
+    textAlign: "center",
+    padding: "8px 12px",
+    border: "1px solid #e5e7eb",
+    unicodeBidi: "isolate",
+    direction: "rtl",
+  },
+  subtotalLabelCell: {
+    fontWeight: "bold",
+    color: "#B42318",
+    padding: "9px 12px",
+    textAlign: "right",
+    border: "1px solid #e5e7eb",
+    background: "#fafbfc",
+    unicodeBidi: "isolate",
+    direction: "rtl",
+  },
+  subtotalValueCell: {
+    fontWeight: "bold",
+    color: "#111827",
+    padding: "9px 12px",
+    textAlign: "center",
+    border: "1px solid #e5e7eb",
+    background: "#fafbfc",
+  },
+  grandTotalLabelCell: {
+    fontWeight: "bold",
+    fontSize: "15px",
+    color: "#111827",
+    padding: "10px 12px",
+    textAlign: "right",
+    border: "1px solid #e5e7eb",
+    background: "#eef1f5",
+  },
+  grandTotalValueCell: {
+    fontWeight: "bold",
+    fontSize: "15px",
+    color: "#111827",
+    padding: "10px 12px",
+    textAlign: "center",
+    border: "1px solid #e5e7eb",
+    background: "#eef1f5",
   },
   footer: {
     display: "flex",

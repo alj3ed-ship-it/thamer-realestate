@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
+import { useReadOnly } from "./ReadOnlyContext";
 import ExportToolbar from "./components/ExportToolbar";
 
 export default function Defaulters({ onBack, onCreateLetter }) {
+  const isReadOnly = useReadOnly();
   const [defaulters, setDefaulters] = useState([]);
   const [tenants, setTenants] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -169,9 +171,11 @@ const [searchQuery, setSearchQuery] = useState("");
       </div>
 
       <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+        {!isReadOnly && (
         <button onClick={openAddForm} style={{ padding: "10px 20px", cursor: "pointer", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: 8 }}>
           + إضافة متعثر
         </button>
+        )}
         <button onClick={fetchAll} style={{ padding: "10px 20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
           تحديث
         </button>
@@ -290,6 +294,7 @@ const [searchQuery, setSearchQuery] = useState("");
                       <div style={{ fontSize: 12, color: "#854d0e" }}>الباقي</div>
                       <div style={{ fontWeight: 700, color: "#854d0e" }}>{remaining.toLocaleString()} ر.س</div>
                     </div>
+                    {!isReadOnly && (
                     <div className="no-print" style={{ display: "flex", gap: 6 }}>
                       {onCreateLetter && (
                         <button onClick={e => {
@@ -313,6 +318,7 @@ const [searchQuery, setSearchQuery] = useState("");
                         {deletingId === d.id ? "..." : "حذف"}
                       </button>
                     </div>
+                    )}
                   </div>
 
                   {/* مدفوعات المتعثر */}
@@ -339,10 +345,12 @@ const [searchQuery, setSearchQuery] = useState("");
                       />
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                         <h4 style={{ margin: 0, color: "#1B4D7A" }}>سجل المدفوعات</h4>
+                        {!isReadOnly && (
                         <button onClick={() => { setShowPaymentForm(true); }}
                           style={{ padding: "6px 14px", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}>
                           + إضافة دفعة
                         </button>
+                        )}
                       </div>
                       {getPaymentsForDefaulter(d.id).length === 0 ? (
                         <p style={{ color: "#9ca3af", fontSize: 13 }}>لا توجد مدفوعات بعد</p>
@@ -350,7 +358,7 @@ const [searchQuery, setSearchQuery] = useState("");
                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                           <thead>
                             <tr style={{ textAlign: "right" }}>
-                              {["المبلغ", "التاريخ", "ملاحظات", ""].map(h => (
+                              {(isReadOnly ? ["المبلغ", "التاريخ", "ملاحظات"] : ["المبلغ", "التاريخ", "ملاحظات", ""]).map(h => (
                                 <th key={h} style={{ padding: "8px 12px", borderBottom: "1px solid #e5e7eb", color: "#6b7280", fontWeight: 500 }}>{h}</th>
                               ))}
                             </tr>
@@ -361,10 +369,12 @@ const [searchQuery, setSearchQuery] = useState("");
                                 <td style={{ padding: "8px 12px", fontWeight: 600, color: "#166534" }}>{Number(p.amount).toLocaleString()} ر.س</td>
                                 <td style={{ padding: "8px 12px", color: "#6b7280" }}>{p.payment_date || "—"}</td>
                                 <td style={{ padding: "8px 12px", color: "#9ca3af" }}>{p.notes || "—"}</td>
+                                {!isReadOnly && (
                                 <td style={{ padding: "8px 12px" }}>
                                   <button onClick={() => handleDeletePayment(p.id)}
                                     style={{ padding: "3px 8px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>حذف</button>
                                 </td>
+                                )}
                               </tr>
                             ))}
                           </tbody>

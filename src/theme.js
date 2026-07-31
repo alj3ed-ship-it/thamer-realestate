@@ -1,6 +1,8 @@
 export const UNIT_TYPE_COLORS = {
-  "محل": { color: "#2E86C1", bg: "#EBF5FB", border: "#AED6F1" },
-  "شقة": { color: "#8E44AD", bg: "#F4ECF7", border: "#D2B4DE" },
+  "محل": { color: "#8E44AD", bg: "#F4ECF7", border: "#D2B4DE" },
+  "شقة": { color: "#2E86C1", bg: "#EBF5FB", border: "#AED6F1" },
+  "مستودع": { color: "#16A085", bg: "#E8F8F5", border: "#A3E4D7" },
+  "ورشة": { color: "#16A085", bg: "#E8F8F5", border: "#A3E4D7" },
 };
 
 export const DEFAULT_UNIT_COLOR = { color: "#D68910", bg: "#FEF5E7", border: "#F8C471" };
