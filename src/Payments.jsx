@@ -473,7 +473,7 @@ function Payments({ onBack }) {
     const computed = computePaymentStatus(p)
     if (computed === 'paid') return <span style={{ background: '#EAFAF1', color: '#27ae60', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>مدفوع ✓</span>
     if (computed === 'partial') return <span style={{ background: '#FEF9E7', color: '#f39c12', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>جزئي ⚠</span>
-    if (computed === 'not_due') return <span style={{ background: '#F4F6F7', color: '#7f8c8d', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>غير مستحق بعد ⏳</span>
+    if (computed === 'not_due') return <span style={{ background: '#FDF6E3', color: '#b7950b', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>غير مستحق بعد ⏳</span>
     return <span style={{ background: '#FDEDEC', color: '#e74c3c', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>متأخر ⏰</span>
   }
 
@@ -487,7 +487,7 @@ function Payments({ onBack }) {
     // لون المبلغ حسب الحالة الفعلية: أخضر لمدفوع، أحمر لمتأخر، رمادي لغير مستحق بعد
     const amountColor = computed === 'paid' ? '#27ae60'
       : computed === 'overdue' ? '#e74c3c'
-      : computed === 'not_due' ? '#7f8c8d'
+      : computed === 'not_due' ? '#b7950b'
       : '#27ae60'
     let base
     if (computed === 'partial') {
@@ -690,7 +690,11 @@ function Payments({ onBack }) {
                     <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
                       <td style={{ padding: '16px 18px', fontWeight: 700, color: '#1B4D7A', whiteSpace: 'nowrap' }}>{getTenantName(p.lease_id)}</td>
                       <td style={{ padding: '16px 18px', color: '#6b7280', whiteSpace: 'nowrap' }}>{getPropertyName(p.lease_id)}</td>
-                      <td style={{ padding: '16px 18px', color: '#6b7280', fontSize: 13 }}>{getTenantActivity(p.lease_id)}</td>
+                      <td style={{ padding: '16px 18px' }}>
+                        <span style={{ background: '#F4ECF7', color: '#8E44AD', border: '1px solid #D2B4DE', padding: '3px 10px', borderRadius: 12, fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {getTenantActivity(p.lease_id)}
+                        </span>
+                      </td>
                       <td style={{ padding: '16px 18px', color: '#6b7280', fontSize: 13, whiteSpace: 'nowrap' }}>{getUnitNumbers(p.lease_id)}</td>
                       <td style={{ padding: '16px 18px', textAlign: 'center' }}>
                         <span style={{ background: '#eff6ff', color: '#1B4D7A', padding: '4px 14px', borderRadius: 20, fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>
