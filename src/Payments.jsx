@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
+import { useReadOnly } from './ReadOnlyContext'
 import ExportToolbar from './components/ExportToolbar'
 
 const FREQUENCY_MAP = {
@@ -159,6 +160,7 @@ function HijriPicker({ label, value, onChange }) {
 }
 
 function Payments({ onBack }) {
+  const isReadOnly = useReadOnly()
   const [payments, setPayments] = useState([])
   const [leases, setLeases] = useState([])
   const [tenants, setTenants] = useState([])
@@ -551,9 +553,11 @@ function Payments({ onBack }) {
       <p style={{ color: '#6b7280', margin: '0 0 24px' }}>سجل الدفعات وتتبعها</p>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+        {!isReadOnly && (
         <button onClick={openAdd} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8 }}>
           + تسجيل دفعة
         </button>
+        )}
         <button onClick={fetchAll} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
         <select value={filterProperty} onChange={e => { setFilterProperty(e.target.value); setFilterTenants([]) }}
           style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
@@ -663,7 +667,10 @@ function Payments({ onBack }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                  {['المستأجر', 'العقار', 'النشاط', 'الوحدة', 'الدفعة', 'المبلغ', 'الحالة', 'التاريخ', 'طريقة الدفع', 'ملاحظات', ''].map(h => (
+                  {(isReadOnly
+                    ? ['المستأجر', 'العقار', 'النشاط', 'الوحدة', 'الدفعة', 'المبلغ', 'الحالة', 'التاريخ', 'طريقة الدفع', 'ملاحظات']
+                    : ['المستأجر', 'العقار', 'النشاط', 'الوحدة', 'الدفعة', 'المبلغ', 'الحالة', 'التاريخ', 'طريقة الدفع', 'ملاحظات', '']
+                  ).map(h => (
                     <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
                   ))}
                 </tr>
@@ -693,12 +700,14 @@ function Payments({ onBack }) {
                       </td>
                       <td style={{ padding: '12px', color: '#6b7280' }}>{p.payment_method || '—'}</td>
                       <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{p.notes || '—'}</td>
+                      {!isReadOnly && (
                       <td style={{ padding: '12px' }} className="no-print">
                         <button onClick={() => openEdit(p)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
                         <button onClick={() => handleDelete(p.id)} disabled={deletingId === p.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
                           {deletingId === p.id ? '...' : 'حذف'}
                         </button>
                       </td>
+                      )}
                     </tr>
                   )
                 })}

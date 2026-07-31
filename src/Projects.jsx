@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
+import { useReadOnly } from './ReadOnlyContext';
 import ExportToolbar from './components/ExportToolbar';
 
 const STATUS_COLORS = {
@@ -8,6 +9,7 @@ const STATUS_COLORS = {
 };
 
 function Projects() {
+  const isReadOnly = useReadOnly();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
@@ -180,6 +182,7 @@ function Projects() {
         <p style={styles.loading}>جارِ التحميل...</p>
       ) : (
         <>
+          {!isReadOnly && (
           <div className="no-print" style={styles.buttonRow}>
             {!showForm ? (
               <button onClick={() => setShowForm(true)} style={styles.addBtn}>
@@ -191,8 +194,9 @@ function Projects() {
               </button>
             )}
           </div>
+          )}
 
-          {showForm && (
+          {!isReadOnly && showForm && (
             <div style={styles.formBox}>
               <h3 style={styles.formTitle}>{editingId ? 'تعديل المشروع' : 'مشروع جديد'}</h3>
 
@@ -320,7 +324,10 @@ function Projects() {
               <table style={styles.table}>
                 <thead>
                   <tr style={styles.headRow}>
-                    {['اسم المشروع', 'الوصف', 'التاريخ', 'الحالة', 'المصروفات', 'الإيرادات', 'الرصيد', 'ملاحظات', ''].map((h) => (
+                    {(isReadOnly
+                      ? ['اسم المشروع', 'الوصف', 'التاريخ', 'الحالة', 'المصروفات', 'الإيرادات', 'الرصيد', 'ملاحظات']
+                      : ['اسم المشروع', 'الوصف', 'التاريخ', 'الحالة', 'المصروفات', 'الإيرادات', 'الرصيد', 'ملاحظات', '']
+                    ).map((h) => (
                       <th key={h} style={styles.th}>{h}</th>
                     ))}
                   </tr>
@@ -401,12 +408,14 @@ function Projects() {
                             </span>
                           )}
                         </td>
+                        {!isReadOnly && (
                         <td className="no-print" style={styles.td}>
                           <div style={styles.actionsBox}>
                             <button onClick={() => startEdit(project)} style={styles.editBtn}>تعديل</button>
                             <button onClick={() => deleteProject(project.id)} style={styles.deleteBtn}>حذف</button>
                           </div>
                         </td>
+                        )}
                       </tr>
                     );
                   })}

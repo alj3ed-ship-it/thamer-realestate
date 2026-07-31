@@ -10,6 +10,7 @@ import Projects from "./Projects";
 import Bookings from "./Bookings";
 import Login from "./Login";
 import ViewerLayout from "./ViewerLayout";
+import { ReadOnlyProvider } from "./ReadOnlyContext";
 import ViewerLimited from "./ViewerLimited";
 import PropertyDetail from "./PropertyDetail";
 import Units from "./Units";
@@ -97,7 +98,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (role === "admin") fetchStats();
+    if (role === "admin" || role === "viewer") fetchStats();
   }, [role, activePage]);
 
   async function fetchStats() {
@@ -140,7 +141,6 @@ export default function App() {
     );
   }
 
-  if (role === "viewer") return <ViewerLayout />;
    if (role === "viewer2") return <ViewerLimited />;
   if (!role) return <Login onLogin={(r) => setRole(r)} />;
 
@@ -151,13 +151,14 @@ export default function App() {
 
 
   return (
+    <ReadOnlyProvider value={role === "viewer"}>
     <div style={{ display: "flex", minHeight: "100vh", maxWidth: "100vw", overflowX: "hidden", fontFamily: "Cairo, sans-serif", direction: "rtl" }}>
       <div className="print-sidebar" style={{ width: "220px", flexShrink: 0, background: "#1B4D7A", display: "flex", flexDirection: "column", padding: "24px 0" }}>
         <div style={{ padding: "0 20px 24px", borderBottom: "1px solid #2E6394" }}>
           <img src="/logo_v6_wide.svg" alt="logo" style={{ width: "100%" }} />
         </div>
         <nav style={{ flex: 1, padding: "16px 0" }}>
-          {NAV_ITEMS.map(item => (
+          {NAV_ITEMS.filter(item => !(role === "viewer" && item.key === "letters")).map(item => (
             <button key={item.key} onClick={() => { setActivePage(item.key); setSelectedPropertyId(null); }} style={{
               display: "block", width: "100%", padding: "12px 20px", textAlign: "right",
               background: activePage === item.key ? "#2E6394" : "transparent",
@@ -169,12 +170,14 @@ export default function App() {
             </button>
           ))}
         </nav>
+        {role !== "viewer" && (
         <div style={{ padding: "16px 20px", borderTop: "1px solid #2E6394" }}>
           <button onClick={handleLogout} style={{
             width: "100%", padding: "10px", background: "#c0392b", color: "#fff",
             border: "none", borderRadius: "8px", cursor: "pointer", fontFamily: "Cairo, sans-serif", fontSize: "14px"
           }}>{T.logout}</button>
         </div>
+        )}
       </div>
 
       <div className="print-main-content" style={{ flex: 1, minWidth: 0, background: "#f0f4f8", overflow: "auto" }}>
@@ -228,5 +231,6 @@ export default function App() {
         )}
       </div>
     </div>
+    </ReadOnlyProvider>
   );
 }

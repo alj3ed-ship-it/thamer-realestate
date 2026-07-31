@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabaseClient';
+import { useReadOnly } from './ReadOnlyContext';
 import ExportToolbar from './components/ExportToolbar';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -88,6 +89,7 @@ function receiverColor(value) {
 }
 
 export default function Bookings() {
+  const isReadOnly = useReadOnly();
   const [bookings, setBookings] = useState([]);
   const [extraIncome, setExtraIncome] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -451,6 +453,7 @@ export default function Bookings() {
     <div style={{ direction: 'rtl', fontFamily: 'Cairo, sans-serif', padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
         <h2 style={{ margin: 0 }}>🎉 حجوزات قاعة مذهلة</h2>
+        {!isReadOnly && (
         <div style={{ display: 'flex', gap: '10px' }}>
           <button
             onClick={openAddExtraForm}
@@ -481,10 +484,11 @@ export default function Bookings() {
             + إضافة حجز جديد
           </button>
         </div>
+        )}
       </div>
 
       {/* ==== قسم بانتظار الاعتماد — تعديلات/حجوزات المحاسب ==== */}
-      {pendingBookings.length > 0 && (
+      {!isReadOnly && pendingBookings.length > 0 && (
         <div style={{
           background: '#FFFBF3', border: '2px solid #F5CBA7', borderRadius: '12px',
           padding: '18px 20px', marginBottom: '24px',
@@ -642,7 +646,7 @@ export default function Bookings() {
                     <th style={th}>الباقي</th>
                     <th style={th}>حالة الباقي</th>
                     <th style={th}>الاستلام النهائي (باقي)</th>
-                    <th style={th}>إجراءات</th>
+                    {!isReadOnly && <th style={th}>إجراءات</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -673,10 +677,12 @@ export default function Bookings() {
                         <td style={{ ...td, fontWeight: 'bold', color: receiverColor(b.remaining_receiver_final) }}>
                           {b.remaining_receiver_final || '—'}
                         </td>
+                        {!isReadOnly && (
                         <td style={td}>
                           <button onClick={() => openEditForm(b)} style={actionBtn('#1B4D7A')}>تعديل</button>
                           <button onClick={() => handleDelete(b.id)} style={actionBtn('#e74c3c')}>حذف</button>
                         </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -714,7 +720,7 @@ export default function Bookings() {
                     <th style={th}>العميل</th>
                     <th style={th}>المبلغ</th>
                     <th style={th}>ملاحظات</th>
-                    <th style={th}>إجراءات</th>
+                    {!isReadOnly && <th style={th}>إجراءات</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -728,10 +734,12 @@ export default function Bookings() {
                         <td style={td}>{e.client_name || '—'}</td>
                         <td style={{ ...td, fontWeight: 'bold', color: '#148F77' }}>{Number(e.amount).toLocaleString()} ر.س</td>
                         <td style={td}>{e.notes || '—'}</td>
+                        {!isReadOnly && (
                         <td style={td}>
                           <button onClick={() => openEditExtraForm(e)} style={actionBtn('#1B4D7A')}>تعديل</button>
                           <button onClick={() => handleDeleteExtra(e.id)} style={actionBtn('#e74c3c')}>حذف</button>
                         </td>
+                        )}
                       </tr>
                     );
                   })}

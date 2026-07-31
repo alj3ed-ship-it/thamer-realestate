@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import { useReadOnly } from './ReadOnlyContext'
 import ExportToolbar from './components/ExportToolbar'
 
 const UNIT_STATUS = ['مؤجرة', 'شاغرة', 'صيانة']
@@ -20,6 +21,7 @@ function sortUnits(list) {
 }
 
 export default function PropertyDetail({ propertyId, onBack }) {
+  const isReadOnly = useReadOnly()
   const [property, setProperty] = useState(null)
   const [units, setUnits] = useState([])
   const [loading, setLoading] = useState(true)
@@ -145,9 +147,11 @@ export default function PropertyDetail({ propertyId, onBack }) {
       </div>
 
       <div className="no-print" style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+        {!isReadOnly && (
         <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8 }}>
           + إضافة وحدة
         </button>
+        )}
         <button onClick={fetchAll} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
       </div>
 
@@ -175,7 +179,10 @@ export default function PropertyDetail({ propertyId, onBack }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#f9fafb', textAlign: 'right' }}>
-                {['رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'ملاحظات', ''].map(h => (
+                {(isReadOnly
+                  ? ['رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'ملاحظات']
+                  : ['رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'ملاحظات', '']
+                ).map(h => (
                   <th key={h} style={{ padding: '12px', borderBottom: '2px solid #e5e7eb', color: '#6b7280', fontWeight: 500 }}>{h}</th>
                 ))}
               </tr>
@@ -191,12 +198,14 @@ export default function PropertyDetail({ propertyId, onBack }) {
                     <span style={{ ...statusColor[u.status], padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>{u.status || '—'}</span>
                   </td>
                   <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{u.notes || '—'}</td>
+                  {!isReadOnly && (
                   <td className="no-print" style={{ padding: '12px' }}>
                     <button onClick={() => openEditForm(u)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
                     <button onClick={() => handleDelete(u)} disabled={deletingId === u.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
                       {deletingId === u.id ? '...' : 'حذف'}
                     </button>
                   </td>
+                  )}
                 </tr>
               ))}
             </tbody>

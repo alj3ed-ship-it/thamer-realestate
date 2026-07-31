@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import { useReadOnly } from './ReadOnlyContext'
 import ExportToolbar from './components/ExportToolbar'
 
 const PROPERTY_TYPES = ['فيلا', 'أرض', 'عمارة', 'مجمع تجاري', 'عمارة سكنية']
@@ -27,6 +28,7 @@ function getPropertyPriority(name) {
 }
 
 function Properties({ onBack, onSelectProperty }) {
+  const isReadOnly = useReadOnly()
   const [properties, setProperties] = useState([])
   const [unitCounts, setUnitCounts] = useState({})
   const [status, setStatus] = useState('loading')
@@ -140,9 +142,11 @@ function Properties({ onBack, onSelectProperty }) {
       <p style={{ color: '#6b7280', margin: '0 0 24px', fontSize: 14 }}>إدارة قائمة العقارات</p>
 
       <div className="no-print" style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+        {!isReadOnly && (
         <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600 }}>
           + إضافة عقار جديد
         </button>
+        )}
         <button onClick={fetchProperties} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff' }}>تحديث</button>
       </div>
 
@@ -172,7 +176,10 @@ function Properties({ onBack, onSelectProperty }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
               <thead>
                 <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                  {['اسم العقار', 'النوع', 'تصنيف الضريبة', 'العنوان', 'عدد الوحدات', ''].map(h => (
+                  {(isReadOnly
+                    ? ['اسم العقار', 'النوع', 'تصنيف الضريبة', 'العنوان', 'عدد الوحدات']
+                    : ['اسم العقار', 'النوع', 'تصنيف الضريبة', 'العنوان', 'عدد الوحدات', '']
+                  ).map(h => (
                     <th key={h} style={{ padding: '13px 14px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
                   ))}
                 </tr>
@@ -204,12 +211,14 @@ function Properties({ onBack, onSelectProperty }) {
                           padding: '3px 12px', borderRadius: 20, fontSize: 13, fontWeight: 700
                         }}>{unitCounts[p.id] || 0}</span>
                       </td>
+                      {!isReadOnly && (
                       <td className="no-print" style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
                         <button onClick={() => openEditForm(p)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
                         <button onClick={() => handleDelete(p)} disabled={deletingId === p.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
                           {deletingId === p.id ? '...' : 'حذف'}
                         </button>
                       </td>
+                      )}
                     </tr>
                   )
                 })}

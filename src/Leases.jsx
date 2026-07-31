@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabaseClient";
+import { useReadOnly } from "./ReadOnlyContext";
 import ExportToolbar from "./components/ExportToolbar";
 
 const PAYMENT_TYPES = [
@@ -241,6 +242,7 @@ function HijriPicker({ label, value, onChange }) {
 }
 
 export default function Leases({ onBack }) {
+  const isReadOnly = useReadOnly();
   const [leases, setLeases] = useState([]);
   const [leaseUnits, setLeaseUnits] = useState([]);
   const [properties, setProperties] = useState([]);
@@ -380,7 +382,7 @@ export default function Leases({ onBack }) {
             <button
               key={u.id}
               type="button"
-              onClick={() => toggleUnitExclusion(leaseId, u.id)}
+              onClick={() => { if (!isReadOnly) toggleUnitExclusion(leaseId, u.id); }}
               title={excluded ? "مستثناة من فرز النوع — اضغط لإرجاعها" : "اضغط لاستثنائها من فرز النوع"}
               style={{
                 border: excluded ? "1px dashed #9ca3af" : "1px solid #ddd6fe",
@@ -672,7 +674,15 @@ export default function Leases({ onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterProperty]);
 
-  const totalAmount = filteredLeases.reduce((sum, l) => sum + Number(l.rent_amount || 0), 0);
+  function getNetRentAmount(lease) {
+    const amt = Number(lease.rent_amount || 0);
+    if (lease.tax_enabled && lease.amount_includes_vat) {
+      return Math.round(amt / 1.15);
+    }
+    return amt;
+  }
+
+  const totalAmount = filteredLeases.reduce((sum, l) => sum + getNetRentAmount(l), 0);
 
   const total = getTotal();
 
@@ -696,7 +706,7 @@ export default function Leases({ onBack }) {
 
   const exportStats = [
     { label: "عدد العقود", value: filteredLeases.length, color: "#1B4D7A" },
-    { label: "الإجمالي", value: `${totalAmount.toLocaleString()} ريال`, color: "#1d4ed8" },
+    { label: "الإجمالي (صافي بدون ضريبة)", value: `${totalAmount.toLocaleString()} ريال`, color: "#1d4ed8" },
   ];
 
   return (
@@ -708,9 +718,11 @@ export default function Leases({ onBack }) {
       <p style={{ color: "#6b7280", margin: "0 0 24px" }}>إدارة عقود الإيجار</p>
 
       <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+        {!isReadOnly && (
         <button onClick={openAddForm} style={{ padding: "10px 20px", cursor: "pointer", background: "#1B4D7A", color: "#fff", border: "none", borderRadius: 8 }}>
           + إضافة عقد جديد
         </button>
+        )}
         <button onClick={fetchAll} style={{ padding: "10px 20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
           تحديث
         </button>
@@ -791,7 +803,7 @@ export default function Leases({ onBack }) {
             عدد العقود الظاهرة: <strong>{filteredLeases.length}</strong>
           </span>
           <span style={{ color: "#1d4ed8", fontWeight: 700, fontSize: 18 }}>
-            الإجمالي: {totalAmount.toLocaleString()} ريال
+            الإجمالي (صافي بدون ضريبة): {totalAmount.toLocaleString()} ريال
           </span>
         </div>
       )}
@@ -834,7 +846,10 @@ export default function Leases({ onBack }) {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
               <thead>
                 <tr style={{ background: "#1B4D7A", textAlign: "right" }}>
-                  {["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الضريبة", "الملاحظات", ""].map(h => (
+                  {(isReadOnly
+                    ? ["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الضريبة", "الملاحظات"]
+                    : ["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الضريبة", "الملاحظات", ""]
+                  ).map(h => (
                     <th key={h} style={{ padding: "12px", color: "#fff", fontWeight: 600, fontSize: 13 }}>{h}</th>
                   ))}
                 </tr>
@@ -884,12 +899,14 @@ export default function Leases({ onBack }) {
                       >
                         {l.notes || "—"}
                       </td>
+                      {!isReadOnly && (
                       <td className="no-print" style={{ padding: "12px" }}>
                         <button onClick={() => openEditForm(l)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer", marginLeft: 6 }}>تعديل</button>
                         <button onClick={() => handleDelete(l)} disabled={deletingId === l.id} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>
                           {deletingId === l.id ? "..." : "حذف"}
                         </button>
                       </td>
+                      )}
                     </tr>
                   );
                 })}

@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 import { getUnitTypeColor } from './theme'
+import { useReadOnly } from './ReadOnlyContext'
 import ExportToolbar from './components/ExportToolbar'
 
 function TenantDetail({ tenant, onBack }) {
@@ -93,6 +94,7 @@ function TenantDetail({ tenant, onBack }) {
 }
 
 function Tenants({ onBack }) {
+  const isReadOnly = useReadOnly()
   const [tenants, setTenants] = useState([])
   const [properties, setProperties] = useState([])
   const [leases, setLeases] = useState([])
@@ -146,8 +148,6 @@ function Tenants({ onBack }) {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
-
-  if (selectedTenant) return <TenantDetail tenant={selectedTenant} onBack={() => setSelectedTenant(null)} />
 
   function openAddForm() {
     setEditingId(null); setFormName(''); setFormPhone(''); setFormNote(''); setFormPropertyId(''); setFormError(''); setShowForm(true)
@@ -256,6 +256,8 @@ function Tenants({ onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterProperty])
 
+  if (selectedTenant) return <TenantDetail tenant={selectedTenant} onBack={() => setSelectedTenant(null)} />
+
   const filtered = (filterProperty === 'الكل'
     ? tenants
     : tenants.filter(t => tenantBelongsToProperty(t, filterProperty))
@@ -313,9 +315,11 @@ function Tenants({ onBack }) {
       <p style={{ color: '#6b7280', margin: '0 0 24px' }}>إدارة قائمة المستأجرين</p>
 
       <div className="no-print" style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+        {!isReadOnly && (
         <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8 }}>
           + إضافة مستأجر جديد
         </button>
+        )}
         <button onClick={fetchAll} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
 
         <div ref={tenantBoxRef} style={{ position: 'relative' }}>
@@ -407,7 +411,7 @@ function Tenants({ onBack }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
               <thead>
                 <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                  {['المستأجر', 'العقار', 'الوحدات', 'الجوال', 'ملاحظات', ''].map(h => (
+                  {(isReadOnly ? ['المستأجر', 'العقار', 'الوحدات', 'الجوال', 'ملاحظات'] : ['المستأجر', 'العقار', 'الوحدات', 'الجوال', 'ملاحظات', '']).map(h => (
                     <th key={h} style={{ padding: '14px 12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
                   ))}
                 </tr>
@@ -425,12 +429,14 @@ function Tenants({ onBack }) {
                     <td style={{ padding: '12px' }}>{unitBadges(t.id)}</td>
                     <td style={{ padding: '12px', color: '#6b7280' }}>{t.phone || '—'}</td>
                     <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{t.note || '—'}</td>
+                    {!isReadOnly && (
                     <td className="no-print" style={{ padding: '12px' }}>
                       <button onClick={() => openEditForm(t)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
                       <button onClick={() => handleDelete(t)} disabled={deletingId === t.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
                         {deletingId === t.id ? '...' : 'حذف'}
                       </button>
                     </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
+import { useReadOnly } from './ReadOnlyContext'
 import ExportToolbar from './components/ExportToolbar'
 
 const statusColor = {
@@ -46,6 +47,7 @@ function getUnitNumberValue(unitNumber) {
 }
 
 export default function Units({ onBack }) {
+  const isReadOnly = useReadOnly()
   const [units, setUnits] = useState([])
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
@@ -232,7 +234,7 @@ export default function Units({ onBack }) {
                       <td style={{ padding: '8px 12px' }}>
                         <select
                           value={vatValue}
-                          disabled={updatingId === u.id}
+                          disabled={isReadOnly || updatingId === u.id}
                           onChange={e => handleVatChange(u.id, e.target.value)}
                           style={{
                             background: vatInfo.bg, color: vatInfo.color, border: `1px solid ${vatInfo.border}`,
