@@ -20,7 +20,31 @@ export default function Reports({ onBack }) {
 
   const today = new Date();
 
-  const occupancyData = properties.map(p => {
+  function normalizeArabic(str) {
+    return (str || "")
+      .replace(/[إأآا]/g, "ا")
+      .replace(/ة/g, "ه")
+      .replace(/ى/g, "ي");
+  }
+
+  function getPropertyPriority(name) {
+    const n = normalizeArabic(name);
+    if (!n) return 99;
+    if (n.includes("سلمان") && !n.includes("عبدالله")) return 1;
+    if (n.includes("براهيم")) return 2;
+    if (n.includes("عبدالله الكبيره")) return 3;
+    if (n.includes("عبدالله الصغيره")) return 4;
+    return 99;
+  }
+
+  const sortedProperties = [...properties].sort((a, b) => {
+    const pa = getPropertyPriority(a.name);
+    const pb = getPropertyPriority(b.name);
+    if (pa !== pb) return pa - pb;
+    return (a.name || "").localeCompare(b.name || "", "ar");
+  });
+
+  const occupancyData = sortedProperties.map(p => {
     const propUnits = units.filter(u => u.property_id === p.id);
     const rented = propUnits.filter(u => u.status === "مؤجرة").length;
     const total = propUnits.length;
@@ -31,7 +55,7 @@ export default function Reports({ onBack }) {
   // نعتبر العقد "فعّال" إذا كانت حالته active صراحة، أو إذا كانت حالته فاضية (بعض
   // العقود المضافة من فورم "إضافة عقد جديد" لا تحفظ عمود status أصلاً) —
   // هذا يمنع تكرار مشكلة عدم احتساب عقود جديدة بتقرير الإيرادات
-  const revenueByProperty = properties.map(p => {
+  const revenueByProperty = sortedProperties.map(p => {
     const propUnits = units.filter(u => u.property_id === p.id);
     const propUnitIds = propUnits.map(u => u.id);
     const propLeases = leases.filter(l => l.property_id === p.id && (l.status === "active" || l.status === "نشط" || !l.status));
@@ -55,8 +79,8 @@ export default function Reports({ onBack }) {
 
   const vacantUnits = units.filter(u => u.status !== "مؤجرة").map(u => {
     const prop = properties.find(p => p.id === u.property_id);
-    return { ...u, propName: prop?.name };
-  });
+    return { ...u, propName: prop?.name, propPriority: getPropertyPriority(prop?.name) };
+  }).sort((a, b) => a.propPriority - b.propPriority || (a.propName || "").localeCompare(b.propName || "", "ar"));
 
   const btnStyle = (key) => ({
     padding: "8px 16px", borderRadius: "8px", border: "none", cursor: "pointer",
@@ -65,10 +89,20 @@ export default function Reports({ onBack }) {
     color: activeReport === key ? "#fff" : "#1B4D7A",
   });
 
-  const thStyle = { padding: "10px 12px", textAlign: "center" };
-  const tdStyle = { padding: "10px 12px", textAlign: "center", borderBottom: "1px solid #e0e7ef" };
-  const tableWrap = { width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" };
+  const thStyle = { padding: "14px 16px", textAlign: "center", fontWeight: 600, fontSize: 13.5 };
+  const tdStyle = (i) => ({ padding: "14px 16px", textAlign: "center", borderBottom: "1px solid #e0e7ef", background: i % 2 === 0 ? "#fff" : "#f9fafb" });
+  const tableWrap = { width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" };
   const thead = { background: "#1B4D7A", color: "#fff" };
+
+  function occupancyBadge(pct) {
+    const color = pct >= 90 ? "#166534" : pct >= 60 ? "#854d0e" : "#991b1b";
+    const bg = pct >= 90 ? "#dcfce7" : pct >= 60 ? "#fef9c3" : "#fee2e2";
+    return (
+      <span style={{ background: bg, color, padding: "4px 14px", borderRadius: 20, fontWeight: 700, fontSize: 13 }}>
+        {pct}%
+      </span>
+    );
+  }
 
   // بيانات وأعمدة التصدير حسب التقرير النشط حالياً
   const reportConfig = {
@@ -167,12 +201,12 @@ export default function Reports({ onBack }) {
               </tr>
             </thead>
             <tbody>
-              {occupancyData.map(p => (
+              {occupancyData.map((p, i) => (
                 <tr key={p.id}>
-                  <td style={tdStyle}>{p.name}</td>
-                  <td style={tdStyle}>{p.rented}</td>
-                  <td style={tdStyle}>{p.total}</td>
-                  <td style={tdStyle}>{p.pct}%</td>
+                  <td style={{ ...tdStyle(i), fontWeight: 600, color: "#1B4D7A" }}>{p.name}</td>
+                  <td style={tdStyle(i)}>{p.rented}</td>
+                  <td style={tdStyle(i)}>{p.total}</td>
+                  <td style={tdStyle(i)}>{occupancyBadge(p.pct)}</td>
                 </tr>
               ))}
             </tbody>
@@ -194,14 +228,20 @@ export default function Reports({ onBack }) {
             <tbody>
               {expiringLeases.length === 0 ? (
                 <tr><td colSpan="6" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد عقود تنتهي خلال 90 يوم</td></tr>
-              ) : expiringLeases.map(l => (
+              ) : expiringLeases.map((l, i) => (
                 <tr key={l.id}>
-                  <td style={tdStyle}>{l.tenantName}</td>
-                  <td style={tdStyle}>{l.tenantPhone}</td>
-                  <td style={tdStyle}>{l.propName}</td>
-                  <td style={tdStyle}>{l.unitNumber}</td>
-                  <td style={tdStyle}>{l.end_date}</td>
-                  <td style={tdStyle}>{l.daysLeft} يوم</td>
+                  <td style={{ ...tdStyle(i), fontWeight: 600, color: "#1B4D7A" }}>{l.tenantName}</td>
+                  <td style={tdStyle(i)}>{l.tenantPhone}</td>
+                  <td style={tdStyle(i)}>{l.propName}</td>
+                  <td style={tdStyle(i)}>{l.unitNumber}</td>
+                  <td style={tdStyle(i)}>{l.end_date}</td>
+                  <td style={tdStyle(i)}>
+                    <span style={{
+                      background: l.daysLeft <= 30 ? "#fee2e2" : "#fef9c3",
+                      color: l.daysLeft <= 30 ? "#991b1b" : "#854d0e",
+                      padding: "4px 12px", borderRadius: 20, fontWeight: 700, fontSize: 12.5
+                    }}>{l.daysLeft} يوم</span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -221,12 +261,12 @@ export default function Reports({ onBack }) {
             <tbody>
               {vacantUnits.length === 0 ? (
                 <tr><td colSpan="4" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد وحدات شاغرة</td></tr>
-              ) : vacantUnits.map(u => (
+              ) : vacantUnits.map((u, i) => (
                 <tr key={u.id}>
-                  <td style={tdStyle}>{u.propName}</td>
-                  <td style={tdStyle}>{u.unit_number}</td>
-                  <td style={tdStyle}>{u.unit_type}</td>
-                  <td style={tdStyle}>{u.monthly_rent} ر.س</td>
+                  <td style={{ ...tdStyle(i), fontWeight: 600, color: "#1B4D7A" }}>{u.propName}</td>
+                  <td style={tdStyle(i)}>{u.unit_number}</td>
+                  <td style={tdStyle(i)}>{u.unit_type}</td>
+                  <td style={tdStyle(i)}>{u.monthly_rent} ر.س</td>
                 </tr>
               ))}
             </tbody>
@@ -242,15 +282,15 @@ export default function Reports({ onBack }) {
               </tr>
             </thead>
             <tbody>
-              {revenueByProperty.map(p => (
+              {revenueByProperty.map((p, i) => (
                 <tr key={p.id}>
-                  <td style={tdStyle}>{p.name}</td>
-                  <td style={tdStyle}>{p.annual.toLocaleString()} ر.س</td>
+                  <td style={{ ...tdStyle(i), fontWeight: 600, color: "#1B4D7A" }}>{p.name}</td>
+                  <td style={{ ...tdStyle(i), fontWeight: 700, color: "#166534" }}>{p.annual.toLocaleString()} ر.س</td>
                 </tr>
               ))}
-              <tr style={{ background: "#f0f4f8", fontWeight: "bold" }}>
-                <td style={tdStyle}>الاجمالي</td>
-                <td style={tdStyle}>{totalRevenue.toLocaleString()} ر.س</td>
+              <tr style={{ background: "#eff6ff" }}>
+                <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 800, color: "#1B4D7A" }}>الاجمالي</td>
+                <td style={{ padding: "14px 16px", textAlign: "center", fontWeight: 800, color: "#1B4D7A" }}>{totalRevenue.toLocaleString()} ر.س</td>
               </tr>
             </tbody>
           </table>
