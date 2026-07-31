@@ -484,6 +484,11 @@ function Payments({ onBack }) {
     const taxApplies = isTaxApplicable(p)
     const tax = getTaxAmount(p)
     const inclusive = isAmountVatInclusive(p)
+    // لون المبلغ حسب الحالة الفعلية: أخضر لمدفوع، أحمر لمتأخر، رمادي لغير مستحق بعد
+    const amountColor = computed === 'paid' ? '#27ae60'
+      : computed === 'overdue' ? '#e74c3c'
+      : computed === 'not_due' ? '#7f8c8d'
+      : '#27ae60'
     let base
     if (computed === 'partial') {
       const remaining = due - paid
@@ -497,7 +502,7 @@ function Payments({ onBack }) {
         </span>
       )
     } else {
-      base = <span style={{ fontWeight: 700, color: '#27ae60' }}>{due.toLocaleString()} ريال</span>
+      base = <span style={{ fontWeight: 700, color: amountColor }}>{due.toLocaleString()} ريال</span>
     }
     return (
       <div>
@@ -545,7 +550,7 @@ function Payments({ onBack }) {
   })
 
   return (
-    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px 24px', maxWidth: '1500px', margin: '0 auto' }}>
       <button onClick={onBack} style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
         ← رجوع للوحة التحكم
       </button>
@@ -663,15 +668,15 @@ function Payments({ onBack }) {
             ]}
           />
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <div style={{ overflowX: 'auto', borderRadius: 12, boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
+            <table style={{ width: '100%', minWidth: 1100, borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
                   {(isReadOnly
                     ? ['المستأجر', 'العقار', 'النشاط', 'الوحدة', 'الدفعة', 'المبلغ', 'الحالة', 'التاريخ', 'طريقة الدفع', 'ملاحظات']
                     : ['المستأجر', 'العقار', 'النشاط', 'الوحدة', 'الدفعة', 'المبلغ', 'الحالة', 'التاريخ', 'طريقة الدفع', 'ملاحظات', '']
                   ).map(h => (
-                    <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
+                    <th key={h} style={{ padding: '14px 18px', color: '#fff', fontWeight: 600, fontSize: 13, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -683,23 +688,23 @@ function Payments({ onBack }) {
 
                   return (
                     <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                      <td style={{ padding: '12px', fontWeight: 700, color: '#1B4D7A' }}>{getTenantName(p.lease_id)}</td>
-                      <td style={{ padding: '12px', color: '#6b7280' }}>{getPropertyName(p.lease_id)}</td>
-                      <td style={{ padding: '12px', color: '#6b7280', fontSize: 13 }}>{getTenantActivity(p.lease_id)}</td>
-                      <td style={{ padding: '12px', color: '#6b7280', fontSize: 13 }}>{getUnitNumbers(p.lease_id)}</td>
-                      <td style={{ padding: '12px', textAlign: 'center' }}>
-                        <span style={{ background: '#eff6ff', color: '#1B4D7A', padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
+                      <td style={{ padding: '16px 18px', fontWeight: 700, color: '#1B4D7A', whiteSpace: 'nowrap' }}>{getTenantName(p.lease_id)}</td>
+                      <td style={{ padding: '16px 18px', color: '#6b7280', whiteSpace: 'nowrap' }}>{getPropertyName(p.lease_id)}</td>
+                      <td style={{ padding: '16px 18px', color: '#6b7280', fontSize: 13 }}>{getTenantActivity(p.lease_id)}</td>
+                      <td style={{ padding: '16px 18px', color: '#6b7280', fontSize: 13, whiteSpace: 'nowrap' }}>{getUnitNumbers(p.lease_id)}</td>
+                      <td style={{ padding: '16px 18px', textAlign: 'center' }}>
+                        <span style={{ background: '#eff6ff', color: '#1B4D7A', padding: '4px 14px', borderRadius: 20, fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>
                           {total ? `${index} / ${total}` : `${index}`}
                         </span>
                       </td>
-                      <td style={{ padding: '12px' }}>{amountCell(p)}</td>
-                      <td style={{ padding: '12px' }}>{statusBadge(p)}</td>
-                      <td style={{ padding: '12px', color: '#6b7280' }}>
+                      <td style={{ padding: '16px 18px', minWidth: 180 }}>{amountCell(p)}</td>
+                      <td style={{ padding: '16px 18px' }}>{statusBadge(p)}</td>
+                      <td style={{ padding: '16px 18px', color: '#6b7280', whiteSpace: 'nowrap' }}>
                         <div style={{ fontWeight: 600 }}>{hijriText ? hijriText + ' هـ' : '—'}</div>
                         <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.payment_date || (isEstimated ? 'متوقع' : '—')}</div>
                       </td>
-                      <td style={{ padding: '12px', color: '#6b7280' }}>{p.payment_method || '—'}</td>
-                      <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{p.notes || '—'}</td>
+                      <td style={{ padding: '16px 18px', color: '#6b7280', whiteSpace: 'nowrap' }}>{p.payment_method || '—'}</td>
+                      <td style={{ padding: '16px 18px', color: '#9ca3af', fontSize: 13 }}>{p.notes || '—'}</td>
                       {!isReadOnly && (
                       <td style={{ padding: '12px' }} className="no-print">
                         <button onClick={() => openEdit(p)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
