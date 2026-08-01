@@ -10,7 +10,10 @@ const EVENT_TYPES = ['كاملة', 'نساء', 'رجال', 'أخرى'];
 const RECEIVER_STAGE1_OPTIONS = ['أبو أيوب', 'تحويل مباشر', 'نقدي مباشر'];
 const RECEIVER_FINAL_OPTIONS = ['مستلم', 'الوالد', 'لم يستلم'];
 const REMAINING_STATUS_OPTIONS = ['مستلم', 'جزئي', 'غير مستلم'];
-const DEFAULT_EXPENSE_PCT = 25;
+const DEFAULT_STAFF_RATES = { 'كاملة': 1970, 'نساء': 1020, 'رجال': 950, 'أخرى': 0 };
+const DEFAULT_SUPPLIES_RATES = { 'كاملة': 450, 'نساء': 225, 'رجال': 225, 'أخرى': 0 };
+const DEFAULT_ANNUAL_SALARY = 30000;
+const DEFAULT_SALARIES_BY_YEAR = { '1446': 48000, '1447': 48000 };
 const INCOME_TYPES = ['ميز', 'صوتيات', 'مطبخ القصر', 'أخرى'];
 
 const STATUS_COLORS = {
@@ -101,10 +104,47 @@ export default function Bookings() {
   const [editingExtraId, setEditingExtraId] = useState(null);
   const [hallId, setHallId] = useState(null);
   const [selectedYear, setSelectedYear] = useState('all');
-  const [expensePct, setExpensePct] = useState(() => {
-    const saved = localStorage.getItem('bookings_expense_pct');
-    return saved ? Number(saved) : DEFAULT_EXPENSE_PCT;
+  const [selectedType, setSelectedType] = useState('all');
+  const [staffRates, setStaffRates] = useState(() => {
+    const saved = localStorage.getItem('bookings_staff_rates');
+    try {
+      return saved ? { ...DEFAULT_STAFF_RATES, ...JSON.parse(saved) } : DEFAULT_STAFF_RATES;
+    } catch {
+      return DEFAULT_STAFF_RATES;
+    }
   });
+  const [suppliesRates, setSuppliesRates] = useState(() => {
+    const saved = localStorage.getItem('bookings_supplies_rates');
+    try {
+      return saved ? { ...DEFAULT_SUPPLIES_RATES, ...JSON.parse(saved) } : DEFAULT_SUPPLIES_RATES;
+    } catch {
+      return DEFAULT_SUPPLIES_RATES;
+    }
+  });
+  const [annualSalaries, setAnnualSalaries] = useState(() => {
+    const saved = localStorage.getItem('bookings_annual_salaries');
+    try {
+      return saved ? { ...DEFAULT_SALARIES_BY_YEAR, ...JSON.parse(saved) } : DEFAULT_SALARIES_BY_YEAR;
+    } catch {
+      return DEFAULT_SALARIES_BY_YEAR;
+    }
+  });
+
+  function setStaffRate(type, value) {
+    setStaffRates((prev) => ({ ...prev, [type]: value }));
+  }
+
+  function setSuppliesRate(type, value) {
+    setSuppliesRates((prev) => ({ ...prev, [type]: value }));
+  }
+
+  function getAnnualSalary(year) {
+    return annualSalaries[year] !== undefined ? annualSalaries[year] : DEFAULT_ANNUAL_SALARY;
+  }
+
+  function setAnnualSalaryForYear(year, value) {
+    setAnnualSalaries((prev) => ({ ...prev, [year]: value }));
+  }
 
   const emptyForm = {
     event_date_hijri: '',
@@ -137,8 +177,16 @@ export default function Bookings() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('bookings_expense_pct', String(expensePct));
-  }, [expensePct]);
+    localStorage.setItem('bookings_staff_rates', JSON.stringify(staffRates));
+  }, [staffRates]);
+
+  useEffect(() => {
+    localStorage.setItem('bookings_supplies_rates', JSON.stringify(suppliesRates));
+  }, [suppliesRates]);
+
+  useEffect(() => {
+    localStorage.setItem('bookings_annual_salaries', JSON.stringify(annualSalaries));
+  }, [annualSalaries]);
 
   async function loadHallAndBookings() {
     setLoading(true);
@@ -410,27 +458,42 @@ export default function Bookings() {
     return Array.from(years).sort();
   }, [approvedBookings]);
 
-  // بيانات الرسم البياني: لكل سنة عدد الحجوزات، الدخل، الصافي بعد خصم نسبة المصاريف
+  // بيانات الرسم البياني: لكل سنة عدد الحجوزات، الدخل، الصافي بعد خصم المصاريف التفصيلية
   const yearlyStats = useMemo(() => {
     const map = {};
     approvedBookings.forEach((b) => {
       const y = getHijriYear(b.event_date_hijri);
       if (!y) return;
-      if (!map[y]) map[y] = { year: y, count: 0, revenue: 0 };
+      if (!map[y]) map[y] = { year: y, count: 0, revenue: 0, staffCost: 0, suppliesCost: 0 };
       map[y].count += 1;
       map[y].revenue += Number(b.total_amount || 0);
+      map[y].staffCost += staffRates[b.event_type] || 0;
+      map[y].suppliesCost += suppliesRates[b.event_type] || 0;
+    });
+    const extraByYear = {};
+    extraIncome.forEach((e) => {
+      const y = getHijriYear(e.date_hijri);
+      if (!y) return;
+      extraByYear[y] = (extraByYear[y] || 0) + Number(e.amount || 0);
     });
     return Object.values(map)
       .sort((a, b) => a.year.localeCompare(b.year))
-      .map((row) => ({
-        ...row,
-        net: Math.round(row.revenue * (1 - expensePct / 100)),
-      }));
-  }, [approvedBookings, expensePct]);
+      .map((row) => {
+        const salary = getAnnualSalary(row.year);
+        const extra = extraByYear[row.year] || 0;
+        const expenses = row.staffCost + row.suppliesCost + salary;
+        return {
+          ...row,
+          net: Math.round(row.revenue + extra - expenses),
+        };
+      });
+  }, [approvedBookings, extraIncome, staffRates, suppliesRates, annualSalaries]);
 
-  const filteredBookings = selectedYear === 'all'
-    ? approvedBookings
-    : approvedBookings.filter((b) => getHijriYear(b.event_date_hijri) === selectedYear);
+  const filteredBookings = approvedBookings.filter((b) => {
+    const yearMatch = selectedYear === 'all' || getHijriYear(b.event_date_hijri) === selectedYear;
+    const typeMatch = selectedType === 'all' || b.event_type === selectedType;
+    return yearMatch && typeMatch;
+  });
 
   const filteredExtraIncome = selectedYear === 'all'
     ? extraIncome
@@ -441,9 +504,16 @@ export default function Bookings() {
     .filter((b) => b.remaining_status !== 'مستلم')
     .reduce((sum, b) => sum + Number(b.remaining_amount || 0), 0);
   const totalCollected = totalRevenue - totalPending;
-  const totalNet = Math.round(totalRevenue * (1 - expensePct / 100));
+
+  const totalStaffCost = filteredBookings.reduce((sum, b) => sum + (staffRates[b.event_type] || 0), 0);
+  const totalSuppliesCost = filteredBookings.reduce((sum, b) => sum + (suppliesRates[b.event_type] || 0), 0);
+  const relevantYearsForSalary = selectedYear === 'all' ? availableYears : [selectedYear];
+  const totalSalaryCost = relevantYearsForSalary.reduce((sum, y) => sum + getAnnualSalary(y), 0);
+  const totalExpenses = totalStaffCost + totalSuppliesCost + totalSalaryCost;
+
   const totalExtraIncome = filteredExtraIncome.reduce((sum, e) => sum + Number(e.amount || 0), 0);
   const grandTotal = totalRevenue + totalExtraIncome;
+  const totalNet = grandTotal - totalExpenses;
 
   function bookingLabel(b) {
     return `${formatHijriDisplay(b.event_date_hijri)} هـ — ${b.client_name}`;
@@ -537,6 +607,7 @@ export default function Bookings() {
       )}
 
       <ExportToolbar
+        title="حجوزات قاعة مذهلة"
         data={filteredBookings.map((b) => ({ ...b, event_date_hijri: formatHijriDisplay(b.event_date_hijri) }))}
         columns={[
           { key: 'event_date_hijri', label: 'التاريخ الهجري' },
@@ -546,6 +617,17 @@ export default function Bookings() {
           { key: 'deposit_amount', label: 'العربون' },
           { key: 'remaining_amount', label: 'الباقي' },
           { key: 'remaining_status', label: 'حالة الباقي' },
+        ]}
+        stats={[
+          { label: 'عدد الحجوزات', value: filteredBookings.length, color: '#1B4D7A' },
+          { label: 'إجمالي قيمة الحجوزات', value: `${totalRevenue.toLocaleString()} ر.س`, color: '#1B4D7A' },
+          { label: 'دخل إضافي', value: `${totalExtraIncome.toLocaleString()} ر.س`, color: '#148F77' },
+          { label: 'الإجمالي الكلي', value: `${grandTotal.toLocaleString()} ر.س`, color: '#B9770E' },
+          { label: 'مباشرين/مباشرات', value: `${totalStaffCost.toLocaleString()} ر.س`, color: '#8E44AD' },
+          { label: 'قهوة وشاهي ومنظفات', value: `${totalSuppliesCost.toLocaleString()} ر.س`, color: '#B9770E' },
+          { label: 'الراتب السنوي', value: `${totalSalaryCost.toLocaleString()} ر.س`, color: '#7f8c8d' },
+          { label: 'إجمالي المصاريف', value: `${totalExpenses.toLocaleString()} ر.س`, color: '#D35400' },
+          { label: 'صافي الدخل', value: `${totalNet.toLocaleString()} ر.س`, color: '#27ae60' },
         ]}
       />
 
@@ -568,31 +650,85 @@ export default function Bookings() {
         ))}
       </div>
 
+      {/* تبويبات نوع الحفلة */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <button
+          onClick={() => setSelectedType('all')}
+          style={typeTabStyle('all', selectedType === 'all')}
+        >
+          كل الأنواع
+        </button>
+        {EVENT_TYPES.map((t) => (
+          <button
+            key={t}
+            onClick={() => setSelectedType(t)}
+            style={typeTabStyle(t, selectedType === t)}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
       {/* بطاقات ملخص (حسب التبويب المختار) */}
       <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
         <SummaryCard label="عدد الحجوزات" value={filteredBookings.length} color="#1B4D7A" />
-        <SummaryCard label="إجمالي قيمة الحجوزات" value={`${totalRevenue.toLocaleString()} ر.س`} color="#1B4D7A" />
-        <SummaryCard label="إجمالي المبالغ المستلمة" value={`${totalCollected.toLocaleString()} ر.س`} color="#27ae60" />
+        <SummaryCard label="المصاريف" value={`${totalExpenses.toLocaleString()} ر.س`} color="#D35400" />
         <SummaryCard label="الباقي غير المحصّل" value={`${totalPending.toLocaleString()} ر.س`} color="#e74c3c" />
-        <SummaryCard label={`صافي الدخل (بعد خصم ${expensePct}%)`} value={`${totalNet.toLocaleString()} ر.س`} color="#8E44AD" />
+        <SummaryCard label="صافي الدخل (بعد خصم المصاريف)" value={`${totalNet.toLocaleString()} ر.س`} color="#8E44AD" />
         <SummaryCard label="دخل إضافي" value={`${totalExtraIncome.toLocaleString()} ر.س`} color="#148F77" onClick={() => setShowExtraDetails(true)} />
         <SummaryCard label="الإجمالي الكلي (حجوزات + دخل إضافي)" value={`${grandTotal.toLocaleString()} ر.س`} color="#B9770E" />
       </div>
 
-      {/* نسبة المصاريف القابلة للتعديل */}
+      {/* إعدادات المصاريف: أجور المباشرين/المباشرات + قهوة وشاهي + الراتب السنوي */}
       <div style={{
         background: '#fff', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-        padding: '14px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px', maxWidth: '320px',
+        padding: '16px 20px', marginBottom: '20px',
       }}>
-        <label style={{ fontSize: '14px', color: '#555', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-          نسبة المصاريف الثابتة (%)
-        </label>
-        <input
-          type="number"
-          value={expensePct}
-          onChange={(e) => setExpensePct(Number(e.target.value) || 0)}
-          style={{ width: '80px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
-        />
+        <h4 style={{ margin: '0 0 12px', color: '#555', fontSize: '14px' }}>⚙️ إعدادات المصاريف (لكل حفلة حسب نوعها)</h4>
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '14px' }}>
+          {EVENT_TYPES.map((t) => (
+            <div key={t} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 'bold', color: (TYPE_COLORS[t] || {}).text || '#555' }}>{t}</span>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', color: '#888', whiteSpace: 'nowrap' }}>مباشرين</span>
+                <input
+                  type="number"
+                  value={staffRates[t] ?? 0}
+                  onChange={(e) => setStaffRate(t, Number(e.target.value) || 0)}
+                  style={{ width: '70px', padding: '4px 6px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', color: '#888', whiteSpace: 'nowrap' }}>قهوة وشاهي</span>
+                <input
+                  type="number"
+                  value={suppliesRates[t] ?? 0}
+                  onChange={(e) => setSuppliesRate(t, Number(e.target.value) || 0)}
+                  style={{ width: '70px', padding: '4px 6px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ borderTop: '1px solid #eee', paddingTop: '12px' }}>
+          {selectedYear === 'all' ? (
+            <span style={{ fontSize: '13px', color: '#888' }}>
+              اختر سنة معينة من الأعلى لتعديل راتبها السنوي (الافتراضي: {DEFAULT_ANNUAL_SALARY.toLocaleString()} ر.س)
+            </span>
+          ) : (
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <label style={{ fontSize: '13px', color: '#555', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                الراتب السنوي {selectedYear} هـ (ر.س)
+              </label>
+              <input
+                type="number"
+                value={getAnnualSalary(selectedYear)}
+                onChange={(e) => setAnnualSalaryForYear(selectedYear, Number(e.target.value) || 0)}
+                style={{ width: '100px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* الرسم البياني المقارن بين السنين */}
@@ -613,7 +749,7 @@ export default function Bookings() {
               />
               <Legend wrapperStyle={{ fontFamily: 'Cairo, sans-serif' }} />
               <Bar dataKey="revenue" name="إجمالي الدخل" fill="#1B4D7A" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="net" name={`الصافي (بعد ${expensePct}%)`} fill="#27ae60" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="net" name="الصافي (بعد خصم المصاريف)" fill="#27ae60" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
 
@@ -984,6 +1120,21 @@ function yearTabStyle(active) {
     border: active ? 'none' : '1px solid #ddd',
     background: active ? '#1B4D7A' : '#fff',
     color: active ? '#fff' : '#555',
+    fontWeight: 'bold',
+    fontSize: '14px',
+    fontFamily: 'Cairo, sans-serif',
+    cursor: 'pointer',
+  };
+}
+
+function typeTabStyle(type, active) {
+  const c = TYPE_COLORS[type] || { text: '#1B4D7A', border: '#ddd' };
+  return {
+    padding: '8px 20px',
+    borderRadius: '8px',
+    border: active ? 'none' : `1px solid ${c.border}`,
+    background: active ? c.text : '#fff',
+    color: active ? '#fff' : c.text,
     fontWeight: 'bold',
     fontSize: '14px',
     fontFamily: 'Cairo, sans-serif',

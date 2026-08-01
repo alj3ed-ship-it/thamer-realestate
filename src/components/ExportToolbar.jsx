@@ -58,6 +58,11 @@ export default function ExportToolbar({
   // عمود التجميع نفسه لا يتكرر بكل صف — يظهر بعنوان القسم بدل ذلك
   const displayCols = groupCol ? columns.filter((c) => c.key !== groupCol.key) : columns;
 
+  // عرض التقرير يتناسب مع عدد الأعمدة الفعلي بدل عرض ثابت (كان يسبب شكل
+  // "جريدة" عريضة عند التقارير قليلة الأعمدة مثل جدول الحجوزات)
+  const colCountForWidth = groupCol ? displayCols.length : columns.length;
+  const dynamicPrintWidth = Math.max(750, Math.min(1700, colCountForWidth * 170 + 150));
+
   // يحوّل "187,500 ريال" أو "٢٨,١٢٥ ريال" لرقم حقيقي. يرجع null لأي شي غير ذلك
   // (مثل التواريخ) عشان ما نلخبط أعمدة غير مالية.
   const parseRiyalNumber = (val) => {
@@ -387,8 +392,11 @@ export default function ExportToolbar({
 
       let renderedPx = 0;
       let pageIndex = 0;
+      const MIN_TRAILING_PX = 25; // تجاهل بقايا بيضاء صغيرة تسبب صفحة شبه فارغة بالنهاية
       while (renderedPx < canvas.height) {
-        const sliceHeight = Math.min(sliceHeightPx, canvas.height - renderedPx);
+        const remainingPx = canvas.height - renderedPx;
+        if (pageIndex > 0 && remainingPx < MIN_TRAILING_PX) break;
+        const sliceHeight = Math.min(sliceHeightPx, remainingPx);
         const sliceCanvas = document.createElement("canvas");
         sliceCanvas.width = canvas.width;
         sliceCanvas.height = sliceHeight;
@@ -433,7 +441,10 @@ export default function ExportToolbar({
       <div
         id="export-print-area"
         ref={printRef}
-        style={isCapturing ? styles.printRootVisible : styles.printRoot}
+        style={{
+          ...(isCapturing ? styles.printRootVisible : styles.printRoot),
+          width: `${dynamicPrintWidth}px`,
+        }}
       >
         <div style={styles.letterhead}>
           <div style={styles.letterheadRight}>
@@ -721,9 +732,9 @@ const styles = {
   reportTitle: { fontSize: "17px", fontWeight: "bold", color: "#111827" },
   reportDate: { fontSize: "12px", color: "#6b7280", marginTop: "4px" },
 
-  statsRow: { display: "flex", gap: "14px", marginBottom: "20px" },
+  statsRow: { display: "flex", gap: "14px", marginBottom: "20px", flexWrap: "wrap" },
   statBox: {
-    flex: 1,
+    flex: "1 1 160px",
     border: "2px solid",
     borderRadius: "10px",
     padding: "12px 18px",
