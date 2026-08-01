@@ -597,7 +597,7 @@ export default function Entitlements() {
       };
     })}
             columns={[
-              { key: "property", label: "العقار" },
+              { key: "property", label: "العقار", group: true },
               { key: "tenant", label: "المستأجر" },
               { key: "activity", label: "النشاط" },
               { key: "unit", label: "الوحدة" },
@@ -609,6 +609,7 @@ export default function Entitlements() {
               { key: "statusLabel", label: "الحالة" },
             ]}
             filename={`entitlements_${selectedYear}_${selectedMonthNum}${statusFilter !== "all" ? "_" + statusFilter : ""}`}
+            title={`جدول الاستحقاقات - ${HIJRI_MONTHS[parseInt(selectedMonthNum) - 1]} ${selectedYear} هـ${statusFilter !== "all" ? " - " + (STATUS_FILTERS.find((f) => f.key === statusFilter)?.label || "") : ""}`}
             stats={[
               { label: "إجمالي المحصّل", value: `${totalCollected.toLocaleString()} ريال`, color: "#27ae60" },
               { label: "إجمالي المتبقي", value: `${totalRemaining.toLocaleString()} ريال`, color: "#e74c3c" },

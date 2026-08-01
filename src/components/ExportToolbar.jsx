@@ -53,7 +53,7 @@ export default function ExportToolbar({
   // === منطق مشترك بين Excel والطباعة/PDF (يوليو 2026) ===
   // نفس "الاكتشاف التلقائي" المستخدم بتصدير Excel نطبّقه هنا كمان، عشان تقرير
   // الطباعة/PDF يطلع بنفس التجميع والألوان بدل الجدول المسطّح القديم.
-  const groupCol = columns.find((c) => c.label === "الربع" || c.key === "quarter");
+  const groupCol = columns.find((c) => c.label === "الربع" || c.key === "quarter" || c.group === true);
   const statusCol = columns.find((c) => c.label === "الحالة" || c.key === "status");
   // عمود التجميع نفسه لا يتكرر بكل صف — يظهر بعنوان القسم بدل ذلك
   const displayCols = groupCol ? columns.filter((c) => c.key !== groupCol.key) : columns;
@@ -77,16 +77,27 @@ export default function ExportToolbar({
     return Number.isNaN(num) ? null : num;
   };
 
+  // بعض الخلايا (زي عمود المبلغ بصفحة الاستحقاقات) تُمرَّر بصيغة كائن غني
+  // { value, color, subtext } للتلوين بالشاشة — نفكّكه هنا عشان ما يطلع كنص
+  // JSON خام بملف Excel.
+  const unwrapCell = (raw) => (raw && typeof raw === "object" && "value" in raw ? raw.value : raw);
+
+  const hexToArgb = (hex) => {
+    if (!hex || typeof hex !== "string") return null;
+    const clean = hex.replace("#", "").toUpperCase();
+    return clean.length === 6 ? `FF${clean}` : null;
+  };
+
   const numericKeys = new Set(
     displayCols
       .filter(
         (col) =>
           data.length > 0 &&
           data.every((row) => {
-            const v = row[col.key];
+            const v = unwrapCell(row[col.key]);
             return v == null || v === "" || parseRiyalNumber(v) !== null;
           }) &&
-          data.some((row) => parseRiyalNumber(row[col.key]) !== null)
+          data.some((row) => parseRiyalNumber(unwrapCell(row[col.key])) !== null)
       )
       .map((c) => c.key)
   );
@@ -204,12 +215,12 @@ export default function ExportToolbar({
 
       const writeDataRow = (rowData) => {
         const rowValues = displayCols.map((col) => {
-          const raw = rowData[col.key];
+          const cellRaw = unwrapCell(rowData[col.key]);
           if (numericKeys.has(col.key)) {
-            const num = parseRiyalNumber(raw);
-            return num === null ? raw ?? "" : num;
+            const num = parseRiyalNumber(cellRaw);
+            return num === null ? cellRaw ?? "" : num;
           }
-          return raw ?? "";
+          return cellRaw ?? "";
         });
         const row = sheet.addRow(rowValues);
         row.eachCell((cell, colNumber) => {
@@ -223,6 +234,11 @@ export default function ExportToolbar({
           };
           const colKey = displayCols[colNumber - 1]?.key;
           if (numericKeys.has(colKey)) cell.numFmt = numFmtRiyal;
+          const rawForCell = rowData[colKey];
+          const richColor = rawForCell && typeof rawForCell === "object" ? hexToArgb(rawForCell.color) : null;
+          if (richColor) {
+            cell.font = { name: "Arial", bold: true, color: { argb: richColor } };
+          }
         });
         if (statusCol) {
           const statusIdx = displayCols.findIndex((c) => c.key === statusCol.key);
@@ -400,13 +416,42 @@ export default function ExportToolbar({
       const pxPerMM = canvas.width / usableWidth;
       const sliceHeightPx = Math.floor(usableHeight * pxPerMM);
 
+      // نحسب حدود كل صف جدول (بمقياس بكسلات الكانفس) عشان نتفادى قص أي صف
+      // نصفين بين صفحتين — القص القديم كان يعتمد على ارتفاع ثابت بدون معرفة
+      // مكان الصفوف، فيقطع أي صف يقع بالضبط عند حافة الصفحة.
+      const rootRectForRows = node.getBoundingClientRect();
+      const nodeHeightPx = node.offsetHeight || rootRectForRows.height || 1;
+      const canvasToNodeRatio = canvas.height / nodeHeightPx;
+      const rowBoundaries = Array.from(node.querySelectorAll("tr")).map((row) => {
+        const r = row.getBoundingClientRect();
+        return {
+          top: (r.top - rootRectForRows.top) * canvasToNodeRatio,
+          bottom: (r.bottom - rootRectForRows.top) * canvasToNodeRatio,
+        };
+      });
+
+      function snapCutToRowBoundary(idealCut, pageStart) {
+        for (const rb of rowBoundaries) {
+          if (idealCut > rb.top + 1 && idealCut < rb.bottom - 1 && rb.top > pageStart) {
+            return rb.top;
+          }
+        }
+        return idealCut;
+      }
+
       let renderedPx = 0;
       let pageIndex = 0;
       const MIN_TRAILING_PX = 25; // تجاهل بقايا بيضاء صغيرة تسبب صفحة شبه فارغة بالنهاية
       while (renderedPx < canvas.height) {
         const remainingPx = canvas.height - renderedPx;
         if (pageIndex > 0 && remainingPx < MIN_TRAILING_PX) break;
-        const sliceHeight = Math.min(sliceHeightPx, remainingPx);
+        let sliceHeight = Math.min(sliceHeightPx, remainingPx);
+        const idealCut = renderedPx + sliceHeight;
+        if (idealCut < canvas.height) {
+          const snapped = snapCutToRowBoundary(idealCut, renderedPx);
+          if (snapped - renderedPx > 0) sliceHeight = snapped - renderedPx;
+        }
+
         const sliceCanvas = document.createElement("canvas");
         sliceCanvas.width = canvas.width;
         sliceCanvas.height = sliceHeight;
