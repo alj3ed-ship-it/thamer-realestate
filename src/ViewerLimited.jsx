@@ -1832,6 +1832,13 @@ export default function ViewerLimited() {
                   ]}
                   filename="bookings_report"
                   title="تقرير حجوزات قاعة مذهلة"
+                  stats={[
+                    { label: "عدد الحجوزات", value: bookingsFiltered.length, color: "#1B4D7A" },
+                    { label: "إجمالي قيمة الحجوزات", value: `${bookingsFiltered.reduce((s, b) => s + Number(b.total_amount || 0), 0).toLocaleString()} ر.س`, color: "#1B4D7A" },
+                    { label: "دخل إضافي", value: `${bookingsExtraIncomeTotal.toLocaleString()} ر.س`, color: "#148F77" },
+                    { label: "الإجمالي الكلي", value: `${bookingsGrandTotal.toLocaleString()} ر.س`, color: "#B9770E" },
+                    { label: `صافي الدخل (بعد خصم ${bookingsExpensePct}%)`, value: `${Math.round(bookingsFiltered.reduce((s, b) => s + Number(b.total_amount || 0), 0) * (1 - bookingsExpensePct / 100)).toLocaleString()} ر.س`, color: "#8E44AD" },
+                  ]}
                 />
 
                 {/* إشعارات رفض من المدير — حجوزات جديدة رُفضت أو تعديلات أُرجعت */}
