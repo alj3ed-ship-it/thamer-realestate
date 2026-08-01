@@ -14,6 +14,9 @@ const DEFAULT_STAFF_RATES = { 'كاملة': 1970, 'نساء': 1020, 'رجال': 
 const DEFAULT_SUPPLIES_RATES = { 'كاملة': 450, 'نساء': 225, 'رجال': 225, 'أخرى': 0 };
 const DEFAULT_ANNUAL_SALARY = 30000;
 const DEFAULT_SALARIES_BY_YEAR = { '1446': 48000, '1447': 48000 };
+const DEFAULT_ABU_AYOUB_RATES = { 'كاملة': 200, 'نساء': 150, 'رجال': 150, 'أخرى': 0 };
+const DEFAULT_ANNUAL_ELECTRICITY = 12000;
+const DEFAULT_WATER_RATE_PER_PAIR = 250;
 const INCOME_TYPES = ['ميز', 'صوتيات', 'مطبخ القصر', 'أخرى'];
 
 const STATUS_COLORS = {
@@ -146,6 +149,39 @@ export default function Bookings() {
     setAnnualSalaries((prev) => ({ ...prev, [year]: value }));
   }
 
+  const [abuAyoubRates, setAbuAyoubRates] = useState(() => {
+    const saved = localStorage.getItem('bookings_abu_ayoub_rates');
+    try {
+      return saved ? { ...DEFAULT_ABU_AYOUB_RATES, ...JSON.parse(saved) } : DEFAULT_ABU_AYOUB_RATES;
+    } catch {
+      return DEFAULT_ABU_AYOUB_RATES;
+    }
+  });
+  const [electricityByYear, setElectricityByYear] = useState(() => {
+    const saved = localStorage.getItem('bookings_electricity_by_year');
+    try {
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [waterRatePerPair, setWaterRatePerPair] = useState(() => {
+    const saved = localStorage.getItem('bookings_water_rate_per_pair');
+    return saved ? Number(saved) : DEFAULT_WATER_RATE_PER_PAIR;
+  });
+
+  function setAbuAyoubRate(type, value) {
+    setAbuAyoubRates((prev) => ({ ...prev, [type]: value }));
+  }
+
+  function getElectricity(year) {
+    return electricityByYear[year] !== undefined ? electricityByYear[year] : DEFAULT_ANNUAL_ELECTRICITY;
+  }
+
+  function setElectricityForYear(year, value) {
+    setElectricityByYear((prev) => ({ ...prev, [year]: value }));
+  }
+
   const emptyForm = {
     event_date_hijri: '',
     event_type: 'كاملة',
@@ -187,6 +223,18 @@ export default function Bookings() {
   useEffect(() => {
     localStorage.setItem('bookings_annual_salaries', JSON.stringify(annualSalaries));
   }, [annualSalaries]);
+
+  useEffect(() => {
+    localStorage.setItem('bookings_abu_ayoub_rates', JSON.stringify(abuAyoubRates));
+  }, [abuAyoubRates]);
+
+  useEffect(() => {
+    localStorage.setItem('bookings_electricity_by_year', JSON.stringify(electricityByYear));
+  }, [electricityByYear]);
+
+  useEffect(() => {
+    localStorage.setItem('bookings_water_rate_per_pair', String(waterRatePerPair));
+  }, [waterRatePerPair]);
 
   async function loadHallAndBookings() {
     setLoading(true);
@@ -464,11 +512,12 @@ export default function Bookings() {
     approvedBookings.forEach((b) => {
       const y = getHijriYear(b.event_date_hijri);
       if (!y) return;
-      if (!map[y]) map[y] = { year: y, count: 0, revenue: 0, staffCost: 0, suppliesCost: 0 };
+      if (!map[y]) map[y] = { year: y, count: 0, revenue: 0, staffCost: 0, suppliesCost: 0, abuAyoubCost: 0 };
       map[y].count += 1;
       map[y].revenue += Number(b.total_amount || 0);
       map[y].staffCost += staffRates[b.event_type] || 0;
       map[y].suppliesCost += suppliesRates[b.event_type] || 0;
+      map[y].abuAyoubCost += abuAyoubRates[b.event_type] || 0;
     });
     const extraByYear = {};
     extraIncome.forEach((e) => {
@@ -480,14 +529,16 @@ export default function Bookings() {
       .sort((a, b) => a.year.localeCompare(b.year))
       .map((row) => {
         const salary = getAnnualSalary(row.year);
+        const electricity = getElectricity(row.year);
+        const water = Math.ceil(row.count / 2) * waterRatePerPair;
         const extra = extraByYear[row.year] || 0;
-        const expenses = row.staffCost + row.suppliesCost + salary;
+        const expenses = row.staffCost + row.suppliesCost + row.abuAyoubCost + salary + electricity + water;
         return {
           ...row,
           net: Math.round(row.revenue + extra - expenses),
         };
       });
-  }, [approvedBookings, extraIncome, staffRates, suppliesRates, annualSalaries]);
+  }, [approvedBookings, extraIncome, staffRates, suppliesRates, abuAyoubRates, annualSalaries, electricityByYear, waterRatePerPair]);
 
   const filteredBookings = approvedBookings.filter((b) => {
     const yearMatch = selectedYear === 'all' || getHijriYear(b.event_date_hijri) === selectedYear;
@@ -507,9 +558,12 @@ export default function Bookings() {
 
   const totalStaffCost = filteredBookings.reduce((sum, b) => sum + (staffRates[b.event_type] || 0), 0);
   const totalSuppliesCost = filteredBookings.reduce((sum, b) => sum + (suppliesRates[b.event_type] || 0), 0);
+  const totalAbuAyoubCost = filteredBookings.reduce((sum, b) => sum + (abuAyoubRates[b.event_type] || 0), 0);
   const relevantYearsForSalary = selectedYear === 'all' ? availableYears : [selectedYear];
   const totalSalaryCost = relevantYearsForSalary.reduce((sum, y) => sum + getAnnualSalary(y), 0);
-  const totalExpenses = totalStaffCost + totalSuppliesCost + totalSalaryCost;
+  const totalElectricityCost = relevantYearsForSalary.reduce((sum, y) => sum + getElectricity(y), 0);
+  const totalWaterCost = Math.ceil(filteredBookings.length / 2) * waterRatePerPair;
+  const totalExpenses = totalStaffCost + totalSuppliesCost + totalAbuAyoubCost + totalSalaryCost + totalElectricityCost + totalWaterCost;
 
   const totalExtraIncome = filteredExtraIncome.reduce((sum, e) => sum + Number(e.amount || 0), 0);
   const grandTotal = totalRevenue + totalExtraIncome;
@@ -625,7 +679,10 @@ export default function Bookings() {
           { label: 'الإجمالي الكلي', value: `${grandTotal.toLocaleString()} ر.س`, color: '#B9770E' },
           { label: 'مباشرين/مباشرات', value: `${totalStaffCost.toLocaleString()} ر.س`, color: '#8E44AD' },
           { label: 'قهوة وشاهي ومنظفات', value: `${totalSuppliesCost.toLocaleString()} ر.س`, color: '#B9770E' },
+          { label: 'عمولة أبو أيوب', value: `${totalAbuAyoubCost.toLocaleString()} ر.س`, color: '#6C3483' },
           { label: 'الراتب السنوي', value: `${totalSalaryCost.toLocaleString()} ر.س`, color: '#7f8c8d' },
+          { label: 'الكهرباء السنوية', value: `${totalElectricityCost.toLocaleString()} ر.س`, color: '#B7950B' },
+          { label: 'الماء', value: `${totalWaterCost.toLocaleString()} ر.س`, color: '#2E86C1' },
           { label: 'إجمالي المصاريف', value: `${totalExpenses.toLocaleString()} ر.س`, color: '#D35400' },
           { label: 'صافي الدخل', value: `${totalNet.toLocaleString()} ر.س`, color: '#27ae60' },
         ]}
@@ -707,27 +764,60 @@ export default function Bookings() {
                   style={{ width: '70px', padding: '4px 6px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
                 />
               </div>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', color: '#888', whiteSpace: 'nowrap' }}>عمولة أبو أيوب</span>
+                <input
+                  type="number"
+                  value={abuAyoubRates[t] ?? 0}
+                  onChange={(e) => setAbuAyoubRate(t, Number(e.target.value) || 0)}
+                  style={{ width: '70px', padding: '4px 6px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
+                />
+              </div>
             </div>
           ))}
         </div>
         <div style={{ borderTop: '1px solid #eee', paddingTop: '12px' }}>
           {selectedYear === 'all' ? (
             <span style={{ fontSize: '13px', color: '#888' }}>
-              اختر سنة معينة من الأعلى لتعديل راتبها السنوي (الافتراضي: {DEFAULT_ANNUAL_SALARY.toLocaleString()} ر.س)
+              اختر سنة معينة من الأعلى لتعديل راتبها السنوي وكهرباءها (الافتراضي: راتب {DEFAULT_ANNUAL_SALARY.toLocaleString()} ر.س، كهرباء {DEFAULT_ANNUAL_ELECTRICITY.toLocaleString()} ر.س)
             </span>
           ) : (
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <label style={{ fontSize: '13px', color: '#555', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-                الراتب السنوي {selectedYear} هـ (ر.س)
-              </label>
-              <input
-                type="number"
-                value={getAnnualSalary(selectedYear)}
-                onChange={(e) => setAnnualSalaryForYear(selectedYear, Number(e.target.value) || 0)}
-                style={{ width: '100px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
-              />
+            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <label style={{ fontSize: '13px', color: '#555', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                  الراتب السنوي {selectedYear} هـ (ر.س)
+                </label>
+                <input
+                  type="number"
+                  value={getAnnualSalary(selectedYear)}
+                  onChange={(e) => setAnnualSalaryForYear(selectedYear, Number(e.target.value) || 0)}
+                  style={{ width: '100px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <label style={{ fontSize: '13px', color: '#555', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                  الكهرباء السنوية {selectedYear} هـ (ر.س)
+                </label>
+                <input
+                  type="number"
+                  value={getElectricity(selectedYear)}
+                  onChange={(e) => setElectricityForYear(selectedYear, Number(e.target.value) || 0)}
+                  style={{ width: '100px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
+                />
+              </div>
             </div>
           )}
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '12px' }}>
+            <label style={{ fontSize: '13px', color: '#555', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+              الماء (ر.س لكل حفلتين)
+            </label>
+            <input
+              type="number"
+              value={waterRatePerPair}
+              onChange={(e) => setWaterRatePerPair(Number(e.target.value) || 0)}
+              style={{ width: '100px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
+            />
+          </div>
         </div>
       </div>
 
