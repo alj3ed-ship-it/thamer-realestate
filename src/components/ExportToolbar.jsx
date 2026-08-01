@@ -151,6 +151,16 @@ export default function ExportToolbar({
         #export-print-area table {
           width: 100% !important;
           table-layout: fixed !important;
+          border-collapse: collapse !important;
+        }
+        #export-print-area tr,
+        #export-print-area td,
+        #export-print-area th {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+        #export-print-area thead {
+          display: table-header-group !important;
         }
         @page { size: landscape; margin: 8mm; }
       }
