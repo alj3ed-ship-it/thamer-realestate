@@ -661,7 +661,7 @@ export default function Bookings() {
       )}
 
       <ExportToolbar
-        title="حجوزات قاعة مذهلة"
+        title={`حجوزات قاعة مذهلة${selectedYear !== 'all' ? ' - سنة ' + selectedYear + ' هـ' : ' - كل السنين'}${selectedType !== 'all' ? ' - ' + selectedType : ''}`}
         data={filteredBookings.map((b) => ({ ...b, event_date_hijri: formatHijriDisplay(b.event_date_hijri) }))}
         columns={[
           { key: 'event_date_hijri', label: 'التاريخ الهجري' },
