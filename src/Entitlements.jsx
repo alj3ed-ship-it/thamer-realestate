@@ -175,7 +175,7 @@ export default function Entitlements() {
     setLoading(true);
     const { data: propsData } = await supabase.from("properties").select("id, name, priority").order("priority");
     const { data: paymentsData } = await supabase.from("payments").select(`
-      id, lease_id, amount_due, amount_paid, payment_date_hijri, installment_number, total_installments,
+      id, lease_id, amount_due, amount_paid, payment_date_hijri, payment_date, installment_number, total_installments,
     leases (
       id, property_id, start_date_hijri, tax_enabled, tax_effective_hijri,
         properties ( name, priority ),
@@ -293,7 +293,8 @@ export default function Entitlements() {
       const taxApplies = isTaxApplicable(lease, dueDateHijri);
       const taxAmount = taxApplies ? Math.round(Number(row.amount_due || 0) * TAX_RATE) : 0;
 
-      const paymentDateHijri = row.payment_date_hijri || null;
+      // إذا الحقل الهجري فاضي، نحوّل التاريخ الميلادي المخزَّن (payment_date) إلى هجري تلقائياً
+      const paymentDateHijri = row.payment_date_hijri || gregorianToHijri(row.payment_date) || null;
 
       found.push({
         tenant: lease.tenants?.name || "",
