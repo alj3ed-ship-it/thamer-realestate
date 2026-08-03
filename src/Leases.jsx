@@ -258,6 +258,7 @@ export default function Leases({ onBack }) {
   const [filterProperty, setFilterProperty] = useState("الكل");
   const [filterTenants, setFilterTenants] = useState([]);
   const [filterUnitType, setFilterUnitType] = useState("");
+  const [totalsMode, setTotalsMode] = useState("net"); // 'net' = صافي بدون ضريبة | 'gross' = شامل الضريبة
   const [showTenantDropdown, setShowTenantDropdown] = useState(false);
   const [tenantSearchText, setTenantSearchText] = useState("");
   const tenantBoxRef = useRef(null);
@@ -371,6 +372,13 @@ export default function Leases({ onBack }) {
     return getLeaseUnitObjs(leaseId).map(u => u.unit_number + " " + u.unit_type).join(" + ") || "—";
   }
 
+  function getUnitTypeColors(unitType) {
+    const t = (unitType || "").trim();
+    if (t === "محل") return { border: "#AED6F1", background: "#EBF5FB", color: "#2E86C1" };
+    if (t === "شقة") return { border: "#D2B4DE", background: "#F4ECF7", color: "#8E44AD" };
+    return { border: "#F5CBA7", background: "#FEF5E7", color: "#D68910" };
+  }
+
   function unitsCell(leaseId) {
     const objs = getLeaseUnitObjs(leaseId);
     if (objs.length === 0) return "—";
@@ -378,6 +386,7 @@ export default function Leases({ onBack }) {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
         {objs.map(u => {
           const excluded = isUnitExcluded(leaseId, u.id);
+          const colors = getUnitTypeColors(u.unit_type);
           return (
             <button
               key={u.id}
@@ -385,9 +394,9 @@ export default function Leases({ onBack }) {
               onClick={() => { if (!isReadOnly) toggleUnitExclusion(leaseId, u.id); }}
               title={excluded ? "مستثناة من فرز النوع — اضغط لإرجاعها" : "اضغط لاستثنائها من فرز النوع"}
               style={{
-                border: excluded ? "1px dashed #9ca3af" : "1px solid #ddd6fe",
-                background: excluded ? "#f3f4f6" : "#efe9fe",
-                color: excluded ? "#9ca3af" : "#7c3aed",
+                border: excluded ? "1px dashed #9ca3af" : `1px solid ${colors.border}`,
+                background: excluded ? "#f3f4f6" : colors.background,
+                color: excluded ? "#9ca3af" : colors.color,
                 padding: "2px 8px", borderRadius: 10, fontSize: 12, fontWeight: 700,
                 cursor: "pointer", whiteSpace: "nowrap",
                 textDecoration: excluded ? "line-through" : "none",
@@ -682,7 +691,17 @@ export default function Leases({ onBack }) {
     return amt;
   }
 
-  const totalAmount = filteredLeases.reduce((sum, l) => sum + getNetRentAmount(l), 0);
+  // الإجمالي الشامل للضريبة: للعقود الشاملة أصلاً = نفس المبلغ، وللعقود غير الشاملة (الضريبة تُضاف فوق) = المبلغ + 15%
+  function getGrossRentAmount(lease) {
+    const amt = Number(lease.rent_amount || 0);
+    if (!lease.tax_enabled) return amt;
+    if (lease.amount_includes_vat) return amt;
+    return Math.round(amt * 1.15);
+  }
+
+  const totalAmountNet = filteredLeases.reduce((sum, l) => sum + getNetRentAmount(l), 0);
+  const totalAmountGross = filteredLeases.reduce((sum, l) => sum + getGrossRentAmount(l), 0);
+  const totalAmount = totalsMode === "gross" ? totalAmountGross : totalAmountNet;
 
   const total = getTotal();
 
@@ -706,7 +725,11 @@ export default function Leases({ onBack }) {
 
   const exportStats = [
     { label: "عدد العقود", value: filteredLeases.length, color: "#1B4D7A" },
-    { label: "الإجمالي (صافي بدون ضريبة)", value: `${totalAmount.toLocaleString()} ريال`, color: "#1d4ed8" },
+    {
+      label: totalsMode === "gross" ? "الإجمالي (شامل الضريبة)" : "الإجمالي (صافي بدون ضريبة)",
+      value: `${totalAmount.toLocaleString()} ريال`,
+      color: "#1d4ed8"
+    },
   ];
 
   return (
@@ -802,9 +825,35 @@ export default function Leases({ onBack }) {
           <span style={{ color: "#374151", fontSize: 14 }}>
             عدد العقود الظاهرة: <strong>{filteredLeases.length}</strong>
           </span>
-          <span style={{ color: "#1d4ed8", fontWeight: 700, fontSize: 18 }}>
-            الإجمالي (صافي بدون ضريبة): {totalAmount.toLocaleString()} ريال
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid #bfdbfe" }}>
+              <button
+                type="button"
+                onClick={() => setTotalsMode("net")}
+                style={{
+                  padding: "5px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none",
+                  background: totalsMode === "net" ? "#1d4ed8" : "#fff",
+                  color: totalsMode === "net" ? "#fff" : "#1d4ed8",
+                  fontFamily: "Cairo, sans-serif"
+                }}>
+                صافي
+              </button>
+              <button
+                type="button"
+                onClick={() => setTotalsMode("gross")}
+                style={{
+                  padding: "5px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none",
+                  background: totalsMode === "gross" ? "#8e44ad" : "#fff",
+                  color: totalsMode === "gross" ? "#fff" : "#8e44ad",
+                  fontFamily: "Cairo, sans-serif"
+                }}>
+                شامل الضريبة
+              </button>
+            </div>
+            <span style={{ color: totalsMode === "gross" ? "#8e44ad" : "#1d4ed8", fontWeight: 700, fontSize: 18 }}>
+              الإجمالي ({totalsMode === "gross" ? "شامل الضريبة" : "صافي بدون ضريبة"}): {totalAmount.toLocaleString()} ريال
+            </span>
+          </div>
         </div>
       )}
 
