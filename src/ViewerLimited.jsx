@@ -556,6 +556,13 @@ export default function ViewerLimited() {
     return true;
   });
 
+  function getEffectivePaymentSortKey(p) {
+    if (p.payment_date_hijri) return hijriSortKey(p.payment_date_hijri);
+    const hijri = computeInstallmentHijri(p.leases?.start_date_hijri, p.total_installments, p.installment_number);
+    if (!hijri) return 99999999;
+    return hijri.year * 10000 + hijri.month * 100 + hijri.day;
+  }
+
   const filteredPaymentsList = allowedPayments
     .filter((p) => {
       if (paymentsSelectedProperties.length > 0 && !paymentsSelectedProperties.includes(p.leases?.property_id)) return false;
@@ -567,7 +574,7 @@ export default function ViewerLimited() {
       return true;
     })
     .slice()
-    .sort((a, b) => hijriSortKey(a.payment_date_hijri) - hijriSortKey(b.payment_date_hijri));
+    .sort((a, b) => getEffectivePaymentSortKey(a) - getEffectivePaymentSortKey(b));
 
   // status الآن: "paid" | "partial" | "overdue" (متأخر) | "not_due" (غير مستحق بعد) — نفس منطق Entitlements.jsx
   function computeStatus(row, hijri) {
@@ -618,11 +625,14 @@ export default function ViewerLimited() {
       const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
       base = (
         <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: "#9ca3af" }}>مدفوع </span>
           <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
           <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
-          <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
+          <span style={{ fontSize: 10, fontWeight: 600, color: "#9ca3af" }}>متبقي </span>
+          <span style={{ color: "#d4ac0d", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
           <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
-          <span style={{ color: "#1B4D7A", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
+          <span style={{ fontSize: 10, fontWeight: 600, color: "#9ca3af" }}>الإجمالي </span>
+          <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
         </div>
       );
     } else if (r.status === "paid") {
