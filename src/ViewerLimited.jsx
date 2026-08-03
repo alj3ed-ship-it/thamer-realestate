@@ -16,6 +16,15 @@ const RECEIVER_FINAL_OPTIONS = ["مستلم", "الوالد", "لم يستلم"]
 const REMAINING_STATUS_OPTIONS = ["مستلم", "جزئي", "غير مستلم"];
 
 const UNIT_TYPE_ORDER = { "محل": 1, "شقة": 2, "ورشة": 3 };
+const TAX_RATE = 0.15;
+
+const ENT_STATUS_FILTERS = [
+  { key: "all", label: "الكل" },
+  { key: "paid", label: "مدفوع" },
+  { key: "overdue", label: "متأخر" },
+  { key: "partial", label: "جزئي" },
+  { key: "not_due", label: "غير مستحق بعد" },
+];
 
 const HIJRI_MONTHS = [
   "محرم", "صفر", "ربيع الأول", "ربيع الآخر",
@@ -148,6 +157,27 @@ function hijriToGregorian(hy, hm, hd) {
     const year = 100 * (n - 49) + i + l;
     return new Date(year, month - 1, day);
   } catch { return null; }
+}
+
+// تحويل ميلادي إلى هجري (عكس hijriToGregorian) لعرض تاريخ الدفع المخزَّن كتاريخ ميلادي
+function gregorianToHijri(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate();
+  let jd = Math.floor((1461 * (y + 4800 + Math.floor((m - 14) / 12))) / 4) +
+    Math.floor((367 * (m - 2 - 12 * Math.floor((m - 14) / 12))) / 12) -
+    Math.floor((3 * Math.floor((y + 4900 + Math.floor((m - 14) / 12)) / 100)) / 4) +
+    day - 32075;
+  const l = jd - 1948440 + 10632;
+  const n = Math.floor((l - 1) / 10631);
+  const ll = l - 10631 * n + 354;
+  const j = Math.floor((10985 - ll) / 5316) * Math.floor((50 * ll) / 17719) + Math.floor(ll / 5670) * Math.floor((43 * ll) / 15238);
+  const ll2 = ll - Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) - Math.floor(j / 16) * Math.floor((15238 * j) / 43) + 29;
+  const hm = Math.floor((24 * ll2) / 709);
+  const hd = ll2 - Math.floor((709 * hm) / 24);
+  const hy = 30 * n + j - 30;
+  return `${hy}/${String(hm).padStart(2, "0")}/${String(hd).padStart(2, "0")}`;
 }
 
 function unitTypeBadge(unitType, unitNumber) {
@@ -320,7 +350,7 @@ export default function ViewerLimited() {
       id, lease_id, amount_due, amount_paid, installment_number, total_installments,
       payment_date, payment_date_hijri, payment_method, notes,
       leases (
-        id, property_id, start_date_hijri,
+        id, property_id, start_date_hijri, tax_enabled, tax_effective_hijri,
         properties ( name, priority ),
         tenants ( name, note ),
         lease_units ( units ( unit_number, unit_type ) )
@@ -567,6 +597,14 @@ export default function ViewerLimited() {
     return "متأخر";
   }
 
+  // هل الضريبة تسري على هذه الدفعة، حسب إعداد العقد وتاريخ استحقاق الدفعة
+  function isTaxApplicable(lease, dueDateHijri) {
+    if (!lease?.tax_enabled) return false;
+    if (!dueDateHijri || dueDateHijri === "—") return false;
+    if (!lease.tax_effective_hijri) return true;
+    return hijriSortKey(dueDateHijri) >= hijriSortKey(lease.tax_effective_hijri);
+  }
+
   function statusBadge(status) {
     if (status === "paid") return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
     if (status === "partial") return <span style={{ background: "#FEF9E7", color: "#f39c12", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>جزئي ⚠</span>;
@@ -575,26 +613,36 @@ export default function ViewerLimited() {
   }
 
   function amountDisplay(r) {
-  if (r.status === "partial") {
-    const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
+    let base;
+    if (r.status === "partial") {
+      const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
+      base = (
+        <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
+          <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
+          <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+          <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
+          <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
+          <span style={{ color: "#1B4D7A", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
+        </div>
+      );
+    } else if (r.status === "paid") {
+      base = <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+    } else if (r.status === "not_due") {
+      base = <span style={{ color: "#7f8c8d", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+    } else {
+      base = <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
+    }
     return (
-      <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
-        <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
-        <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
-        <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
-        <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
-        <span style={{ color: "#1B4D7A", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
+      <div>
+        {base}
+        {r.taxApplies && (
+          <div style={{ fontSize: 11, color: "#8e44ad", marginTop: 2, fontWeight: "bold" }}>
+            + ضريبة 15%: {r.taxAmount.toLocaleString()} = {(r.amount + r.taxAmount).toLocaleString()} ريال
+          </div>
+        )}
       </div>
     );
   }
-  if (r.status === "paid") {
-    return <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
-  }
-  if (r.status === "not_due") {
-    return <span style={{ color: "#7f8c8d", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
-  }
-  return <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>;
-}
 
   const entUniqueTenants = useMemo(() => {
     const names = new Set();
@@ -628,6 +676,15 @@ export default function ViewerLimited() {
       const unitsList = lease.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
       if (entSelectedUnitType && !unitsList.some((u) => (u.unit_type || "").trim() === entSelectedUnitType)) continue;
       const status = computeStatus(row, hijri);
+      const dueDateHijri = hijri
+        ? `${hijri.year}/${String(hijri.month).padStart(2, "0")}/${String(hijri.day).padStart(2, "0")}`
+        : "—";
+
+      const taxApplies = isTaxApplicable(lease, dueDateHijri);
+      const taxAmount = taxApplies ? Math.round(Number(row.amount_due || 0) * TAX_RATE) : 0;
+
+      // إذا الحقل الهجري فاضي، نحوّل التاريخ الميلادي المخزَّن (payment_date) إلى هجري تلقائياً
+      const paymentDateHijri = row.payment_date_hijri || gregorianToHijri(row.payment_date) || null;
 
       found.push({
         tenant: lease.tenants?.name || "",
@@ -640,6 +697,10 @@ export default function ViewerLimited() {
         paidAmount: Number(row.amount_paid || 0),
         status,
         statusLabel: statusToArabic(status),
+        dueDateHijri,
+        paymentDateHijri,
+        taxApplies,
+        taxAmount,
       });
     }
 
@@ -652,36 +713,48 @@ export default function ViewerLimited() {
   const entStatusCounts = useMemo(() => {
     const counts = { all: entResults.length, paid: 0, overdue: 0, partial: 0, not_due: 0 };
     entResults.forEach((r) => { counts[r.status] = (counts[r.status] || 0) + 1; });
-    counts.overdue_partial = counts.overdue + counts.partial;
     return counts;
   }, [entResults]);
 
-  // النتائج بعد تطبيق فلتر الحالة (تبويبات: الكل/مدفوع/متأخر+جزئي/غير مستحق بعد)
+  // النتائج بعد تطبيق فلتر الحالة (تبويبات منفصلة: الكل/مدفوع/متأخر/جزئي/غير مستحق بعد)
   const entResultsFiltered = entStatusFilter === "all"
     ? entResults
-    : entStatusFilter === "overdue_partial"
-      ? entResults.filter((r) => r.status === "overdue" || r.status === "partial")
-      : entResults.filter((r) => r.status === entStatusFilter);
+    : entResults.filter((r) => r.status === entStatusFilter);
 
   const totalAmount = entResultsFiltered.reduce((s, r) => s + (r.amount || 0), 0);
   const totalCollected = entResultsFiltered.reduce((s, r) => s + (r.paidAmount || 0), 0);
   const totalRemaining = Math.max(totalAmount - totalCollected, 0);
+  const totalTax = entResultsFiltered.reduce((s, r) => s + (r.taxAmount || 0), 0);
+  const totalWithTax = totalAmount + totalTax;
 
-  const entExportData = entResultsFiltered.map(r => ({
-    property: r.property || "—",
-    tenant: r.tenant || "—",
-    activity: r.activity || "—",
-    unit: r.unit || "—",
-    amount: r.status === "partial"
-      ? `${r.amount.toLocaleString()} / ${r.paidAmount.toLocaleString()} / ${Math.max(r.amount - r.paidAmount, 0).toLocaleString()}`
-      : `${r.amount.toLocaleString()} ر.س`,
-    status: r.statusLabel,
-  }));
+  const entExportData = entResultsFiltered.map(r => {
+    const amountColor = r.status === "paid" ? "#27ae60" : r.status === "not_due" ? "#7f8c8d" : "#e74c3c";
+    return {
+      property: r.property || "—",
+      tenant: r.tenant || "—",
+      activity: r.activity || "—",
+      unit: r.unit || "—",
+      dueDateHijri: {
+        value: `${r.dueDateHijri} هـ`,
+        color: "#e74c3c",
+        subtext: r.paymentDateHijri ? `✓ ${r.paymentDateHijri} هـ` : null,
+        subtextColor: "#27ae60",
+      },
+      amount: r.status === "partial"
+        ? `${r.amount.toLocaleString()} / ${r.paidAmount.toLocaleString()} / ${Math.max(r.amount - r.paidAmount, 0).toLocaleString()}`
+        : { value: `${r.amount.toLocaleString()} ر.س`, color: amountColor },
+      taxLabel: r.taxApplies ? `${r.taxAmount.toLocaleString()} ريال` : "—",
+      totalWithTax: r.taxApplies ? `${(r.amount + r.taxAmount).toLocaleString()} ريال` : `${r.amount.toLocaleString()} ريال`,
+      status: r.statusLabel,
+    };
+  });
 
   const entExportStats = [
     { label: "إجمالي المحصّل", value: `${totalCollected.toLocaleString()} ريال`, color: "#27ae60" },
     { label: "إجمالي المتبقي", value: `${totalRemaining.toLocaleString()} ريال`, color: "#e74c3c" },
     { label: "إجمالي المستحق", value: `${totalAmount.toLocaleString()} ريال`, color: "#1B4D7A" },
+    { label: "إجمالي الضريبة", value: `${totalTax.toLocaleString()} ريال`, color: "#8e44ad" },
+    { label: "الإجمالي شامل الضريبة", value: `${totalWithTax.toLocaleString()} ريال`, color: "#1B4D7A" },
   ];
 
   const paymentsTotalAmount = filteredPaymentsList.reduce((s, p) => s + Number(p.amount_due || 0), 0);
@@ -1587,37 +1660,44 @@ export default function ViewerLimited() {
                 {entSearched && entResults.length > 0 && (
                   <div id="entitlements-table">
                     {/* تبويبات فلتر الحالة: الكل / مدفوع / متأخر / جزئي / غير مستحق بعد */}
-                    <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
-                      <button onClick={() => setEntStatusFilter("all")} style={{
-                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "all" ? "none" : "1px solid #ddd",
-                        background: entStatusFilter === "all" ? "#1B4D7A" : "#fff", color: entStatusFilter === "all" ? "#fff" : "#555",
-                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
-                      }}>الكل ({entStatusCounts.all})</button>
-                      <button onClick={() => setEntStatusFilter("paid")} style={{
-                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "paid" ? "none" : "1px solid #ddd",
-                        background: entStatusFilter === "paid" ? "#27ae60" : "#fff", color: entStatusFilter === "paid" ? "#fff" : "#27ae60",
-                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
-                      }}>مدفوع ({entStatusCounts.paid})</button>
-                      <button onClick={() => setEntStatusFilter("overdue_partial")} style={{
-                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "overdue_partial" ? "none" : "1px solid #ddd",
-                        background: entStatusFilter === "overdue_partial" ? "#e74c3c" : "#fff", color: entStatusFilter === "overdue_partial" ? "#fff" : "#e74c3c",
-                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
-                      }}>متأخر وجزئي ({entStatusCounts.overdue_partial})</button>
-                      <button onClick={() => setEntStatusFilter("not_due")} style={{
-                        padding: "8px 20px", borderRadius: "20px", border: entStatusFilter === "not_due" ? "none" : "1px solid #ddd",
-                        background: entStatusFilter === "not_due" ? "#7f8c8d" : "#fff", color: entStatusFilter === "not_due" ? "#fff" : "#7f8c8d",
-                        fontWeight: "bold", fontSize: "14px", cursor: "pointer", fontFamily: "Tahoma, Arial, sans-serif",
-                      }}>غير مستحق بعد ({entStatusCounts.not_due})</button>
+                    <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
+                      {ENT_STATUS_FILTERS.map((f) => {
+                        const active = entStatusFilter === f.key;
+                        return (
+                          <button
+                            key={f.key}
+                            type="button"
+                            onClick={() => setEntStatusFilter(f.key)}
+                            style={{
+                              padding: "8px 18px",
+                              borderRadius: "20px",
+                              border: active ? "2px solid #1B4D7A" : "1px solid #ddd",
+                              background: active ? "#1B4D7A" : "#fff",
+                              color: active ? "#fff" : "#333",
+                              fontSize: "13px",
+                              fontWeight: "bold",
+                              fontFamily: "Tahoma, Arial, sans-serif",
+                              cursor: "pointer",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            {f.label} ({entStatusCounts[f.key] ?? 0})
+                          </button>
+                        );
+                      })}
                     </div>
 
                     <ExportToolbar
                       data={entExportData}
                       columns={[
-                        { key: "property", label: "العقار" },
+                        { key: "property", label: "العقار", group: true },
                         { key: "tenant", label: "المستأجر" },
                         { key: "activity", label: "النشاط" },
                         { key: "unit", label: "الوحدة" },
+                        { key: "dueDateHijri", label: "تاريخ الاستحقاق" },
                         { key: "amount", label: "المبلغ" },
+                        { key: "taxLabel", label: "الضريبة" },
+                        { key: "totalWithTax", label: "الإجمالي شامل الضريبة" },
                         { key: "status", label: "الحالة" },
                       ]}
                       filename="entitlements_report"
@@ -1638,6 +1718,12 @@ export default function ViewerLimited() {
                         <div style={{ fontSize: "13px", color: "#555" }}>إجمالي المستحق</div>
                         <div style={{ fontWeight: "bold", color: "#1B4D7A", fontSize: "18px" }}>{totalAmount.toLocaleString()} ريال</div>
                       </div>
+                      {totalTax > 0 && (
+                        <div style={{ flex: 1, minWidth: "150px", background: "#F4ECF7", border: "1px solid #E1C6ED", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                          <div style={{ fontSize: "13px", color: "#555" }}>إجمالي الضريبة</div>
+                          <div style={{ fontWeight: "bold", color: "#8e44ad", fontSize: "18px" }}>{totalTax.toLocaleString()} ريال</div>
+                        </div>
+                      )}
                     </div>
 
                     <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
@@ -1647,13 +1733,14 @@ export default function ViewerLimited() {
                           <th style={{ padding: "12px" }}>المستأجر</th>
                           <th style={{ padding: "12px" }}>النشاط</th>
                           <th style={{ padding: "12px" }}>الوحدة</th>
+                          <th style={{ padding: "12px" }}>تاريخ الاستحقاق</th>
                           <th style={{ padding: "12px" }}>المبلغ</th>
                           <th style={{ padding: "12px" }}>الحالة</th>
                         </tr>
                       </thead>
                       <tbody>
                         {entResultsFiltered.length === 0 ? (
-                          <tr><td colSpan="6" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج لهذه الحالة</td></tr>
+                          <tr><td colSpan="7" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد نتائج لهذه الحالة</td></tr>
                         ) : entResultsFiltered.map((r, i) => (
                           <tr key={i} style={{ borderBottom: "1px solid #e0e7ef", textAlign: "center" }}>
                             <td style={{ padding: "12px" }}>{propertyBadge(r.property)}</td>
@@ -1663,6 +1750,12 @@ export default function ViewerLimited() {
                               <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", justifyContent: "center" }}>
                                 {r.units.length === 0 ? "—" : r.units.map((u, i) => <span key={i}>{unitTypeBadge(u.unit_type, u.unit_number)}</span>)}
                               </div>
+                            </td>
+                            <td style={{ padding: "12px", fontSize: 13 }}>
+                              <div style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.dueDateHijri} هـ</div>
+                              {r.paymentDateHijri && (
+                                <div style={{ color: "#27ae60", fontWeight: "bold", marginTop: 3 }}>✓ {r.paymentDateHijri} هـ</div>
+                              )}
                             </td>
                             <td style={{ padding: "12px" }}>{amountDisplay(r)}</td>
                             <td style={{ padding: "12px" }}>{statusBadge(r.status)}</td>
