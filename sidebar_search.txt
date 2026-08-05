@@ -1,0 +1,101 @@
+﻿
+  src\App.jsx:5:import Leases from "./Leases";
+  src\App.jsx:6:import Payments from "./Payments";
+  src\App.jsx:7:import Reports from "./Reports";
+  src\App.jsx:8:import Defaulters from "./Defaulters";
+  src\App.jsx:9:import Projects from "./Projects";
+> src\App.jsx:10:import Bookings from "./Bookings";
+  src\App.jsx:11:import Login from "./Login";
+  src\App.jsx:12:import ViewerLayout from "./ViewerLayout";
+  src\App.jsx:13:import { ReadOnlyProvider } from "./ReadOnlyContext";
+  src\App.jsx:14:import ViewerLimited from "./ViewerLimited";
+  src\App.jsx:15:import PropertyDetail from "./PropertyDetail";
+  src\App.jsx:16:import Units from "./Units";
+  src\App.jsx:17:import Entitlements from "./Entitlements";
+> src\App.jsx:18:import Letters from "./Letters";
+  src\App.jsx:19:import VatReturns from "./VatReturns";
+  src\App.jsx:20:import DashboardCharts from "./components/DashboardCharts";
+  src\App.jsx:21:
+  src\App.jsx:22:const T = {
+  src\App.jsx:23:  dashboard: "لوحة التحكم",
+  src\App.jsx:28:  reports: "التقارير",
+  src\App.jsx:29:  defaulters: "المتعثرون",
+  src\App.jsx:30:  units: "الوحدات",
+  src\App.jsx:31:  entitlements: "الاستحقاقات",
+  src\App.jsx:32:  projects: "المشاريع",
+> src\App.jsx:33:  bookings: "قاعة مذهلة",
+> src\App.jsx:34:  letters: "الخطابات",
+  src\App.jsx:35:  vatReturns: "الإقرارات الضريبية",
+  src\App.jsx:36:  logout: "خروج",
+  src\App.jsx:37:};
+  src\App.jsx:38:
+  src\App.jsx:39:const NAV_ITEMS = [
+  src\App.jsx:46:  { key: "entitlements", label: T.entitlements, icon: "📅" },
+  src\App.jsx:47:  { key: "vatReturns", label: T.vatReturns, icon: "🧾" },
+  src\App.jsx:48:  { key: "reports", label: T.reports, icon: "📊" },
+  src\App.jsx:49:  { key: "defaulters", label: T.defaulters, icon: "⚠️" },
+  src\App.jsx:50:  { key: "projects", label: T.projects, icon: "🛠️" },
+> src\App.jsx:51:  { key: "bookings", label: T.bookings, icon: "🎉" },
+> src\App.jsx:52:  { key: "letters", label: T.letters, icon: "✉️" },
+  src\App.jsx:53:];
+  src\App.jsx:54:
+  src\App.jsx:55:export default function App() {
+  src\App.jsx:56:  const [role, setRole] = useState(null);
+  src\App.jsx:57:  const [checkingSession, setCheckingSession] = useState(true);
+  src\App.jsx:156:      <div className="print-sidebar" style={{ width: "220px", 
+flexShrink: 0, background: "#1B4D7A", display: "flex", flexDirection: "column", 
+padding: "24px 0" }}>
+  src\App.jsx:157:        <div style={{ padding: "0 20px 24px", borderBottom: "1px 
+solid #2E6394" }}>
+  src\App.jsx:158:          <img src="/logo_v6_wide.svg" alt="logo" style={{ width: 
+"100%" }} />
+  src\App.jsx:159:        </div>
+  src\App.jsx:160:        <nav style={{ flex: 1, padding: "16px 0" }}>
+> src\App.jsx:161:          {NAV_ITEMS.filter(item => !(role === "viewer" && item.key 
+=== "letters")).map(item => (
+  src\App.jsx:162:            <button key={item.key} onClick={() => { 
+setActivePage(item.key); setSelectedPropertyId(null); }} style={{
+  src\App.jsx:163:              display: "block", width: "100%", padding: "12px 20px", 
+textAlign: "right",
+  src\App.jsx:164:              background: activePage === item.key ? "#2E6394" : 
+"transparent",
+  src\App.jsx:165:              color: item.key === "defaulters" ? "#fca5a5" : "#fff",
+  src\App.jsx:166:              border: "none", fontSize: "15px", cursor: "pointer",
+  src\App.jsx:201:            </div>
+  src\App.jsx:202:                   <DashboardCharts />
+  src\App.jsx:203:          </div>
+  src\App.jsx:204:        )}
+  src\App.jsx:205:        {activePage === "projects" && <Projects onBack={goBack} />}
+> src\App.jsx:206:        {activePage === "bookings" && <Bookings onBack={goBack} />}
+  src\App.jsx:207:        {activePage === "properties" && !selectedPropertyId && (
+  src\App.jsx:208:          <Properties onBack={goBack} onSelectProperty={(id) => 
+setSelectedPropertyId(id)} />
+  src\App.jsx:209:        )}
+  src\App.jsx:210:        {activePage === "properties" && selectedPropertyId && (
+  src\App.jsx:211:          <PropertyDetail propertyId={selectedPropertyId} onBack={() 
+=> setSelectedPropertyId(null)} />
+  src\App.jsx:214:        {activePage === "tenants" && <Tenants onBack={goBack} />}
+  src\App.jsx:215:        {activePage === "leases" && <Leases onBack={goBack} />}
+  src\App.jsx:216:        {activePage === "payments" && <Payments onBack={goBack} />}
+  src\App.jsx:217:        {activePage === "entitlements" && <Entitlements 
+onBack={goBack} />}
+  src\App.jsx:218:        {activePage === "vatReturns" && <VatReturns onBack={goBack} 
+/>}
+> src\App.jsx:219:        {activePage === "letters" && (
+> src\App.jsx:220:          <Letters onBack={goBack} prefillData={letterPrefill} 
+onPrefillConsumed={() => setLetterPrefill(null)} />
+  src\App.jsx:221:        )}
+  src\App.jsx:222:        {activePage === "reports" && <Reports onBack={goBack} />}
+  src\App.jsx:223:        {activePage === "defaulters" && (
+  src\App.jsx:224:          <Defaulters
+  src\App.jsx:225:            onBack={goBack}
+  src\App.jsx:226:            onCreateLetter={(data) => {
+  src\App.jsx:227:              setLetterPrefill(data);
+> src\App.jsx:228:              setActivePage("letters");
+  src\App.jsx:229:            }}
+  src\App.jsx:230:          />
+  src\App.jsx:231:        )}
+  src\App.jsx:232:      </div>
+  src\App.jsx:233:    </div>
+
+

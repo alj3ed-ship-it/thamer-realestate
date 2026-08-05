@@ -7,7 +7,6 @@ import Payments from "./Payments";
 import Reports from "./Reports";
 import Defaulters from "./Defaulters";
 import Projects from "./Projects";
-import Bookings from "./Bookings";
 import Login from "./Login";
 import ViewerLayout from "./ViewerLayout";
 import { ReadOnlyProvider } from "./ReadOnlyContext";
@@ -15,7 +14,6 @@ import ViewerLimited from "./ViewerLimited";
 import PropertyDetail from "./PropertyDetail";
 import Units from "./Units";
 import Entitlements from "./Entitlements";
-import Letters from "./Letters";
 import VatReturns from "./VatReturns";
 import DashboardCharts from "./components/DashboardCharts";
 
@@ -30,8 +28,6 @@ const T = {
   units: "الوحدات",
   entitlements: "الاستحقاقات",
   projects: "المشاريع",
-  bookings: "قاعة مذهلة",
-  letters: "الخطابات",
   vatReturns: "الإقرارات الضريبية",
   logout: "خروج",
 };
@@ -48,8 +44,6 @@ const NAV_ITEMS = [
   { key: "reports", label: T.reports, icon: "📊" },
   { key: "defaulters", label: T.defaulters, icon: "⚠️" },
   { key: "projects", label: T.projects, icon: "🛠️" },
-  { key: "bookings", label: T.bookings, icon: "🎉" },
-  { key: "letters", label: T.letters, icon: "✉️" },
 ];
 
 export default function App() {
@@ -203,7 +197,6 @@ export default function App() {
           </div>
         )}
         {activePage === "projects" && <Projects onBack={goBack} />}
-        {activePage === "bookings" && <Bookings onBack={goBack} />}
         {activePage === "properties" && !selectedPropertyId && (
           <Properties onBack={goBack} onSelectProperty={(id) => setSelectedPropertyId(id)} />
         )}
@@ -216,17 +209,10 @@ export default function App() {
         {activePage === "payments" && <Payments onBack={goBack} />}
         {activePage === "entitlements" && <Entitlements onBack={goBack} />}
         {activePage === "vatReturns" && <VatReturns onBack={goBack} />}
-        {activePage === "letters" && (
-          <Letters onBack={goBack} prefillData={letterPrefill} onPrefillConsumed={() => setLetterPrefill(null)} />
-        )}
         {activePage === "reports" && <Reports onBack={goBack} />}
         {activePage === "defaulters" && (
           <Defaulters
             onBack={goBack}
-            onCreateLetter={(data) => {
-              setLetterPrefill(data);
-              setActivePage("letters");
-            }}
           />
         )}
       </div>

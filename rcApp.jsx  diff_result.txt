@@ -1,0 +1,64 @@
+[1mdiff --git a/src/App.jsx b/src/App.jsx[m
+[1mindex 91129f5..f4bde67 100644[m
+[1m--- a/src/App.jsx[m
+[1m+++ b/src/App.jsx[m
+[36m@@ -7,7 +7,6 @@[m [mimport Payments from "./Payments";[m
+ import Reports from "./Reports";[m
+ import Defaulters from "./Defaulters";[m
+ import Projects from "./Projects";[m
+[31m-import Bookings from "./Bookings";[m
+ import Login from "./Login";[m
+ import ViewerLayout from "./ViewerLayout";[m
+ import { ReadOnlyProvider } from "./ReadOnlyContext";[m
+[36m@@ -15,7 +14,6 @@[m [mimport ViewerLimited from "./ViewerLimited";[m
+ import PropertyDetail from "./PropertyDetail";[m
+ import Units from "./Units";[m
+ import Entitlements from "./Entitlements";[m
+[31m-import Letters from "./Letters";[m
+ import VatReturns from "./VatReturns";[m
+ import DashboardCharts from "./components/DashboardCharts";[m
+ [m
+[36m@@ -30,8 +28,6 @@[m [mconst T = {[m
+   units: "الوحدات",[m
+   entitlements: "الاستحقاقات",[m
+   projects: "المشاريع",[m
+[31m-  bookings: "قاعة مذهلة",[m
+[31m-  letters: "الخطابات",[m
+   vatReturns: "الإقرارات الضريبية",[m
+   logout: "خروج",[m
+ };[m
+[36m@@ -48,8 +44,6 @@[m [mconst NAV_ITEMS = [[m
+   { key: "reports", label: T.reports, icon: "📊" },[m
+   { key: "defaulters", label: T.defaulters, icon: "⚠️" },[m
+   { key: "projects", label: T.projects, icon: "🛠️" },[m
+[31m-  { key: "bookings", label: T.bookings, icon: "🎉" },[m
+[31m-  { key: "letters", label: T.letters, icon: "✉️" },[m
+ ];[m
+ [m
+ export default function App() {[m
+[36m@@ -203,7 +197,6 @@[m [mexport default function App() {[m
+           </div>[m
+         )}[m
+         {activePage === "projects" && <Projects onBack={goBack} />}[m
+[31m-        {activePage === "bookings" && <Bookings onBack={goBack} />}[m
+         {activePage === "properties" && !selectedPropertyId && ([m
+           <Properties onBack={goBack} onSelectProperty={(id) => setSelectedPropertyId(id)} />[m
+         )}[m
+[36m@@ -216,17 +209,10 @@[m [mexport default function App() {[m
+         {activePage === "payments" && <Payments onBack={goBack} />}[m
+         {activePage === "entitlements" && <Entitlements onBack={goBack} />}[m
+         {activePage === "vatReturns" && <VatReturns onBack={goBack} />}[m
+[31m-        {activePage === "letters" && ([m
+[31m-          <Letters onBack={goBack} prefillData={letterPrefill} onPrefillConsumed={() => setLetterPrefill(null)} />[m
+[31m-        )}[m
+         {activePage === "reports" && <Reports onBack={goBack} />}[m
+         {activePage === "defaulters" && ([m
+           <Defaulters[m
+             onBack={goBack}[m
+[31m-            onCreateLetter={(data) => {[m
+[31m-              setLetterPrefill(data);[m
+[31m-              setActivePage("letters");[m
+[31m-            }}[m
+           />[m
+         )}[m
+       </div>[m
