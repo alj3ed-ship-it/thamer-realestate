@@ -39,6 +39,27 @@ function computeInstallmentHijri(startDateHijri, totalInstallments, installmentN
   return addHijriMonths(start, Math.round(monthsToAdd))
 }
 
+// تحويل ميلادي إلى هجري (عكس التحويل أدناه) — يُستخدم لو عندنا تاريخ دفع فعلي مخزّن ونحتاج نصه الهجري لمقارنة تاريخ سريان الضريبة
+function gregorianToHijriText(dateStr) {
+  if (!dateStr) return null
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return null
+  const y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate()
+  let jd = Math.floor((1461 * (y + 4800 + Math.floor((m - 14) / 12))) / 4) +
+    Math.floor((367 * (m - 2 - 12 * Math.floor((m - 14) / 12))) / 12) -
+    Math.floor((3 * Math.floor((y + 4900 + Math.floor((m - 14) / 12)) / 100)) / 4) +
+    day - 32075
+  const l = jd - 1948440 + 10632
+  const n = Math.floor((l - 1) / 10631)
+  const ll = l - 10631 * n + 354
+  const j = Math.floor((10985 - ll) / 5316) * Math.floor((50 * ll) / 17719) + Math.floor(ll / 5670) * Math.floor((43 * ll) / 15238)
+  const ll2 = ll - Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) - Math.floor(j / 16) * Math.floor((15238 * j) / 43) + 29
+  const hm = Math.floor((24 * ll2) / 709)
+  const hd = ll2 - Math.floor((709 * hm) / 24)
+  const hy = 30 * n + j - 30
+  return `${hy}/${String(hm).padStart(2, '0')}/${String(hd).padStart(2, '0')}`
+}
+
 // تحويل هجري إلى ميلادي (نفس خوارزمية بقية الصفحات)
 function hijriToGregorianDate(hy, hm, hd) {
   try {
@@ -125,7 +146,8 @@ export default function VatReturns({ onBack }) {
   const [loading, setLoading] = useState(true)
   const [savingKey, setSavingKey] = useState(null)
   const [noteDrafts, setNoteDrafts] = useState({})
-  const [exportScope, setExportScope] = useState('all')
+  const [selectedQuarters, setSelectedQuarters] = useState([]) // فارغ = كل الأرباع
+  const [showAllQuarters, setShowAllQuarters] = useState(false)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -158,6 +180,23 @@ export default function VatReturns({ onBack }) {
 
   // تاريخ الاستحقاق المحسوب لأي دفعة (نفس منطق صفحة الدفعات) — الأساس الصحيح لتجميع الأرباع
   function getPaymentDueInfo(p) {
+    // الأولوية دائمًا لتاريخ مخزّن فعليًا بالصف نفسه (سواء payment_date_hijri أو payment_date) —
+    // لأنه غالبًا أدق من الحساب التلقائي (خصوصًا قرب حدود الأرباع)، ولأنه يعكس تواريخ أُدخلت يدويًا وتحققت سابقًا
+    if (p.payment_date_hijri) {
+      const gDate = new Date(p.payment_date || p.payment_date_hijri)
+      if (p.payment_date && !isNaN(new Date(p.payment_date).getTime())) {
+        return { hijriText: p.payment_date_hijri, gDate: new Date(p.payment_date) }
+      }
+    }
+    if (p.payment_date) {
+      const gDate = new Date(p.payment_date)
+      if (!isNaN(gDate.getTime())) {
+        const hijriText = gregorianToHijriText(p.payment_date)
+        return { hijriText, gDate }
+      }
+    }
+
+    // ما فيه تاريخ مخزّن (قسط مستقبلي لسا ما تحدد له تاريخ يدوي) — نحسبه تلقائيًا من بداية العقد
     const lease = getLease(p.lease_id)
     if (!lease || !lease.start_date_hijri) return null
     const total = p.total_installments || FREQUENCY_MAP[lease.payment_type] || FREQUENCY_MAP[lease.payment_frequency] || 1
@@ -278,6 +317,18 @@ export default function VatReturns({ onBack }) {
     return st === 'due' || st === 'overdue'
   })?.key
 
+  // آخر 4 أرباع كعرض افتراضي: تاريخية أولاً، وإذا كانت أقل من 4 نكمّل بأقرب أرباع قادمة
+  const historicalQuarters = quarters.filter(q => getStatus(q) !== 'upcoming')
+  const defaultQuarters = (() => {
+    if (historicalQuarters.length >= 4) return historicalQuarters.slice(-4)
+    const historicalKeys = new Set(historicalQuarters.map(q => q.key))
+    const upcomingQuarters = quarters.filter(q => !historicalKeys.has(q.key))
+    const needed = 4 - historicalQuarters.length
+    return [...historicalQuarters, ...upcomingQuarters.slice(0, needed)]
+  })()
+  const displayedQuarters = showAllQuarters ? quarters : defaultQuarters
+  const hasMoreQuarters = !showAllQuarters && quarters.length > defaultQuarters.length
+
   async function toggleFiled(quarter) {
     setSavingKey(quarter.key)
     const existing = getFiling(quarter.key)
@@ -315,6 +366,18 @@ export default function VatReturns({ onBack }) {
     fetchAll()
   }
 
+  function getDeadlineColor(daysLeft) {
+    if (daysLeft < 0) return '#e74c3c' // متأخر
+    if (daysLeft <= 30) return '#ea580c' // قريب — برتقالي واضح وحقيقي
+    return '#27ae60' // بعيد
+  }
+
+  function getOpenColor(daysToOpen) {
+    if (daysToOpen < 0) return '#27ae60' // متاح للتقديم بالفعل
+    if (daysToOpen <= 30) return '#ea580c' // قريب من الفتح — برتقالي واضح وحقيقي
+    return '#d4a017' // بعيد بعد — أصفر واضح بدل الرمادي الباهت
+  }
+
   const statusInfo = {
     filed: { label: 'مقدَّم ✓', bg: '#EAFAF1', color: '#27ae60' },
     upcoming: { label: 'قادم', bg: '#F4F6F7', color: '#7f8c8d' },
@@ -325,8 +388,8 @@ export default function VatReturns({ onBack }) {
   const grandTotalTax = quarters.reduce((s, q) => s + q.taxTotal, 0)
   const unfiledTax = quarters.filter(q => getStatus(q) !== 'filed').reduce((s, q) => s + q.taxTotal, 0)
 
-  function buildExportRows(scope) {
-    const list = scope === 'all' ? quarters : quarters.filter(q => q.key === scope)
+  function buildExportRows(selected) {
+    const list = selected.length === 0 ? quarters : quarters.filter(q => selected.includes(q.key))
     const rows = []
     list.forEach(q => {
       const st = getStatus(q)
@@ -354,19 +417,26 @@ export default function VatReturns({ onBack }) {
     return rows
   }
 
-  const exportData = buildExportRows(exportScope)
-  const exportStatsScoped = exportScope === 'all'
+  const exportData = buildExportRows(selectedQuarters)
+  const isAllSelected = selectedQuarters.length === 0 || selectedQuarters.length === quarters.length
+  const selectedList = isAllSelected ? quarters : quarters.filter(q => selectedQuarters.includes(q.key))
+  const scopedBaseTotal = selectedList.reduce((s, q) => s + q.baseTotal, 0)
+  const scopedTaxTotal = selectedList.reduce((s, q) => s + q.taxTotal, 0)
+  const exportStatsScoped = isAllSelected
     ? [
         { label: 'إجمالي الضريبة', value: `${grandTotalTax.toLocaleString()} ريال`, color: '#dc2626' },
         { label: 'غير مقدَّم', value: `${unfiledTax.toLocaleString()} ريال`, color: '#e74c3c' },
       ]
-    : (() => {
-        const q = quarters.find(x => x.key === exportScope)
-        return q ? [
-          { label: 'الإيراد الأساسي', value: `${q.baseTotal.toLocaleString()} ريال`, color: '#1d4ed8' },
-          { label: 'الضريبة المستحقة', value: `${q.taxTotal.toLocaleString()} ريال`, color: '#dc2626' },
-        ] : []
-      })()
+    : [
+        { label: 'الإيراد الأساسي', value: `${scopedBaseTotal.toLocaleString()} ريال`, color: '#1d4ed8' },
+        { label: 'الضريبة المستحقة', value: `${scopedTaxTotal.toLocaleString()} ريال`, color: '#dc2626' },
+      ]
+  const scopeSuffix = isAllSelected ? 'all' : selectedQuarters.slice().sort().join('_')
+  const scopeTitle = isAllSelected
+    ? 'تقرير الإقرارات الضريبية'
+    : selectedQuarters.length === 1
+      ? `إقرار ${selectedQuarters[0]}`
+      : `إقرارات ${selectedQuarters.slice().sort().join(' + ')}`
 
   return (
     <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '30px 34px', maxWidth: '1150px', margin: '0 auto' }}>
@@ -399,15 +469,21 @@ export default function VatReturns({ onBack }) {
 
       {!loading && (
         <div id="vat-returns-table">
-          <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <label style={{ fontSize: 13, color: '#374151' }}>تصدير:</label>
-            <select value={exportScope} onChange={e => setExportScope(e.target.value)}
-              style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: 'Cairo, sans-serif' }}>
-              <option value="all">كل الإقرارات</option>
-              {quarters.map(q => (
-                <option key={q.key} value={q.key}>{q.key} ({getQuarterRangeLabel(q.year, q.q)})</option>
-              ))}
-            </select>
+          <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>تصدير/طباعة:</label>
+            <button
+              onClick={() => setSelectedQuarters(quarters.map(q => q.key))}
+              style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid #1B4D7A', background: '#fff', color: '#1B4D7A', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+              تحديد الكل
+            </button>
+            <button
+              onClick={() => setSelectedQuarters([])}
+              style={{ padding: '5px 12px', borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 12, cursor: 'pointer' }}>
+              مسح التحديد (= الكل)
+            </button>
+            <span style={{ fontSize: 11.5, color: '#9ca3af' }}>
+              {isAllSelected ? 'سيتم تصدير/طباعة كل الأرباع' : `محدد: ${selectedQuarters.length} ربع`}
+            </span>
           </div>
 
           <ExportToolbar
@@ -421,13 +497,13 @@ export default function VatReturns({ onBack }) {
               { key: 'deadline', label: 'آخر موعد للتقديم' },
               { key: 'status', label: 'الحالة' },
             ]}
-            filename={exportScope === 'all' ? 'vat_returns_report' : `vat_return_${exportScope}`}
-            title={exportScope === 'all' ? 'تقرير الإقرارات الضريبية' : `إقرار ${exportScope}`}
+            filename={`vat_returns_${scopeSuffix}`}
+            title={scopeTitle}
             stats={exportStatsScoped}
           />
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {quarters.map(q => {
+            {displayedQuarters.map(q => {
               const st = getStatus(q)
               const info = statusInfo[st]
               const deadline = getDeadline(q.year, q.q)
@@ -447,7 +523,18 @@ export default function VatReturns({ onBack }) {
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                     <div style={{ minWidth: 190 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: '#1B4D7A' }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: '#1B4D7A', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input
+                          type="checkbox"
+                          className="no-print"
+                          checked={selectedQuarters.includes(q.key)}
+                          onChange={() => {
+                            setSelectedQuarters(prev =>
+                              prev.includes(q.key) ? prev.filter(k => k !== q.key) : [...prev, q.key]
+                            )
+                          }}
+                          style={{ cursor: 'pointer', width: 15, height: 15 }}
+                        />
                         {q.key} <span style={{ fontWeight: 400, fontSize: 12, color: '#6b7280' }}>({getQuarterRangeLabel(q.year, q.q)})</span>
                         {isFocus && <span style={{ marginRight: 6, background: '#f39c12', color: '#fff', fontSize: 10, padding: '1px 8px', borderRadius: 10, fontWeight: 700 }}>الحالي</span>}
                       </div>
@@ -468,15 +555,15 @@ export default function VatReturns({ onBack }) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{formatDateShort(openDate)}</div>
-                          <div style={{ fontSize: 10, color: daysToOpen < 0 ? '#9ca3af' : '#6b7280' }}>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: getOpenColor(daysToOpen) }}>
                             {daysToOpen >= 0 ? `بعد ${daysToOpen} يوم` : `منذ ${Math.abs(daysToOpen)} يوم`}
                           </div>
                         </div>
                         <span style={{ color: '#9ca3af', fontSize: 12 }}>←</span>
                         <div style={{ textAlign: 'center' }}>
                           <div style={{ fontSize: 12, fontWeight: 700, color: st === 'overdue' ? '#e74c3c' : '#374151' }}>{formatDateShort(deadline)}</div>
-                          <div style={{ fontSize: 10, fontWeight: 600, color: daysLeft < 0 ? '#e74c3c' : daysLeft <= 14 ? '#f39c12' : '#6b7280' }}>
-                            {daysLeft >= 0 ? `${daysLeft} يوم` : `تأخر ${Math.abs(daysLeft)}`}
+                          <div style={{ fontSize: 10, fontWeight: 600, color: st === 'filed' ? '#27ae60' : getDeadlineColor(daysLeft) }}>
+                            {st === 'filed' ? 'تم التقديم ✓' : (daysLeft >= 0 ? `${daysLeft} يوم` : `تأخر ${Math.abs(daysLeft)}`)}
                           </div>
                         </div>
                       </div>
@@ -531,6 +618,16 @@ export default function VatReturns({ onBack }) {
               )
             })}
           </div>
+
+          {(hasMoreQuarters || showAllQuarters) && (
+            <div className="no-print" style={{ textAlign: 'center', marginTop: 14 }}>
+              <button
+                onClick={() => setShowAllQuarters(!showAllQuarters)}
+                style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #1B4D7A', background: '#fff', color: '#1B4D7A', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                {showAllQuarters ? '▲ عرض أقل (آخر 4 أرباع فقط)' : `▼ عرض المزيد (${quarters.length - defaultQuarters.length} ربع إضافي)`}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
