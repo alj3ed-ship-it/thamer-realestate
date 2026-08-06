@@ -444,7 +444,17 @@ function Payments({ onBack }) {
     : payments.filter(p => getPropertyId(p.lease_id) === filterProperty)
   )
     .filter(p => filterTenants.length === 0 || filterTenants.includes(getTenantId(p.lease_id)))
-    .sort((a, b) => getEffectiveSortKey(a) - getEffectiveSortKey(b))
+    .sort((a, b) => {
+      // نفس العقد: الأولوية دائماً لرقم الدفعة (١ → ١٢) بدل تاريخها، عشان
+      // تعديل أو إدخال تاريخ لاحقاً ما يقلب ترتيب الصفوف بالجدول.
+      if (a.lease_id === b.lease_id) {
+        const aIdx = a.installment_number || getPaymentIndex(a)
+        const bIdx = b.installment_number || getPaymentIndex(b)
+        return aIdx - bIdx
+      }
+      // عقود مختلفة: يفضل الترتيب بالتاريخ زي ما كان
+      return getEffectiveSortKey(a) - getEffectiveSortKey(b)
+    })
 
   const availableTenants = tenants
     .filter(t => filterProperty === 'الكل' || leases.some(l => l.tenant_id === t.id && l.property_id === filterProperty))
@@ -468,10 +478,10 @@ function Payments({ onBack }) {
   }
 
   function statusToArabic(computed) {
-    if (computed === 'paid') return 'مدفوع'
-    if (computed === 'partial') return 'جزئي'
-    if (computed === 'not_due') return 'غير مستحق بعد'
-    return 'متأخر'
+    if (computed === 'paid') return '✓ مدفوع'
+    if (computed === 'partial') return '⚠ جزئي'
+    if (computed === 'not_due') return '⏳ غير مستحق بعد'
+    return '⏰ متأخر'
   }
 
   function statusBadge(p) {
@@ -545,8 +555,16 @@ function Payments({ onBack }) {
       unit: getUnitNumbers(p.lease_id),
       installment: total ? `${index} / ${total}` : `${index}`,
       amount: computed === 'partial'
-        ? `${paid.toLocaleString()} | ${(due - paid).toLocaleString()} | ${due.toLocaleString()}`
-        : `${due.toLocaleString()} ريال`,
+        ? {
+            value: `${due.toLocaleString()} ريال`,
+            color: '#d4ac0d',
+            subtext: `مدفوع ${paid.toLocaleString()} · متبقي ${(due - paid).toLocaleString()}`,
+            subtextColor: '#B42318'
+          }
+        : {
+            value: `${due.toLocaleString()} ريال`,
+            color: computed === 'paid' ? '#27ae60' : computed === 'overdue' ? '#e74c3c' : '#7f8c8d'
+          },
       tax: taxApplies ? `${getTaxAmount(p).toLocaleString()} ريال` : '—',
       totalWithTax: taxApplies ? `${getTotalWithTax(p).toLocaleString()} ريال` : `${due.toLocaleString()} ريال`,
       vatType: taxApplies ? (isAmountVatInclusive(p) ? 'شامل الضريبة' : 'الضريبة على المالك') : '—',

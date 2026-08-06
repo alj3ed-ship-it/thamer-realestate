@@ -31,6 +31,10 @@ export default function Login({ onLogin }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotMsg, setForgotMsg] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   async function handleSubmit() {
     if (!email || !password) {
@@ -55,6 +59,25 @@ export default function Login({ onLogin }) {
     if (data?.session) {
       onLogin("admin");
     }
+  }
+
+  async function handleForgotSubmit() {
+    if (!forgotEmail) {
+      setForgotMsg("الرجاء إدخال الإيميل");
+      return;
+    }
+    setForgotLoading(true);
+    setForgotMsg("");
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+      forgotEmail.trim(),
+      { redirectTo: window.location.origin + "/reset-password" }
+    );
+    setForgotLoading(false);
+    if (resetError) {
+      setForgotMsg("تعذر إرسال الرابط، تأكد من صحة الإيميل");
+      return;
+    }
+    setForgotMsg("sent");
   }
 
   return (
@@ -98,7 +121,65 @@ export default function Login({ onLogin }) {
           border: "none", borderRadius: "8px", fontSize: "16px",
           cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1
         }}>{loading ? "جاري الدخول..." : "دخول"}</button>
+
+        <p style={{ marginTop: "16px" }}>
+          <span
+            onClick={() => { setShowForgot(true); setForgotEmail(email); setForgotMsg(""); }}
+            style={{ color: "#2E6394", fontSize: "14px", cursor: "pointer", textDecoration: "underline" }}
+          >
+            نسيت كلمة المرور؟
+          </span>
+        </p>
       </div>
+
+      {showForgot && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000
+        }}>
+          <div style={{ background: "#fff", padding: "32px", borderRadius: "16px", minWidth: "320px", textAlign: "center" }}>
+            <h3 style={{ color: "#1B4D7A", marginBottom: "16px", fontSize: "17px" }}>إعادة تعيين كلمة المرور</h3>
+            {forgotMsg === "sent" ? (
+              <>
+                <p style={{ color: "#27ae60", marginBottom: "16px", fontSize: "14px" }}>
+                  تم إرسال رابط إعادة التعيين إلى بريدك الإلكتروني ✅
+                </p>
+                <button onClick={() => setShowForgot(false)} style={{
+                  padding: "10px 20px", background: "#1B4D7A", color: "#fff",
+                  border: "none", borderRadius: "8px", cursor: "pointer"
+                }}>إغلاق</button>
+              </>
+            ) : (
+              <>
+                <input
+                  type="email"
+                  placeholder="الإيميل"
+                  value={forgotEmail}
+                  onChange={e => setForgotEmail(e.target.value)}
+                  style={{
+                    width: "100%", padding: "12px 16px", borderRadius: "8px",
+                    border: "1px solid #ccd6e0", fontSize: "16px", marginBottom: "12px",
+                    textAlign: "center", boxSizing: "border-box"
+                  }}
+                />
+                {forgotMsg && forgotMsg !== "sent" && (
+                  <p style={{ color: "red", marginBottom: "8px", fontSize: "14px" }}>{forgotMsg}</p>
+                )}
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button onClick={handleForgotSubmit} disabled={forgotLoading} style={{
+                    flex: 1, padding: "10px", background: "#1B4D7A", color: "#fff",
+                    border: "none", borderRadius: "8px", cursor: forgotLoading ? "not-allowed" : "pointer"
+                  }}>{forgotLoading ? "جاري الإرسال..." : "إرسال الرابط"}</button>
+                  <button onClick={() => setShowForgot(false)} style={{
+                    flex: 1, padding: "10px", background: "#eee", color: "#333",
+                    border: "none", borderRadius: "8px", cursor: "pointer"
+                  }}>إلغاء</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
