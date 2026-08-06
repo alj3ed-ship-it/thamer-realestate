@@ -8,6 +8,7 @@ import Reports from "./Reports";
 import Defaulters from "./Defaulters";
 import Projects from "./Projects";
 import Login from "./Login";
+import ResetPassword from "./ResetPassword";
 import ViewerLayout from "./ViewerLayout";
 import { ReadOnlyProvider } from "./ReadOnlyContext";
 import ViewerLimited from "./ViewerLimited";
@@ -121,6 +122,10 @@ export default function App() {
   async function handleLogout() {
     await supabase.auth.signOut();
     setRole(null);
+  }
+
+  if (window.location.pathname === "/reset-password") {
+    return <ResetPassword />;
   }
 
   if (checkingSession) {
