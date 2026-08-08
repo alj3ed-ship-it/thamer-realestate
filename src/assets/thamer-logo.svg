@@ -19,7 +19,7 @@
     </filter>
   </defs>
 
-  <rect width="700" height="400" fill="#FDFBF6"/>
+  
 
   <ellipse cx="317" cy="157" rx="20" ry="16" fill="#D4AF37" opacity="0.35" filter="url(#softBlur)"/>
   <ellipse cx="378" cy="157" rx="20" ry="16" fill="#D4AF37" opacity="0.35" filter="url(#softBlur)"/>
