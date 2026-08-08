@@ -25,8 +25,15 @@ export default function Login({ onLogin }) {
   const [forgotLoading, setForgotLoading] = useState(false);
 
   useEffect(() => {
+  const lastVisit = localStorage.getItem("demo_last_visit");
+  const now = Date.now();
+  const thirtyMinutes = 30 * 60 * 1000;
+
+  if (!lastVisit || now - Number(lastVisit) > thirtyMinutes) {
     supabase.from("demo_visits").insert({}).then(() => {});
-  }, []);
+    localStorage.setItem("demo_last_visit", now.toString());
+  }
+}, []);
 
   async function handleSubmit() {
     if (!email || !password) {
