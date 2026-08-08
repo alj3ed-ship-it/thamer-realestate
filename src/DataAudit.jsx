@@ -76,8 +76,17 @@ export default function DataAudit({ onBack }) {
   const [loading, setLoading] = useState(true)
   const [issues, setIssues] = useState([])
   const [lastRun, setLastRun] = useState(null)
+  const [visitCount, setVisitCount] = useState(null)
 
   useEffect(() => { runAudit() }, [])
+  useEffect(() => { fetchVisitCount() }, [])
+
+  async function fetchVisitCount() {
+    const { count } = await supabase
+      .from('demo_visits')
+      .select('*', { count: 'exact', head: true })
+    setVisitCount(count ?? 0)
+  }
 
   async function runAudit() {
     setLoading(true)
@@ -279,6 +288,10 @@ export default function DataAudit({ onBack }) {
         <div style={{ background: '#EBF5FB', border: '1px solid #AED6F1', borderRadius: 12, padding: '14px 22px', textAlign: 'center', minWidth: 130 }}>
           <div style={{ fontSize: 12, color: '#555' }}>ملاحظات</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: '#2E6394' }}>{infoCount}</div>
+        </div>
+        <div style={{ background: '#EAFAF1', border: '1px solid #A9DFBF', borderRadius: 12, padding: '14px 22px', textAlign: 'center', minWidth: 130 }}>
+          <div style={{ fontSize: 12, color: '#555' }}>زيارات الديمو</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#27ae60' }}>{visitCount === null ? '...' : visitCount}</div>
         </div>
         <button onClick={runAudit} disabled={loading}
           style={{ background: '#1B4D7A', color: '#fff', padding: '10px 22px', borderRadius: 8, border: 'none', fontSize: 14, fontWeight: 'bold', cursor: 'pointer' }}>

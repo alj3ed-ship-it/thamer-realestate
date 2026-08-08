@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+﻿import { useState, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import thamerLogo from "./assets/thamer-logo.svg";
 
@@ -23,6 +23,10 @@ export default function Login({ onLogin }) {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotMsg, setForgotMsg] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
+
+  useEffect(() => {
+    supabase.from("demo_visits").insert({}).then(() => {});
+  }, []);
 
   async function handleSubmit() {
     if (!email || !password) {
