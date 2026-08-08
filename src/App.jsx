@@ -157,7 +157,7 @@ export default function App() {
     <div style={{ display: "flex", minHeight: "100vh", maxWidth: "100vw", overflowX: "hidden", fontFamily: "Cairo, sans-serif", direction: "rtl" }}>
       <div className="print-sidebar" style={{ width: "220px", flexShrink: 0, background: "#1B4D7A", display: "flex", flexDirection: "column", padding: "24px 0" }}>
         <div style={{ padding: "0 20px 24px", borderBottom: "1px solid #2E6394" }}>
-          <img src="/logo_v6_wide.svg" alt="logo" style={{ width: "100%" }} />
+          <img src="/thamer-logo.svg" alt="logo" style={{ width: "100%" }} />
         </div>
         <nav style={{ flex: 1, padding: "16px 0" }}>
           {NAV_ITEMS.filter(item => !(role === "viewer" && item.key === "letters")).map(item => (
