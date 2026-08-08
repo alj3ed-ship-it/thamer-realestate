@@ -78,7 +78,7 @@ export default function Login({ onLogin }) {
         boxShadow: "0 4px 24px rgba(0,0,0,0.10)", minWidth: "340px", textAlign: "center"
       }}>
         <Logo />
-        <h2 style={{ color: "#1B4D7A", marginBottom: "24px", fontSize: "20px" }}>دخول المدير</h2>
+        <h2 style={{ color: "#1B4D7A", marginBottom: "24px", fontSize: "20px" }}>هلا بِك</h2>
         <input
           type="email"
           placeholder="الإيميل"
