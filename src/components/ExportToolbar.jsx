@@ -130,11 +130,13 @@ export default function ExportToolbar({
   const amountFontColor = (col) => {
     if (col.label.includes("الأساسي")) return "#1B4D7A";
     if (col.label.includes("الضريبة")) return "#B42318";
+    if (col.label.includes("المستحق")) return "#e74c3c";
     return null;
   };
   const amountFontColorArgb = (col) => {
     if (col.label.includes("الأساسي")) return "FF1B4D7A";
     if (col.label.includes("الضريبة")) return "FFB42318";
+    if (col.label.includes("المستحق")) return "FFE74C3C";
     return null;
   };
 
@@ -588,7 +590,7 @@ export default function ExportToolbar({
                           const cellValue = isRich ? cell.value : cell ?? "—";
                           let tdStyle = styles.td;
                           if (numericKeys.has(col.key)) {
-                            const num = parseRiyalNumber(cell);
+                            const num = parseRiyalNumber(cellValue);
                             if (num !== null) subtotal[col.key] += num;
                           }
                           if (statusCol && col.key === statusCol.key) {
