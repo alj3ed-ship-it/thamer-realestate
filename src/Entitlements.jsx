@@ -12,6 +12,14 @@ const HIJRI_MONTHS = [
 const UNIT_TYPE_ORDER = { "محل": 1, "شقة": 2, "ورشة": 3 };
 const TAX_RATE = 0.15;
 
+function computeTaxAmount(lease, amountDue) {
+  const amt = Number(amountDue || 0);
+  if (lease?.amount_includes_vat) {
+    return Math.round(amt - (amt / 1.15));
+  }
+  return Math.round(amt * TAX_RATE);
+}
+
 const PROPERTY_BADGE_COLOR = { bg: "#EAF2F8", color: "#1B4D7A", border: "#AED6F1" };
 const TENANT_BADGE_COLOR = { bg: "#FEF9E7", color: "#9A7D0A", border: "#F7DC6F" };
 const ACTIVITY_BADGE_COLOR = { bg: "#E8F6F3", color: "#148F77", border: "#A2D9CE" };
@@ -90,44 +98,51 @@ function computeInstallmentHijri(startDateHijri, totalInstallments, installmentN
   return addHijriMonths(start, Math.round(monthsToAdd));
 }
 
-// تحويل هجري إلى ميلادي (نفس الخوارزمية المستخدمة في صفحة الدفعات)
+// تحويل هجري إلى ميلادي باستخدام تقويم "أم القرى" الرسمي (بحث تكراري عبر Intl، نفس الأسلوب في VatReturns.jsx)
 function hijriToGregorian(hy, hm, hd) {
   try {
-    const jd = Math.floor((11 * hy + 3) / 30) + 354 * hy + 30 * hm -
-      Math.floor((hm - 1) / 2) + hd + 1948440 - 385;
-    let l = jd + 68569;
-    const n = Math.floor((4 * l) / 146097);
-    l = l - Math.floor((146097 * n + 3) / 4);
-    const i = Math.floor((4000 * (l + 1)) / 1461001);
-    l = l - Math.floor((1461 * i) / 4) + 31;
-    const j = Math.floor((80 * l) / 2447);
-    const day = l - Math.floor((2447 * j) / 80);
-    l = Math.floor(j / 11);
-    const month = j + 2 - 12 * l;
-    const year = 100 * (n - 49) + i + l;
-    return new Date(year, month - 1, day);
+    const fmt = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { year: 'numeric', month: 'numeric', day: 'numeric' });
+    function getHijriParts(d) {
+      const parts = fmt.formatToParts(d);
+      return {
+        y: parseInt(parts.find(p => p.type === 'year').value),
+        m: parseInt(parts.find(p => p.type === 'month').value),
+        d: parseInt(parts.find(p => p.type === 'day').value),
+      };
+    }
+    const epoch = new Date(Date.UTC(622, 6, 19));
+    const approxDays = Math.round((hy - 1) * 354.36667 + (hm - 1) * 29.53 + hd);
+    let guess = new Date(epoch.getTime() + approxDays * 86400000);
+
+    for (let i = 0; i < 30; i++) {
+      const cur = getHijriParts(guess);
+      if (cur.y === hy && cur.m === hm && cur.d === hd) {
+        return new Date(guess.getFullYear(), guess.getMonth(), guess.getDate());
+      }
+      const diffMonths = (hy - cur.y) * 12 + (hm - cur.m);
+      const diffDays = Math.round(diffMonths * 29.53 + (hd - cur.d));
+      const step = diffDays !== 0 ? diffDays : (hd > cur.d ? 1 : -1);
+      guess = new Date(guess.getTime() + step * 86400000);
+    }
+    return null;
   } catch { return null; }
 }
 
-// تحويل ميلادي إلى هجري (عكس hijriToGregorian) لعرض تاريخ الدفع المخزَّن كتاريخ ميلادي
+// تحويل ميلادي إلى هجري باستخدام تقويم "أم القرى" الرسمي (عبر Intl، نفس الأسلوب في VatReturns.jsx)
 function gregorianToHijri(dateStr) {
   if (!dateStr) return null;
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return null;
-  const y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate();
-  let jd = Math.floor((1461 * (y + 4800 + Math.floor((m - 14) / 12))) / 4) +
-    Math.floor((367 * (m - 2 - 12 * Math.floor((m - 14) / 12))) / 12) -
-    Math.floor((3 * Math.floor((y + 4900 + Math.floor((m - 14) / 12)) / 100)) / 4) +
-    day - 32075;
-  const l = jd - 1948440 + 10632;
-  const n = Math.floor((l - 1) / 10631);
-  const ll = l - 10631 * n + 354;
-  const j = Math.floor((10985 - ll) / 5316) * Math.floor((50 * ll) / 17719) + Math.floor(ll / 5670) * Math.floor((43 * ll) / 15238);
-  const ll2 = ll - Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) - Math.floor(j / 16) * Math.floor((15238 * j) / 43) + 29;
-  const hm = Math.floor((24 * ll2) / 709);
-  const hd = ll2 - Math.floor((709 * hm) / 24);
-  const hy = 30 * n + j - 30;
-  return `${hy}/${String(hm).padStart(2, "0")}/${String(hd).padStart(2, "0")}`;
+  try {
+    const fmt = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { year: 'numeric', month: 'numeric', day: 'numeric' });
+    const parts = fmt.formatToParts(d);
+    const hy = parts.find(p => p.type === 'year').value;
+    const hm = parts.find(p => p.type === 'month').value;
+    const hd = parts.find(p => p.type === 'day').value;
+    return `${hy}/${String(hm).padStart(2, "0")}/${String(hd).padStart(2, "0")}`;
+  } catch {
+    return null;
+  }
 }
 
 // مفتاح ترتيب رقمي لمقارنة تاريخين هجريين نصيين (يُستخدم لتحديد سريان الضريبة)
@@ -177,7 +192,7 @@ export default function Entitlements() {
     const { data: paymentsData } = await supabase.from("payments").select(`
       id, lease_id, amount_due, amount_paid, payment_date_hijri, payment_date, installment_number, total_installments,
     leases (
-      id, property_id, start_date_hijri, tax_enabled, tax_effective_hijri,
+      id, property_id, start_date_hijri, tax_enabled, tax_effective_hijri, amount_includes_vat,
         properties ( name, priority ),
         tenants ( name, note ),
         lease_units ( units ( unit_number, unit_type ) )
@@ -291,7 +306,9 @@ export default function Entitlements() {
         : "—";
 
       const taxApplies = isTaxApplicable(lease, dueDateHijri);
-      const taxAmount = taxApplies ? Math.round(Number(row.amount_due || 0) * TAX_RATE) : 0;
+      const includesVat = !!lease.amount_includes_vat;
+      const taxAmount = taxApplies ? computeTaxAmount(lease, row.amount_due) : 0;
+      const grossTotal = taxApplies && includesVat ? Number(row.amount_due || 0) : Number(row.amount_due || 0) + taxAmount;
 
       // إذا الحقل الهجري فاضي، نحوّل التاريخ الميلادي المخزَّن (payment_date) إلى هجري تلقائياً
       const paymentDateHijri = row.payment_date_hijri || gregorianToHijri(row.payment_date) || null;
@@ -312,6 +329,8 @@ export default function Entitlements() {
         paymentDateHijri,
         taxApplies,
         taxAmount,
+        includesVat,
+        grossTotal,
       });
 
       
@@ -346,7 +365,8 @@ export default function Entitlements() {
   const totalCollected = filteredResults.reduce((sum, r) => sum + (r.paidAmount || 0), 0);
   const totalRemaining = Math.max(totalAmount - totalCollected, 0);
   const totalTax = filteredResults.reduce((sum, r) => sum + (r.taxAmount || 0), 0);
-  const totalWithTax = totalAmount + totalTax;
+  const totalWithTax = filteredResults.reduce((sum, r) => sum + (r.grossTotal ?? ((r.amount || 0) + (r.taxAmount || 0))), 0);
+  const totalNet = totalAmount - filteredResults.reduce((sum, r) => sum + (r.taxApplies && r.includesVat ? (r.taxAmount || 0) : 0), 0);
 
   function statusBadge(status) {
     if (status === "paid") return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
@@ -399,7 +419,9 @@ export default function Entitlements() {
         {base}
         {r.taxApplies && (
           <div style={{ fontSize: 11, color: "#8e44ad", marginTop: 2, fontWeight: "bold" }}>
-            + ضريبة 15%: {r.taxAmount.toLocaleString()} = {(r.amount + r.taxAmount).toLocaleString()} ريال
+            {r.includesVat
+              ? `شامل ضريبة 15%: ${r.taxAmount.toLocaleString()} ريال (ضمن المبلغ أعلاه)`
+              : `+ ضريبة 15%: ${r.taxAmount.toLocaleString()} = ${(r.amount + r.taxAmount).toLocaleString()} ريال`}
           </div>
         )}
       </div>
@@ -594,7 +616,7 @@ export default function Entitlements() {
         amount: { value: `${r.amount.toLocaleString()} ريال`, color: amountColor },
         statusLabel: { value: r.statusLabel, color: r.status === "paid" ? "#27ae60" : r.status === "overdue" ? "#e74c3c" : r.status === "partial" ? "#f39c12" : "#7f8c8d" },
         taxLabel: r.taxApplies ? `${r.taxAmount.toLocaleString()} ريال` : "—",
-        totalWithTax: r.taxApplies ? `${(r.amount + r.taxAmount).toLocaleString()} ريال` : `${r.amount.toLocaleString()} ريال`,
+        totalWithTax: r.taxApplies ? `${(r.grossTotal ?? (r.amount + r.taxAmount)).toLocaleString()} ريال` : `${r.amount.toLocaleString()} ريال`,
       };
     })}
             columns={[
@@ -617,6 +639,7 @@ export default function Entitlements() {
               { label: "إجمالي المستحق", value: `${totalAmount.toLocaleString()} ريال`, color: "#1B4D7A" },
               { label: "إجمالي الضريبة", value: `${totalTax.toLocaleString()} ريال`, color: "#8e44ad" },
               { label: "الإجمالي شامل الضريبة", value: `${totalWithTax.toLocaleString()} ريال`, color: "#1B4D7A" },
+              { label: "الصافي بدون ضريبة", value: `${totalNet.toLocaleString()} ريال`, color: "#16a085" },
             ]}
           />
 
@@ -637,6 +660,12 @@ export default function Entitlements() {
               <div style={{ flex: 1, minWidth: 150, background: "#F4ECF7", border: "1px solid #E1C6ED", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
                 <div style={{ fontSize: "13px", color: "#555" }}>إجمالي الضريبة</div>
                 <div style={{ fontWeight: "bold", color: "#8e44ad", fontSize: "18px" }}>{totalTax.toLocaleString()} ريال</div>
+              </div>
+            )}
+            {totalTax > 0 && (
+              <div style={{ flex: 1, minWidth: 150, background: "#EAF7F1", border: "1px solid #A3E4D7", borderRadius: "10px", padding: "14px 20px", textAlign: "center" }}>
+                <div style={{ fontSize: "13px", color: "#555" }}>الصافي بدون ضريبة</div>
+                <div style={{ fontWeight: "bold", color: "#16a085", fontSize: "18px" }}>{totalNet.toLocaleString()} ريال</div>
               </div>
             )}
           </div>

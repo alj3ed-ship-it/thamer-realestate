@@ -18,6 +18,7 @@ import Units from "./Units";
 import Entitlements from "./Entitlements";
 import Letters from "./Letters";
 import VatReturns from "./VatReturns";
+import DataAudit from "./DataAudit";
 import DashboardCharts from "./components/DashboardCharts";
 
 const T = {
@@ -34,6 +35,7 @@ const T = {
   bookings: "قاعة مذهلة",
   letters: "الخطابات",
   vatReturns: "الإقرارات الضريبية",
+  dataAudit: "تدقيق البيانات",
   logout: "خروج",
 };
 
@@ -46,6 +48,7 @@ const NAV_ITEMS = [
   { key: "payments", label: T.payments, icon: "💰" },
   { key: "entitlements", label: T.entitlements, icon: "📅" },
   { key: "vatReturns", label: T.vatReturns, icon: "🧾" },
+  { key: "dataAudit", label: T.dataAudit, icon: "🔍" },
   { key: "reports", label: T.reports, icon: "📊" },
   { key: "defaulters", label: T.defaulters, icon: "⚠️" },
   { key: "projects", label: T.projects, icon: "🛠️" },
@@ -221,6 +224,7 @@ export default function App() {
         {activePage === "payments" && <Payments onBack={goBack} />}
         {activePage === "entitlements" && <Entitlements onBack={goBack} />}
         {activePage === "vatReturns" && <VatReturns onBack={goBack} />}
+        {activePage === "dataAudit" && <DataAudit onBack={goBack} />}
         {activePage === "letters" && (
           <Letters onBack={goBack} prefillData={letterPrefill} onPrefillConsumed={() => setLetterPrefill(null)} />
         )}
