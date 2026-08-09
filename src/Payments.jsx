@@ -426,13 +426,14 @@ function Payments({ onBack }) {
     return Math.round(amt * TAX_RATE)
   }
 
-  // الإجمالي الفعلي المستلم من المستأجر: لو شامل الضريبة يبقى نفس المبلغ، لو غير شامل يُضاف عليه 15%
+  // الصافي الفعلي الذي يستلمه المالك بعد أثر الضريبة (بغض النظر عن نوع العقد)
   function getTotalWithTax(p) {
     const amt = Number(p.amount || 0)
-    if (isTaxApplicable(p) && isAmountVatInclusive(p)) {
-      return amt
+    if (!isTaxApplicable(p)) return amt
+    if (isAmountVatInclusive(p)) {
+      return Math.round(getBaseAmount(p))
     }
-    return amt + getTaxAmount(p)
+    return amt - getTaxAmount(p)
   }
 
   function getEffectiveSortKey(p) {
@@ -533,7 +534,7 @@ function Payments({ onBack }) {
         )}
         {taxApplies && !inclusive && (
           <div style={{ fontSize: 11, color: '#8e44ad', marginTop: 2, fontWeight: 700 }}>
-            + ضريبة 15% (يتحملها المالك): {tax.toLocaleString()} = {getTotalWithTax(p).toLocaleString()} ريال
+            − ضريبة 15% (يتحملها المالك): {tax.toLocaleString()} ← الصافي: {getTotalWithTax(p).toLocaleString()} ريال
           </div>
         )}
       </div>
