@@ -52,10 +52,17 @@ function DashboardCharts() {
     if (leaseErr || !leases) { setPayments([]); return; }
     const leaseIds = leases.map((l) => l.id);
     if (leaseIds.length === 0) { setPayments([]); return; }
-    const { data: pays, error: payErr } = await supabase.from('payments').select('status').in('lease_id', leaseIds);
+    const { data: pays, error: payErr } = await supabase.from('payments').select('amount, amount_paid').in('lease_id', leaseIds);
     if (!payErr && pays) {
       const counts = { مدفوع: 0, جزئي: 0, 'لم يُسدَّد': 0 };
-      pays.forEach((p) => { if (counts[p.status] !== undefined) counts[p.status]++; });
+      pays.forEach((p) => {
+        const due = Number(p.amount || 0);
+        const paid = Number(p.amount_paid || 0);
+        // نفس منطق حساب الحالة المستخدم في صفحة الدفعات (Payments.jsx) - لا نعتمد على عمود status الخام لأنه قد لا يكون متزامناً
+        if (paid > 0 && paid >= due && due > 0) counts['مدفوع']++;
+        else if (paid > 0) counts['جزئي']++;
+        else counts['لم يُسدَّد']++;
+      });
       setPayments(Object.entries(counts).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value })));
     }
   };
