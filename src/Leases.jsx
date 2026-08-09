@@ -680,20 +680,19 @@ export default function Leases({ onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterProperty]);
 
+  // الصافي الفعلي للمالك: يُخصم من الداخل للعقود الشاملة، ويُخصم 15% (يتحملها المالك) للعقود غير الشاملة
   function getNetRentAmount(lease) {
     const amt = Number(lease.rent_amount || 0);
-    if (lease.tax_enabled && lease.amount_includes_vat) {
+    if (!lease.tax_enabled) return amt;
+    if (lease.amount_includes_vat) {
       return Math.round(amt / 1.15);
     }
-    return amt;
+    return Math.round(amt * 0.85);
   }
 
-  // الإجمالي الشامل للضريبة: للعقود الشاملة أصلاً = نفس المبلغ، وللعقود غير الشاملة (الضريبة تُضاف فوق) = المبلغ + 15%
+  // الإجمالي الخام: قيمة العقد كما هي دائماً — الضريبة تُستقطع من نفس المبلغ (داخلياً أو يتحملها المالك)، ولا تُضاف عليه أبداً
   function getGrossRentAmount(lease) {
-    const amt = Number(lease.rent_amount || 0);
-    if (!lease.tax_enabled) return amt;
-    if (lease.amount_includes_vat) return amt;
-    return Math.round(amt * 1.15);
+    return Number(lease.rent_amount || 0);
   }
 
   const totalAmountNet = filteredLeases.reduce((sum, l) => sum + getNetRentAmount(l), 0);
