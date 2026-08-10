@@ -124,9 +124,9 @@ const TENANT_BADGE_COLOR = { bg: "#FEF9E7", color: "#9A7D0A", border: "#F7DC6F" 
 const ACTIVITY_BADGE_COLOR = { bg: "#E8F6F3", color: "#148F77", border: "#A2D9CE" };
 
 function hijriSortKey(hijriText) {
-  if (!hijriText) return 99999999;
+  if (!hijriText) return -1;
   const parts = hijriText.split("/");
-  if (parts.length !== 3) return 99999999;
+  if (parts.length !== 3) return -1;
   const y = parseInt(parts[0]) || 0;
   const m = parseInt(parts[1]) || 0;
   const d = parseInt(parts[2]) || 0;
