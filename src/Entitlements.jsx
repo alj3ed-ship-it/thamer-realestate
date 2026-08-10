@@ -24,12 +24,12 @@ const PROPERTY_BADGE_COLOR = { bg: "#EAF2F8", color: "#1B4D7A", border: "#AED6F1
 const TENANT_BADGE_COLOR = { bg: "#FEF9E7", color: "#9A7D0A", border: "#F7DC6F" };
 const ACTIVITY_BADGE_COLOR = { bg: "#E8F6F3", color: "#148F77", border: "#A2D9CE" };
 
-// خيارات فلتر الحالة
+// خيارات فلتر الحالة — أصبحت زمنية فقط (متأخر / مدفوع / غير مستحق)
+// حالة السداد الجزئي لم تعد تبويباً مستقلاً، صارت شارة (badge) داخل صف "متأخر"
 const STATUS_FILTERS = [
   { key: "all", label: "الكل" },
-  { key: "paid", label: "مدفوع" },
   { key: "overdue", label: "متأخر" },
-  { key: "partial", label: "جزئي" },
+  { key: "paid", label: "مدفوع" },
   { key: "not_due", label: "غير مستحق بعد" },
 ];
 
@@ -168,7 +168,7 @@ export default function Entitlements() {
   const [tenantSearchText, setTenantSearchText] = useState("");
   const [selectedUnitType, setSelectedUnitType] = useState("");
   const [results, setResults] = useState([]);
-  const [statusFilter, setStatusFilter] = useState("all"); // فلتر الحالة الجديد
+  const [statusFilter, setStatusFilter] = useState("all"); // فلتر الحالة الزمنية
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(true);
   const filterBoxRef = useRef(null);
@@ -235,14 +235,21 @@ export default function Entitlements() {
     return [...knownPresent, ...others];
   }, [payments]);
 
-  // status الآن: "paid" | "partial" | "overdue" (متأخر) | "not_due" (غير مستحق بعد)
+  // status الآن زمني فقط: "paid" | "overdue" (متأخر) | "not_due" (غير مستحق بعد)
+  // paidState منفصل تماماً ويوضح مقدار السداد: "full" | "partial" | "none"
+  // بهذا الفصل: أي دفعة فاتها استحقاقها تبقى "overdue" حتى لو تم سداد جزء منها،
+  // وشارة "متبقي جزء" تُعرض جنبها بدل ما تختفي في تبويب منفصل.
   function computeStatus(row, hijri) {
     const due = Number(row.amount_due || 0);
     const paid = Number(row.amount_paid || 0);
-    if (paid > 0 && paid >= due && due > 0) return "paid";
-    if (paid > 0) return "partial";
 
-    // لم يُدفع شيء بعد — نحدد إذا كان متأخراً أو لسا ما جاء وقته
+    let paidState = "none";
+    if (paid > 0 && paid >= due && due > 0) paidState = "full";
+    else if (paid > 0) paidState = "partial";
+
+    if (paidState === "full") return { status: "paid", paidState };
+
+    // لم يُسدد كامل المبلغ — نحدد إذا فات استحقاقه أو لسا ما جاء وقته
     if (hijri) {
       const dueDate = hijriToGregorian(hijri.year, hijri.month, hijri.day);
       if (dueDate) {
@@ -250,17 +257,17 @@ export default function Entitlements() {
         today.setHours(0, 0, 0, 0);
         dueDate.setHours(0, 0, 0, 0);
         // يوم الاستحقاق نفسه يُعتبر مستحقاً (متأخر) وليس "غير مستحق بعد"
-        return dueDate <= today ? "overdue" : "not_due";
+        return { status: dueDate <= today ? "overdue" : "not_due", paidState };
       }
     }
-    return "overdue"; // احتياطي إذا تعذر حساب التاريخ
+    return { status: "overdue", paidState }; // احتياطي إذا تعذر حساب التاريخ
   }
 
-  function statusToArabic(status) {
+  function statusToArabic(status, paidState) {
     if (status === "paid") return "مدفوع";
-    if (status === "partial") return "جزئي";
     if (status === "not_due") return "غير مستحق بعد";
-    return "متأخر";
+    // overdue
+    return paidState === "partial" ? "متأخر - متبقي جزء" : "متأخر";
   }
 
   // هل الضريبة تسري على هذه الدفعة، حسب إعداد العقد وتاريخ استحقاق الدفعة
@@ -300,7 +307,7 @@ export default function Entitlements() {
         }
       });
 
-      const status = computeStatus(row, hijri);
+      const { status, paidState } = computeStatus(row, hijri);
       const dueDateHijri = hijri
         ? `${hijri.year}/${String(hijri.month).padStart(2, "0")}/${String(hijri.day).padStart(2, "0")}`
         : "—";
@@ -324,7 +331,8 @@ export default function Entitlements() {
         amount: Number(row.amount_due || 0),
         paidAmount: Number(row.amount_paid || 0),
         status,
-        statusLabel: statusToArabic(status),
+        paidState,
+        statusLabel: statusToArabic(status, paidState),
         dueDateHijri,
         paymentDateHijri,
         taxApplies,
@@ -346,9 +354,9 @@ export default function Entitlements() {
     setSearched(true);
   }
 
-  // عدد كل حالة (لعرضه كعداد بجانب زر الفلتر)
+  // عدد كل حالة (لعرضه كعداد بجانب زر الفلتر) — زمني فقط الآن
   const statusCounts = useMemo(() => {
-    const counts = { all: results.length, paid: 0, overdue: 0, partial: 0, not_due: 0 };
+    const counts = { all: results.length, paid: 0, overdue: 0, not_due: 0 };
     results.forEach((r) => {
       if (counts[r.status] !== undefined) counts[r.status] += 1;
     });
@@ -368,10 +376,18 @@ export default function Entitlements() {
   const totalWithTax = filteredResults.reduce((sum, r) => sum + (r.grossTotal ?? ((r.amount || 0) + (r.taxAmount || 0))), 0);
   const totalNet = totalAmount - filteredResults.reduce((sum, r) => sum + (r.taxApplies && r.includesVat ? (r.taxAmount || 0) : 0), 0);
 
-  function statusBadge(status) {
-    if (status === "paid") return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
-    if (status === "partial") return <span style={{ background: "#FEF9E7", color: "#f39c12", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>جزئي ⚠</span>;
-    if (status === "not_due") return <span style={{ background: "#F4F6F7", color: "#7f8c8d", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>غير مستحق بعد ⏳</span>;
+  // شارة الحالة: اللون الأساسي حسب الحالة الزمنية، مع تمييز "متأخر + سداد جزئي" بلون تحذيري
+  function statusBadge(status, paidState) {
+    if (status === "paid") {
+      return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
+    }
+    if (status === "not_due") {
+      return <span style={{ background: "#F4F6F7", color: "#7f8c8d", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>غير مستحق بعد ⏳</span>;
+    }
+    // overdue
+    if (paidState === "partial") {
+      return <span style={{ background: "#FEF9E7", color: "#f39c12", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>متأخر · متبقي جزء ⚠</span>;
+    }
     return <span style={{ background: "#FDEDEC", color: "#e74c3c", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>متأخر ⏰</span>;
   }
 
@@ -396,7 +412,7 @@ export default function Entitlements() {
 
   function amountDisplay(r) {
     let base;
-    if (r.status === "partial") {
+    if (r.paidState === "partial") {
       const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
       base = (
         <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
@@ -605,6 +621,7 @@ export default function Entitlements() {
           <ExportToolbar
             data={filteredResults.map(r => {
       const amountColor = r.status === "paid" ? "#27ae60" : r.status === "not_due" ? "#7f8c8d" : "#e74c3c";
+      const statusColor = r.status === "paid" ? "#27ae60" : r.status === "not_due" ? "#7f8c8d" : (r.paidState === "partial" ? "#f39c12" : "#e74c3c");
       return {
         ...r,
         dueDateHijri: {
@@ -614,7 +631,7 @@ export default function Entitlements() {
           subtextColor: "#27ae60",
         },
         amountDisplay: { value: `${r.amount.toLocaleString()} ريال`, color: amountColor },
-        statusLabel: { value: r.statusLabel, color: r.status === "paid" ? "#27ae60" : r.status === "overdue" ? "#e74c3c" : r.status === "partial" ? "#f39c12" : "#7f8c8d" },
+        statusLabel: { value: r.statusLabel, color: statusColor },
         taxLabel: r.taxApplies ? `${r.taxAmount.toLocaleString()} ريال` : "—",
         totalWithTax: r.taxApplies ? `${(r.grossTotal ?? (r.amount + r.taxAmount)).toLocaleString()} ريال` : `${r.amount.toLocaleString()} ريال`,
       };
@@ -702,7 +719,7 @@ export default function Entitlements() {
                                     )}
                                   </td>
                     <td style={{ padding: "12px 16px" }}>{amountDisplay(r)}</td>
-                    <td style={{ padding: "12px 16px" }}>{statusBadge(r.status)}</td>
+                    <td style={{ padding: "12px 16px" }}>{statusBadge(r.status, r.paidState)}</td>
                     </tr>
                   ))}
                 </tbody>
