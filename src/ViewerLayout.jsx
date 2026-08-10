@@ -95,9 +95,9 @@ function computeInstallmentHijri(startDateHijri, totalInstallments, installmentN
 
 // يحسب مفتاح فرز رقمي من نص هجري (سنة/شهر/يوم) لترتيب الدفعات زمنياً
 function hijriSortKey(hijriText) {
-  if (!hijriText) return 99999999;
+  if (!hijriText) return -1;
   const parts = hijriText.split("/");
-  if (parts.length !== 3) return 99999999;
+  if (parts.length !== 3) return -1;
   const y = parseInt(parts[0]) || 0;
   const m = parseInt(parts[1]) || 0;
   const d = parseInt(parts[2]) || 0;
