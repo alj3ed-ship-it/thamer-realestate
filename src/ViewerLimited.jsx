@@ -18,11 +18,12 @@ const REMAINING_STATUS_OPTIONS = ["مستلم", "جزئي", "غير مستلم"]
 const UNIT_TYPE_ORDER = { "محل": 1, "شقة": 2, "ورشة": 3 };
 const TAX_RATE = 0.15;
 
+// فلتر حالة الاستحقاقات/الدفعات — زمني فقط (نفس منطق Entitlements.jsx)
+// حالة السداد الجزئي لم تعد تبويباً مستقلاً، صارت شارة (badge) داخل صف "متأخر"
 const ENT_STATUS_FILTERS = [
   { key: "all", label: "الكل" },
-  { key: "paid", label: "مدفوع" },
   { key: "overdue", label: "متأخر" },
-  { key: "partial", label: "جزئي" },
+  { key: "paid", label: "مدفوع" },
   { key: "not_due", label: "غير مستحق بعد" },
 ];
 
@@ -583,14 +584,19 @@ export default function ViewerLimited() {
     .slice()
     .sort((a, b) => getEffectivePaymentSortKey(a) - getEffectivePaymentSortKey(b));
 
-  // status الآن: "paid" | "partial" | "overdue" (متأخر) | "not_due" (غير مستحق بعد) — نفس منطق Entitlements.jsx
+  // status الآن زمني فقط: "paid" | "overdue" (متأخر) | "not_due" (غير مستحق بعد)
+  // paidState منفصل تماماً ويوضح مقدار السداد: "full" | "partial" | "none"
+  // نفس منطق Entitlements.jsx بالضبط — دفعة فاتها استحقاقها تبقى "overdue" حتى لو سُدد جزء منها
   function computeStatus(row, hijri) {
     const due = Number(row.amount_due || 0);
     const paid = Number(row.amount_paid || 0);
-    if (paid > 0 && paid >= due && due > 0) return "paid";
-    if (paid > 0) return "partial";
 
-    // لم يُدفع شيء بعد — نحدد إذا كان متأخراً أو لسا ما جاء وقته
+    let paidState = "none";
+    if (paid > 0 && paid >= due && due > 0) paidState = "full";
+    else if (paid > 0) paidState = "partial";
+
+    if (paidState === "full") return { status: "paid", paidState };
+
     if (hijri) {
       const dueDate = hijriToGregorian(hijri.year, hijri.month, hijri.day);
       if (dueDate) {
@@ -598,17 +604,17 @@ export default function ViewerLimited() {
         today.setHours(0, 0, 0, 0);
         dueDate.setHours(0, 0, 0, 0);
         // يوم الاستحقاق نفسه يُعتبر مستحقاً (متأخر) وليس "غير مستحق بعد"
-        return dueDate <= today ? "overdue" : "not_due";
+        return { status: dueDate <= today ? "overdue" : "not_due", paidState };
       }
     }
-    return "overdue"; // احتياطي إذا تعذر حساب التاريخ
+    return { status: "overdue", paidState }; // احتياطي إذا تعذر حساب التاريخ
   }
 
-  function statusToArabic(status) {
+  function statusToArabic(status, paidState) {
     if (status === "paid") return "مدفوع";
-    if (status === "partial") return "جزئي";
     if (status === "not_due") return "غير مستحق بعد";
-    return "متأخر";
+    // overdue
+    return paidState === "partial" ? "متأخر - متبقي جزء" : "متأخر";
   }
 
   // هل الضريبة تسري على هذه الدفعة، حسب إعداد العقد وتاريخ استحقاق الدفعة
@@ -619,16 +625,23 @@ export default function ViewerLimited() {
     return hijriSortKey(dueDateHijri) >= hijriSortKey(lease.tax_effective_hijri);
   }
 
-  function statusBadge(status) {
-    if (status === "paid") return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
-    if (status === "partial") return <span style={{ background: "#FEF9E7", color: "#f39c12", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>جزئي ⚠</span>;
-    if (status === "not_due") return <span style={{ background: "#F4F6F7", color: "#7f8c8d", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>غير مستحق بعد ⏳</span>;
+  function statusBadge(status, paidState) {
+    if (status === "paid") {
+      return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
+    }
+    if (status === "not_due") {
+      return <span style={{ background: "#F4F6F7", color: "#7f8c8d", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>غير مستحق بعد ⏳</span>;
+    }
+    // overdue
+    if (paidState === "partial") {
+      return <span style={{ background: "#FEF9E7", color: "#f39c12", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>متأخر · متبقي جزء ⚠</span>;
+    }
     return <span style={{ background: "#FDEDEC", color: "#e74c3c", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>متأخر ⏰</span>;
   }
 
   function amountDisplay(r) {
     let base;
-    if (r.status === "partial") {
+    if (r.paidState === "partial") {
       const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
       base = (
         <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
@@ -692,7 +705,7 @@ export default function ViewerLimited() {
 
       const unitsList = lease.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
       if (entSelectedUnitType && !unitsList.some((u) => (u.unit_type || "").trim() === entSelectedUnitType)) continue;
-      const status = computeStatus(row, hijri);
+      const { status, paidState } = computeStatus(row, hijri);
       const dueDateHijri = hijri
         ? `${hijri.year}/${String(hijri.month).padStart(2, "0")}/${String(hijri.day).padStart(2, "0")}`
         : "—";
@@ -713,7 +726,8 @@ export default function ViewerLimited() {
         amount: Number(row.amount_due || 0),
         paidAmount: Number(row.amount_paid || 0),
         status,
-        statusLabel: statusToArabic(status),
+        paidState,
+        statusLabel: statusToArabic(status, paidState),
         dueDateHijri,
         paymentDateHijri,
         taxApplies,
@@ -726,14 +740,14 @@ export default function ViewerLimited() {
     setEntSearched(true);
   }
 
-  // عدّادات كل حالة (محسوبة من كل نتائج البحث بغض النظر عن التبويب المختار)
+  // عدّادات كل حالة (محسوبة من كل نتائج البحث بغض النظر عن التبويب المختار) — زمني فقط
   const entStatusCounts = useMemo(() => {
-    const counts = { all: entResults.length, paid: 0, overdue: 0, partial: 0, not_due: 0 };
+    const counts = { all: entResults.length, paid: 0, overdue: 0, not_due: 0 };
     entResults.forEach((r) => { counts[r.status] = (counts[r.status] || 0) + 1; });
     return counts;
   }, [entResults]);
 
-  // النتائج بعد تطبيق فلتر الحالة (تبويبات منفصلة: الكل/مدفوع/متأخر/جزئي/غير مستحق بعد)
+  // النتائج بعد تطبيق فلتر الحالة (تبويبات زمنية: الكل/متأخر/مدفوع/غير مستحق بعد)
   const entResultsFiltered = entStatusFilter === "all"
     ? entResults
     : entResults.filter((r) => r.status === entStatusFilter);
@@ -757,7 +771,7 @@ export default function ViewerLimited() {
         subtext: r.paymentDateHijri ? `✓ ${r.paymentDateHijri} هـ` : null,
         subtextColor: "#27ae60",
       },
-      amount: r.status === "partial"
+      amount: r.paidState === "partial"
         ? `${r.amount.toLocaleString()} / ${r.paidAmount.toLocaleString()} / ${Math.max(r.amount - r.paidAmount, 0).toLocaleString()}`
         : { value: `${r.amount.toLocaleString()} ر.س`, color: amountColor },
       taxLabel: r.taxApplies ? `${r.taxAmount.toLocaleString()} ريال` : "—",
@@ -800,7 +814,7 @@ export default function ViewerLimited() {
 
   const paymentsExportData = filteredPaymentsList.map((p) => {
     const hijri = computeInstallmentHijri(p.leases?.start_date_hijri, p.total_installments, p.installment_number);
-    const status = computeStatus(p, hijri);
+    const { status, paidState } = computeStatus(p, hijri);
     const due = Number(p.amount_due || 0);
     const paid = Number(p.amount_paid || 0);
     const unitsList = p.leases?.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
@@ -809,10 +823,10 @@ export default function ViewerLimited() {
       property: p.leases?.properties?.name || "—",
       unit: unitsList.map((u) => `${u.unit_type} ${u.unit_number}`).join(" + ") || "—",
       installment: p.total_installments ? `${p.installment_number || ""} / ${p.total_installments}` : `${p.installment_number || ""}`,
-      amount: status === "partial"
+      amount: paidState === "partial"
         ? `${due.toLocaleString()} / ${paid.toLocaleString()} / ${Math.max(due - paid, 0).toLocaleString()}`
         : `${due.toLocaleString()} ر.س`,
-      status: statusToArabic(status),
+      status: statusToArabic(status, paidState),
       date: p.payment_date_hijri ? `${p.payment_date_hijri} هـ` : "—",
       method: p.payment_method || "—",
       notes: p.notes || "—",
@@ -1496,7 +1510,7 @@ export default function ViewerLimited() {
                         <tr><td colSpan="9" style={{ padding: "24px", textAlign: "center", color: "#999" }}>لا توجد دفعات</td></tr>
                       ) : filteredPaymentsList.map((p) => {
                         const hijri = computeInstallmentHijri(p.leases?.start_date_hijri, p.total_installments, p.installment_number);
-                        const status = computeStatus(p, hijri);
+                        const { status, paidState } = computeStatus(p, hijri);
                         const due = Number(p.amount_due || 0);
                         const paid = Number(p.amount_paid || 0);
                         const unitsList = p.leases?.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
@@ -1514,8 +1528,8 @@ export default function ViewerLimited() {
                                 {p.total_installments ? `${p.installment_number || ""} / ${p.total_installments}` : `${p.installment_number || ""}`}
                               </span>
                             </td>
-                            <td style={{ padding: "12px" }}>{amountDisplay({ status, amount: due, paidAmount: paid })}</td>
-                            <td style={{ padding: "12px" }}>{statusBadge(status)}</td>
+                            <td style={{ padding: "12px" }}>{amountDisplay({ status, paidState, amount: due, paidAmount: paid })}</td>
+                            <td style={{ padding: "12px" }}>{statusBadge(status, paidState)}</td>
                             <td style={{ padding: "12px", color: "#6b7280" }}>{p.payment_date_hijri ? `${p.payment_date_hijri} هـ` : "—"}</td>
                             <td style={{ padding: "12px", color: "#6b7280" }}>{p.payment_method || "—"}</td>
                             <td style={{ padding: "12px", color: "#9ca3af", fontSize: "13px" }}>{p.notes || "—"}</td>
@@ -1676,7 +1690,7 @@ export default function ViewerLimited() {
 
                 {entSearched && entResults.length > 0 && (
                   <div id="entitlements-table">
-                    {/* تبويبات فلتر الحالة: الكل / مدفوع / متأخر / جزئي / غير مستحق بعد */}
+                    {/* تبويبات فلتر الحالة: الكل / متأخر / مدفوع / غير مستحق بعد */}
                     <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
                       {ENT_STATUS_FILTERS.map((f) => {
                         const active = entStatusFilter === f.key;
@@ -1775,7 +1789,7 @@ export default function ViewerLimited() {
                               )}
                             </td>
                             <td style={{ padding: "12px" }}>{amountDisplay(r)}</td>
-                            <td style={{ padding: "12px" }}>{statusBadge(r.status)}</td>
+                            <td style={{ padding: "12px" }}>{statusBadge(r.status, r.paidState)}</td>
                           </tr>
                         ))}
                       </tbody>
