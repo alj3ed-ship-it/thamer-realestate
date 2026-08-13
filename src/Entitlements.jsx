@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import ExportToolbar from "./components/ExportToolbar";
 import { getUnitTypeColor } from "./theme";
+import { LeaseStatusBadge } from "./leaseStatus";
+import LeaseDetailsModal from "./LeaseDetailsModal";
 
 const HIJRI_MONTHS = [
   "محرم", "صفر", "ربيع الأول", "ربيع الآخر",
@@ -170,6 +172,7 @@ export default function Entitlements() {
   const [results, setResults] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all"); // فلتر الحالة الزمنية
   const [searched, setSearched] = useState(false);
+  const [viewingLeaseId, setViewingLeaseId] = useState(null);
   const [loading, setLoading] = useState(true);
   const filterBoxRef = useRef(null);
 
@@ -192,7 +195,7 @@ export default function Entitlements() {
     const { data: paymentsData } = await supabase.from("payments").select(`
       id, lease_id, amount_due, amount_paid, payment_date_hijri, payment_date, installment_number, total_installments,
     leases (
-      id, property_id, start_date_hijri, tax_enabled, tax_effective_hijri, amount_includes_vat,
+      id, property_id, start_date_hijri, end_date, lease_number, tax_enabled, tax_effective_hijri, amount_includes_vat,
         properties ( name, priority ),
         tenants ( name, note ),
         lease_units ( units ( unit_number, unit_type ) )
@@ -321,6 +324,9 @@ export default function Entitlements() {
       const paymentDateHijri = row.payment_date_hijri || gregorianToHijri(row.payment_date) || null;
 
       found.push({
+        leaseId: lease.id,
+        leaseEndDate: lease.end_date,
+        leaseNumber: lease.lease_number,
         tenant: lease.tenants?.name || "",
         activity: lease.tenants?.note || "—",
         property: lease.properties?.name || "",
@@ -696,6 +702,7 @@ export default function Entitlements() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
                 <thead>
                   <tr style={{ background: "#f8f9fa", borderBottom: "2px solid #e9ecef" }}>
+                    <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>حالة العقد</th>
                     <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>العقار</th>
                     <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>المستأجر</th>
                     <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>النشاط</th>
@@ -708,6 +715,11 @@ export default function Entitlements() {
                 <tbody>
                   {filteredResults.map((r, i) => (
                     <tr key={i} style={{ borderBottom: "1px solid #f0f0f0", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+                      <td style={{ padding: "12px 16px" }}>
+                        <button type="button" onClick={() => setViewingLeaseId(r.leaseId)} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }} title="عرض تفاصيل العقد">
+                          <LeaseStatusBadge endDate={r.leaseEndDate} />
+                        </button>
+                      </td>
                       <td style={{ padding: "12px 16px" }}>{propertyBadge(r.property)}</td>
                       <td style={{ padding: "12px 16px" }}>{tenantBadge(r.tenant)}</td>
                       <td style={{ padding: "12px 16px" }}>{activityBadge(r.activity)}</td>
@@ -734,6 +746,8 @@ export default function Entitlements() {
           لا توجد دفعات مستحقة في هذا الشهر
         </div>
       )}
+
+      <LeaseDetailsModal leaseId={viewingLeaseId} onClose={() => setViewingLeaseId(null)} />
     </div>
   );
 }

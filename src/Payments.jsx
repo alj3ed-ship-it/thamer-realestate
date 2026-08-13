@@ -2,6 +2,8 @@
 import { supabase } from './supabaseClient'
 import { useReadOnly } from './ReadOnlyContext'
 import ExportToolbar from './components/ExportToolbar'
+import { LeaseStatusBadge } from './leaseStatus'
+import LeaseDetailsModal from './LeaseDetailsModal'
 
 const FREQUENCY_MAP = {
   'سنوي': 1,
@@ -173,6 +175,7 @@ function Payments({ onBack }) {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
   const [editingId, setEditingId] = useState(null)
+  const [viewingLeaseId, setViewingLeaseId] = useState(null)
   const [filterProperty, setFilterProperty] = useState('الكل')
   const [filterTenants, setFilterTenants] = useState([])
   const [showTenantDropdown, setShowTenantDropdown] = useState(false)
@@ -190,7 +193,7 @@ function Payments({ onBack }) {
     setStatus('loading')
     const [pay, lea, ten, pro, uni, lu] = await Promise.all([
       supabase.from('payments').select('*').order('payment_date', { ascending: true }),
-      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id, start_date_hijri, tax_enabled, tax_effective_hijri, amount_includes_vat'),
+      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id, start_date_hijri, end_date, lease_number, tax_enabled, tax_effective_hijri, amount_includes_vat'),
       supabase.from('tenants').select('id, name, note'),
       supabase.from('properties').select('id, name').order('name'),
       supabase.from('units').select('id, unit_number'),
@@ -336,24 +339,25 @@ function Payments({ onBack }) {
 
   async function handleSave() {
     if (!form.lease_id || !form.amount) { setFormError('يرجى ملء الحقول المطلوبة'); return }
+    const isUnpaid = form.status === 'unpaid'
     const h = form.payment_hijri
-    const hijriPartial = (h.year || h.month || h.day) && !(h.year && h.month && h.day)
+    const hijriPartial = !isUnpaid && (h.year || h.month || h.day) && !(h.year && h.month && h.day)
     if (hijriPartial) { setFormError('التاريخ الهجري غير مكتمل — يرجى تحديد السنة والشهر واليوم'); return }
 
     let paymentDate = form.payment_date
     if (!paymentDate && form.payment_hijri.year && form.payment_hijri.month && form.payment_hijri.day) {
       paymentDate = hijriPartsToGregorian(form.payment_hijri.year, form.payment_hijri.month, form.payment_hijri.day)
     }
-    if (!paymentDate) { setFormError('يرجى تحديد تاريخ الدفع'); return }
+    if (!isUnpaid && !paymentDate) { setFormError('يرجى تحديد تاريخ الدفع'); return }
 
     setSaving(true); setFormError('')
     const payload = {
       lease_id: form.lease_id,
       amount: Number(form.amount),
-      amount_paid: form.amount_paid ? Number(form.amount_paid) : Number(form.amount),
+      amount_paid: isUnpaid ? 0 : (form.amount_paid ? Number(form.amount_paid) : Number(form.amount)),
       status: form.status || 'مدفوع',
-      payment_date: paymentDate,
-      payment_date_hijri: form.payment_date_hijri || null,
+      payment_date: isUnpaid ? null : paymentDate,
+      payment_date_hijri: isUnpaid ? null : (form.payment_date_hijri || null),
       payment_method: form.payment_method || null,
       notes: form.notes || null
     }
@@ -715,7 +719,13 @@ function Payments({ onBack }) {
 
                   return (
                     <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                      <td style={{ padding: '16px 18px', fontWeight: 700, color: '#1B4D7A', whiteSpace: 'nowrap' }}>{getTenantName(p.lease_id)}</td>
+                      <td style={{ padding: '16px 18px', whiteSpace: 'nowrap' }}>
+                        <button type="button" onClick={() => setViewingLeaseId(p.lease_id)}
+                          style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, textAlign: 'right' }} title="عرض تفاصيل العقد">
+                          <div style={{ fontWeight: 700, color: '#1B4D7A' }}>{getTenantName(p.lease_id)}</div>
+                          <LeaseStatusBadge endDate={getLease(p.lease_id)?.end_date} style={{ marginTop: 3 }} />
+                        </button>
+                      </td>
                       <td style={{ padding: '16px 18px', color: '#6b7280', whiteSpace: 'nowrap' }}>{getPropertyName(p.lease_id)}</td>
                       <td style={{ padding: '16px 18px' }}>
                         <span style={{ background: '#F4ECF7', color: '#8E44AD', border: '1px solid #D2B4DE', padding: '3px 10px', borderRadius: 12, fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
@@ -780,7 +790,10 @@ function Payments({ onBack }) {
               style={{ width: '100%', padding: '8px 10px', marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
 
             <label style={{ fontSize: 13, color: '#444', display: 'block', marginBottom: 4 }}>حالة الدفعة</label>
-            <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
+            <select value={form.status} onChange={e => {
+              const val = e.target.value
+              setForm(f => ({ ...f, status: val, amount_paid: val === 'unpaid' ? '0' : f.amount_paid }))
+            }}
               style={{ width: '100%', padding: '8px 10px', marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
               <option value="مدفوع">مدفوع ✓</option>
               <option value="جزئي">جزئي ⚠</option>
@@ -789,6 +802,15 @@ function Payments({ onBack }) {
 
             <div style={{ marginBottom: 15 }}>
               <HijriPicker label="تاريخ الدفع (هجري)" value={form.payment_hijri} onChange={handleHijriChange} />
+              {(form.payment_hijri.year || form.payment_hijri.month || form.payment_hijri.day || form.payment_date) && (
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, payment_hijri: { year: '', month: '', day: '' }, payment_date: '', payment_date_hijri: '' }))}
+                  style={{ marginTop: 6, fontSize: 12, color: '#e74c3c', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700, padding: 0 }}
+                >
+                  ✕ مسح تاريخ الدفع
+                </button>
+              )}
             </div>
 
             {form.lease_id && (() => {
@@ -826,6 +848,8 @@ function Payments({ onBack }) {
           </div>
         </div>
       )}
+
+      <LeaseDetailsModal leaseId={viewingLeaseId} onClose={() => setViewingLeaseId(null)} />
     </div>
   )
 }

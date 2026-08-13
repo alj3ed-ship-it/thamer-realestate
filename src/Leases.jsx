@@ -2,6 +2,8 @@
 import { supabase } from "./supabaseClient";
 import { useReadOnly } from "./ReadOnlyContext";
 import ExportToolbar from "./components/ExportToolbar";
+import { LeaseStatusBadge } from "./leaseStatus";
+import LeaseDetailsModal from "./LeaseDetailsModal";
 
 const PAYMENT_TYPES = [
   { label: "شهري", multiplier: 12 },
@@ -252,6 +254,7 @@ export default function Leases({ onBack }) {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [viewingLeaseId, setViewingLeaseId] = useState(null);
   const [filterProperty, setFilterProperty] = useState("الكل");
   const [filterTenants, setFilterTenants] = useState([]);
   const [filterUnitType, setFilterUnitType] = useState("");
@@ -265,6 +268,7 @@ export default function Leases({ onBack }) {
     end_hijri: { year: "", month: "", day: "" },
     start_date: "", end_date: "",
     start_date_hijri: "", end_date_hijri: "",
+    lease_number: "",
     rent_amount: "", payment_type: "سنوي", notes: "",
     installments: [],
     tax_enabled: false,
@@ -421,6 +425,7 @@ export default function Leases({ onBack }) {
       end_hijri: { year: "", month: "", day: "" },
       start_date: "", end_date: "",
       start_date_hijri: "", end_date_hijri: "",
+      lease_number: "",
       rent_amount: "", payment_type: "سنوي", notes: "",
       installments: [],
       tax_enabled: false,
@@ -438,6 +443,7 @@ export default function Leases({ onBack }) {
       property_id: lease.property_id || "",
       selected_unit_ids: currentUnitIds,
       tenant_id: lease.tenant_id || "",
+      lease_number: lease.lease_number || "",
       start_hijri: { year: "", month: "", day: "" },
       end_hijri: { year: "", month: "", day: "" },
       start_date: lease.start_date || "",
@@ -577,6 +583,7 @@ export default function Leases({ onBack }) {
       property_id: form.property_id || null,
       unit_id: form.selected_unit_ids[0] || null,
       tenant_id: form.tenant_id || null,
+      lease_number: form.lease_number || null,
       start_date: form.start_date || null,
       end_date: form.end_date || null,
       start_date_hijri: form.start_date_hijri || null,
@@ -892,8 +899,8 @@ export default function Leases({ onBack }) {
               <thead>
                 <tr style={{ background: "#1B4D7A", textAlign: "right" }}>
                   {(isReadOnly
-                    ? ["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الضريبة", "الملاحظات"]
-                    : ["المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الضريبة", "الملاحظات", ""]
+                    ? ["الحالة", "رقم العقد", "المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الضريبة", "الملاحظات"]
+                    : ["الحالة", "رقم العقد", "المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الضريبة", "الملاحظات", ""]
                   ).map(h => (
                     <th key={h} style={{ padding: "12px", color: "#fff", fontWeight: 600, fontSize: 13 }}>{h}</th>
                   ))}
@@ -905,6 +912,12 @@ export default function Leases({ onBack }) {
                   const property = properties.find(p => p.id === l.property_id);
                   return (
                     <tr key={l.id} style={{ background: idx % 2 === 0 ? "#fff" : "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                      <td style={{ padding: "12px" }}>
+                        <button type="button" onClick={() => setViewingLeaseId(l.id)} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }} title="عرض تفاصيل العقد">
+                          <LeaseStatusBadge endDate={l.end_date} />
+                        </button>
+                      </td>
+                      <td style={{ padding: "12px", color: "#374151", fontSize: 13 }}>{l.lease_number || "—"}</td>
                       <td style={{ padding: "12px", fontWeight: 600, color: "#1B4D7A" }}>{tenant?.name || "—"}</td>
                       <td style={{ padding: "12px", color: "#0e7490", fontWeight: 600 }}>{property?.name || "—"}</td>
                       <td style={{ padding: "12px" }} className="no-print">{unitsCell(l.id)}</td>
@@ -1012,6 +1025,12 @@ export default function Leases({ onBack }) {
                   onChange={(id) => setForm({ ...form, tenant_id: id })}
                   allowAll={false}
                 />
+              </div>
+              <div style={{ gridColumn: "span 2" }}>
+                <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>رقم العقد (Ejar) — اختياري</label>
+                <input type="text" value={form.lease_number} onChange={e => setForm({ ...form, lease_number: e.target.value })}
+                  placeholder="مثال: 2553461"
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
               </div>
               <div>
                 <label style={{ fontSize: 13, color: "#6b7280", display: "block", marginBottom: 4 }}>تاريخ البداية</label>
@@ -1142,6 +1161,8 @@ export default function Leases({ onBack }) {
           </div>
         </div>
       )}
+
+      <LeaseDetailsModal leaseId={viewingLeaseId} onClose={() => setViewingLeaseId(null)} />
     </div>
   );
 }

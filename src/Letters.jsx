@@ -3,7 +3,7 @@ import { supabase } from "./supabaseClient";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import officeLogo from "./assets/thamer-logo.svg";
-import watermarkLogo from "./assets/watermark-logo.svg";
+import watermarkLogo from "./assets/thamer-logo-watermark.png";
 import officeSignature from "./assets/signature.png";
 
 const OFFICE_NAME = "مكتب ثامر بن سلمان العقاري";
@@ -421,38 +421,24 @@ useEffect(() => {
               overflow: "hidden",
             }}
           >
-            {/* شعار مائي بخلفية كامل الصفحة — ممطوط طولياً عمداً ليصل خطه الأخضر قرب منطقة التوقيع */}
-            <img
-              src={watermarkLogo}
-              alt=""
-              style={{
-                position: "absolute",
-                top: "10px",
-                left: "50%",
-                transform: "translateX(-50%)",
-                width: "600px",
-                maxWidth: "90%",
-                height: "660px",
-                opacity: 0.16,
-                pointerEvents: "none",
-                zIndex: 0,
-              }}
-            />
-
             <div style={{ position: "relative", zIndex: 1 }}>
 
             <style>{`@import url('https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&family=Tajawal:wght@500&display=swap');`}</style>
 
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #1B4D7A", paddingBottom: "16px", marginBottom: "28px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #1B4D7A", paddingBottom: "16px", marginBottom: "28px" }}>
               <div>
-                <div style={{ fontWeight: "bold", fontSize: "22px", color: "#9A7D0A", fontFamily: "'Aref Ruqaa', serif" }}>{OFFICE_NAME}</div>
+                <div style={{ fontWeight: "bold", fontFamily: "'Aref Ruqaa', serif" }}>
+                  <span style={{ fontSize: "13px", color: "#0F5C3C" }}>مكتب </span>
+                  <span style={{ fontSize: "24px", color: "#9A7D0A" }}>ثامر بن سلمان</span>
+                  <span style={{ fontSize: "13px", color: "#0F5C3C" }}> العقاري</span>
+                </div>
                 <div style={{ fontSize: "13px", color: "#0F5C3C", marginTop: "6px", display: "flex", gap: "6px" }}>
                   <span>جوال</span>
                   <span>:</span>
                   <span style={{ direction: "ltr" }}>{OFFICE_PHONE}</span>
                 </div>
               </div>
-              <div style={{ fontFamily: "Tahoma, Arial, sans-serif", fontSize: "12px", lineHeight: 1.9, textAlign: "left" }}>
+              <div style={{ fontFamily: "Tahoma, Arial, sans-serif", fontSize: "14px", fontWeight: "bold", lineHeight: 1.9, textAlign: "left", marginTop: "16px" }}>
   <div style={{ direction: "ltr", unicodeBidi: "isolate", whiteSpace: "nowrap" }}>
     <span style={{ color: "#0F5C3C" }}>EJAR</span>
     <span style={{ color: "#0F5C3C" }}> - </span>
@@ -473,10 +459,10 @@ useEffect(() => {
               {bodyText}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "80px" }}>
               <div style={{ textAlign: "center" }}>
                 <img src={officeSignature} alt="التوقيع" style={{ width: "130px", height: "auto", display: "block", margin: "0 auto", marginBottom: "-6px", transform: "translateX(-18px)" }} />
-                <div style={{ fontSize: "13px", marginTop: "0px", color: "#111827" }}>{SIGNER_NAME}</div>
+                <div style={{ fontSize: "22px", marginTop: "2px", color: "#9A7D0A", fontFamily: "'Aref Ruqaa', serif", fontWeight: "bold" }}>{SIGNER_NAME}</div>
               </div>
             </div>
 
