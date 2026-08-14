@@ -454,6 +454,13 @@ export default function Entitlements() {
 
   return (
     <div style={{ padding: "32px", fontFamily: "Cairo, sans-serif", direction: "rtl" }}>
+      <style>{`
+        @media (max-width: 1100px) {
+          .entitlements-table { min-width: 720px !important; font-size: 12px !important; }
+          .entitlements-table th, .entitlements-table td { padding: 6px 8px !important; font-size: 12px !important; }
+          .entitlements-table span { font-size: 11px !important; padding: 2px 8px !important; }
+        }
+      `}</style>
       <h1 style={{ color: "#1B4D7A", marginBottom: "24px", fontSize: "24px" }}>جدول الاستحقاقات</h1>
 
       <div ref={filterBoxRef} style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", padding: "20px", marginBottom: "24px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end" }} className="no-print">
@@ -698,8 +705,8 @@ export default function Entitlements() {
               لا توجد نتائج لهذه الحالة
             </div>
           ) : (
-            <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-              <table style={{ width: "100%", minWidth: "900px", borderCollapse: "collapse", fontSize: "14px" }}>
+            <div className="entitlements-table-wrap" style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+              <table className="entitlements-table" style={{ width: "100%", minWidth: "900px", borderCollapse: "collapse", fontSize: "14px" }}>
                 <thead>
                   <tr style={{ background: "#f8f9fa", borderBottom: "2px solid #e9ecef" }}>
                     <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>حالة العقد</th>
