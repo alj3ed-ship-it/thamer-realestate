@@ -698,8 +698,8 @@ export default function Entitlements() {
               لا توجد نتائج لهذه الحالة
             </div>
           ) : (
-            <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflow: "hidden" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px" }}>
+            <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 2px 12px rgba(0,0,0,0.07)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+              <table style={{ width: "100%", minWidth: "900px", borderCollapse: "collapse", fontSize: "14px" }}>
                 <thead>
                   <tr style={{ background: "#f8f9fa", borderBottom: "2px solid #e9ecef" }}>
                     <th style={{ padding: "12px 16px", textAlign: "right", color: "#555", fontWeight: "bold" }}>حالة العقد</th>
