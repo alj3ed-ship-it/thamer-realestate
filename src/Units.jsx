@@ -105,11 +105,12 @@ export default function Units({ onBack }) {
     return getUnitNumberValue(a.unit_number) - getUnitNumberValue(b.unit_number)
   })
 
-  const total = units.length
-  const rented = units.filter(u => u.status === 'مؤجرة').length
-  const vacant = units.filter(u => u.status === 'شاغرة').length
-  const maintenance = units.filter(u => u.status === 'صيانة').length
-  const taxableCount = units.filter(u => u.vat_status === 'taxable').length
+  const propertyScoped = filterProperty === 'الكل' ? units : units.filter(u => u.property_id === filterProperty)
+  const total = propertyScoped.length
+  const rented = propertyScoped.filter(u => u.status === 'مؤجرة').length
+  const vacant = propertyScoped.filter(u => u.status === 'شاغرة').length
+  const maintenance = propertyScoped.filter(u => u.status === 'صيانة').length
+  const taxableCount = propertyScoped.filter(u => u.vat_status === 'taxable').length
 
   const exportData = sorted.map((u) => {
     const prop = properties.find(p => p.id === u.property_id)
@@ -140,7 +141,11 @@ export default function Units({ onBack }) {
       </button>
 
       <h1 style={{ margin: '0 0 4px', color: '#1B4D7A' }}>الوحدات</h1>
-      <p style={{ color: '#666', margin: '0 0 20px' }}>جميع الوحدات في كل العقارات</p>
+      <p style={{ color: '#666', margin: '0 0 20px' }}>
+        {filterProperty === 'الكل'
+          ? 'جميع الوحدات في كل العقارات'
+          : `وحدات عقار: ${properties.find(p => p.id === filterProperty)?.name || ''}`}
+      </p>
 
       <div style={{ display: 'flex', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
         {[
