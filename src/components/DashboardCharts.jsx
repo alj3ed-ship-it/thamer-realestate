@@ -3,7 +3,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../supabaseClient';
 
 const OCC_COLORS = { مؤجرة: '#2563eb', شاغرة: '#f59e0b', صيانة: '#ef4444' };
-const PAY_COLORS = { مدفوع: '#10b981', جزئي: '#f59e0b', 'لم يُسدَّد': '#f43f5e' };
+const PAY_COLORS = { مدفوع: '#10b981', جزئي: '#f59e0b', متأخر: '#f43f5e', 'لم يستحق بعد': '#9ca3af' };
 const BAR_PALETTE = ['#2563eb', '#0e7490', '#7c3aed', '#c2410c', '#0f766e', '#be123c', '#4338ca', '#15803d'];
 const BAR_HIGHLIGHT = '#f59e0b';
 
@@ -52,16 +52,24 @@ function DashboardCharts() {
     if (leaseErr || !leases) { setPayments([]); return; }
     const leaseIds = leases.map((l) => l.id);
     if (leaseIds.length === 0) { setPayments([]); return; }
-    const { data: pays, error: payErr } = await supabase.from('payments').select('amount, amount_paid').in('lease_id', leaseIds);
+    const { data: pays, error: payErr } = await supabase.from('payments').select('amount, amount_paid, due_date_gregorian').in('lease_id', leaseIds);
     if (!payErr && pays) {
-      const counts = { مدفوع: 0, جزئي: 0, 'لم يُسدَّد': 0 };
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const counts = { مدفوع: 0, جزئي: 0, متأخر: 0, 'لم يستحق بعد': 0 };
       pays.forEach((p) => {
         const due = Number(p.amount || 0);
         const paid = Number(p.amount_paid || 0);
-        // نفس منطق حساب الحالة المستخدم في صفحة الدفعات (Payments.jsx) - لا نعتمد على عمود status الخام لأنه قد لا يكون متزامناً
-        if (paid > 0 && paid >= due && due > 0) counts['مدفوع']++;
-        else if (paid > 0) counts['جزئي']++;
-        else counts['لم يُسدَّد']++;
+        // نفس منطق حساب الحالة المستخدم في صفحة الاستحقاقات (Entitlements.jsx):
+        // فصل حالة السداد (مدفوع/جزئي/لا شيء) عن الحالة الزمنية (استحق/لم يستحق بعد)
+        if (paid > 0 && paid >= due && due > 0) {
+          counts['مدفوع']++;
+        } else if (paid > 0) {
+          counts['جزئي']++;
+        } else {
+          const dueDate = p.due_date_gregorian ? new Date(p.due_date_gregorian) : null;
+          if (dueDate && dueDate > today) counts['لم يستحق بعد']++;
+          else counts['متأخر']++;
+        }
       });
       setPayments(Object.entries(counts).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value })));
     }
@@ -107,7 +115,9 @@ function DashboardCharts() {
 
   const totalPayments = payments.reduce((s, p) => s + p.value, 0);
   const paidCount = payments.find((p) => p.name === 'مدفوع')?.value || 0;
-  const collectionPct = totalPayments ? Math.round((paidCount / totalPayments) * 100) : 0;
+  // نسبة التحصيل تُحسب من الدفعات المستحقة فقط (نستثني "لم يستحق بعد" لأنها ليست جزءاً من المطلوب تحصيله حالياً)
+  const dueSoFarCount = totalPayments - (payments.find((p) => p.name === 'لم يستحق بعد')?.value || 0);
+  const collectionPct = dueSoFarCount ? Math.round((paidCount / dueSoFarCount) * 100) : 0;
 
   const totalRevenue = revenue.reduce((s, r) => s + r.value, 0);
   const maxRevenue = Math.max(...revenue.map((r) => r.value), 1);
@@ -188,7 +198,7 @@ function DashboardCharts() {
             </div>
             <div style={styles.kpiCard}>
               <div style={{ ...styles.kpiValue, color: '#f59e0b' }}>{collectionPct}%</div>
-              <div style={styles.kpiLabel}>نسبة التحصيل ({paidCount} من {totalPayments})</div>
+              <div style={styles.kpiLabel}>نسبة التحصيل ({paidCount} من {dueSoFarCount} مستحق)</div>
             </div>
           </div>
 
