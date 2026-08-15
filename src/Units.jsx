@@ -20,16 +20,6 @@ function getVatStatusInfo(value) {
   return VAT_STATUS_OPTIONS.find(o => o.value === value) || VAT_STATUS_OPTIONS[0]
 }
 
-// أولوية العقار (نفس ترتيب صفحة العرض /view)
-function getPropertyPriority(name) {
-  if (!name) return 99
-  if (name.includes('سلمان')) return 1
-  if (name.includes('إبراهيم')) return 2
-  if (name.includes('عبدالله الكبيرة')) return 3
-  if (name.includes('عبدالله الصغيرة')) return 4
-  return 99
-}
-
 // أولوية نوع الوحدة: محل > شقة > ورشة > غيرها
 function getUnitTypePriority(type) {
   if (!type) return 99
@@ -51,8 +41,8 @@ export default function Units({ onBack }) {
   const [units, setUnits] = useState([])
   const [properties, setProperties] = useState([])
   const [loading, setLoading] = useState(true)
+  const [selectedPropertyId, setSelectedPropertyId] = useState(null)
   const [filterStatus, setFilterStatus] = useState('الكل')
-  const [filterProperty, setFilterProperty] = useState('الكل')
   const [filterVat, setFilterVat] = useState('الكل')
   const [updatingId, setUpdatingId] = useState(null)
 
@@ -62,7 +52,7 @@ export default function Units({ onBack }) {
     setLoading(true)
     const [u, p] = await Promise.all([
       supabase.from('units').select('*').order('unit_number'),
-      supabase.from('properties').select('id, name').order('name'),
+      supabase.from('properties').select('id, name, priority').order('priority', { ascending: true, nullsFirst: false }),
     ])
     setUnits(u.data || [])
     setProperties(p.data || [])
@@ -77,200 +67,287 @@ export default function Units({ onBack }) {
     setUnits(prev => prev.map(u => u.id === unitId ? { ...u, vat_status: newValue } : u))
   }
 
-  const filtered = units.filter(u => {
-    const matchStatus = filterStatus === 'الكل' || u.status === filterStatus
-    const matchProperty = filterProperty === 'الكل' || u.property_id === filterProperty
-    const matchVat = filterVat === 'الكل' || (u.vat_status || 'exempt') === filterVat
-    return matchStatus && matchProperty && matchVat
+  // زر رجوع ذكي: من داخل عقار → لشاشة العقارات، ومن شاشة العقارات → للوحة التحكم
+  function handleBack() {
+    if (selectedPropertyId) {
+      setSelectedPropertyId(null)
+      setFilterStatus('الكل')
+      setFilterVat('الكل')
+    } else {
+      onBack()
+    }
+  }
+
+  // ترتيب العقارات حسب عمود priority بقاعدة البيانات (نفس مصدر الترتيب في باقي الصفحات)
+  const sortedProperties = [...properties].sort((a, b) => {
+    const pa = a.priority ?? 99
+    const pb = b.priority ?? 99
+    if (pa !== pb) return pa - pb
+    return (a.name || '').localeCompare(b.name || '', 'ar')
   })
 
-  // الترتيب: العقار (بالأولوية) → النوع (محل > شقة > ورشة) → رقم الوحدة تصاعدي
-  const sorted = [...filtered].sort((a, b) => {
-    const propA = properties.find(p => p.id === a.property_id)
-    const propB = properties.find(p => p.id === b.property_id)
+  // إحصائيات إجمالية عامة (كل العقارات)
+  const totalAll = units.length
+  const rentedAll = units.filter(u => u.status === 'مؤجرة').length
+  const vacantAll = units.filter(u => u.status === 'شاغرة').length
+  const maintenanceAll = units.filter(u => u.status === 'صيانة').length
+  const taxableAll = units.filter(u => u.vat_status === 'taxable').length
 
-    const propPriorityA = getPropertyPriority(propA?.name)
-    const propPriorityB = getPropertyPriority(propB?.name)
-    if (propPriorityA !== propPriorityB) return propPriorityA - propPriorityB
+  // إحصائيات لكل عقار (لبطاقات شاشة العقارات)
+  function statsForProperty(propertyId) {
+    const propUnits = units.filter(u => u.property_id === propertyId)
+    return {
+      total: propUnits.length,
+      rented: propUnits.filter(u => u.status === 'مؤجرة').length,
+      vacant: propUnits.filter(u => u.status === 'شاغرة').length,
+      maintenance: propUnits.filter(u => u.status === 'صيانة').length,
+    }
+  }
 
-    // نفس أولوية العقار: رتب أبجدياً باسم العقار كضمان إضافي (لحالة عقارين بنفس الأولوية 99)
-    const nameA = propA?.name || ''
-    const nameB = propB?.name || ''
-    if (nameA !== nameB) return nameA.localeCompare(nameB, 'ar')
+  const selectedProperty = properties.find(p => p.id === selectedPropertyId)
 
+  // وحدات العقار المختار، مفلترة ومرتبة (النوع أولاً: محل > شقة > ورشة، ثم الرقم تصاعدياً)
+  const propertyUnits = selectedPropertyId
+    ? units.filter(u => u.property_id === selectedPropertyId)
+    : []
+
+  const filteredPropertyUnits = propertyUnits.filter(u => {
+    const matchStatus = filterStatus === 'الكل' || u.status === filterStatus
+    const matchVat = filterVat === 'الكل' || (u.vat_status || 'exempt') === filterVat
+    return matchStatus && matchVat
+  })
+
+  const sortedPropertyUnits = [...filteredPropertyUnits].sort((a, b) => {
     const typePriorityA = getUnitTypePriority(a.unit_type)
     const typePriorityB = getUnitTypePriority(b.unit_type)
     if (typePriorityA !== typePriorityB) return typePriorityA - typePriorityB
-
     return getUnitNumberValue(a.unit_number) - getUnitNumberValue(b.unit_number)
   })
 
-  const propertyScoped = filterProperty === 'الكل' ? units : units.filter(u => u.property_id === filterProperty)
-  const total = propertyScoped.length
-  const rented = propertyScoped.filter(u => u.status === 'مؤجرة').length
-  const vacant = propertyScoped.filter(u => u.status === 'شاغرة').length
-  const maintenance = propertyScoped.filter(u => u.status === 'صيانة').length
-  const taxableCount = propertyScoped.filter(u => u.vat_status === 'taxable').length
+  const exportData = sortedPropertyUnits.map((u) => ({
+    unitNumber: u.unit_number ?? '—',
+    unitType: u.unit_type || '—',
+    floor: u.floor ?? '—',
+    area: u.area_sqm ? u.area_sqm + ' م²' : '—',
+    status: u.status || '—',
+    vatStatus: getVatStatusInfo(u.vat_status).label,
+    notes: u.notes || '—',
+  }))
 
-  const exportData = sorted.map((u) => {
-    const prop = properties.find(p => p.id === u.property_id)
-    return {
-      property: prop?.name || '—',
-      unitNumber: u.unit_number ?? '—',
-      unitType: u.unit_type || '—',
-      floor: u.floor ?? '—',
-      area: u.area_sqm ? u.area_sqm + ' م²' : '—',
-      status: u.status || '—',
-      vatStatus: getVatStatusInfo(u.vat_status).label,
-      notes: u.notes || '—',
-    }
-  })
-
-  const exportStats = [
-    { label: 'إجمالي الوحدات', value: total, color: '#1B4D7A' },
-    { label: 'مؤجرة', value: rented, color: '#166534' },
-    { label: 'شاغرة', value: vacant, color: '#854d0e' },
-    { label: 'صيانة', value: maintenance, color: '#991b1b' },
-    { label: 'خاضعة للضريبة', value: taxableCount, color: '#b91c1c' },
-  ]
+  const propertyStats = selectedPropertyId ? statsForProperty(selectedPropertyId) : null
+  const exportStats = propertyStats ? [
+    { label: 'إجمالي الوحدات', value: propertyStats.total, color: '#1B4D7A' },
+    { label: 'مؤجرة', value: propertyStats.rented, color: '#166534' },
+    { label: 'شاغرة', value: propertyStats.vacant, color: '#854d0e' },
+    { label: 'صيانة', value: propertyStats.maintenance, color: '#991b1b' },
+  ] : []
 
   return (
     <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1100px', margin: '0 auto' }}>
-      <button onClick={onBack} className="no-print" style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-        ← رجوع للوحة التحكم
+      <button onClick={handleBack} className="no-print" style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+        ← {selectedPropertyId ? 'رجوع للعقارات' : 'رجوع للوحة التحكم'}
       </button>
 
-      <h1 style={{ margin: '0 0 4px', color: '#1B4D7A' }}>الوحدات</h1>
+      <h1 style={{ margin: '0 0 4px', color: '#1B4D7A' }}>
+        {selectedPropertyId ? `وحدات: ${selectedProperty?.name || ''}` : 'الوحدات'}
+      </h1>
       <p style={{ color: '#666', margin: '0 0 20px' }}>
-        {filterProperty === 'الكل'
-          ? 'جميع الوحدات في كل العقارات'
-          : `وحدات عقار: ${properties.find(p => p.id === filterProperty)?.name || ''}`}
+        {selectedPropertyId ? 'اضغط على أي بطاقة لتعديل تصنيف الضريبة أو الاطلاع على التفاصيل' : 'اختر عقاراً لعرض وحداته'}
       </p>
-
-      <div style={{ display: 'flex', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
-        {[
-          { label: 'إجمالي الوحدات', value: total, color: '#1B4D7A', icon: '🏢' },
-          { label: 'مؤجرة', value: rented, color: '#166534', icon: '✅' },
-          { label: 'شاغرة', value: vacant, color: '#854d0e', icon: '🕓' },
-          { label: 'صيانة', value: maintenance, color: '#991b1b', icon: '🔧' },
-          { label: 'خاضعة للضريبة', value: taxableCount, color: '#7c3aed', icon: '🧾' },
-        ].map(c => (
-          <div key={c.label} style={{
-            flex: '1 1 170px',
-            background: '#fff',
-            border: `1px solid ${c.color}33`,
-            borderTop: `4px solid ${c.color}`,
-            borderRadius: 14,
-            padding: '18px 22px',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
-            textAlign: 'center',
-          }}>
-            <div style={{ fontSize: 22, marginBottom: 6 }}>{c.icon}</div>
-            <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6, fontWeight: 600 }}>{c.label}</div>
-            <div style={{ fontSize: 30, fontWeight: 800, color: c.color, lineHeight: 1 }}>{c.value}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="no-print" style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-        <select value={filterProperty} onChange={e => setFilterProperty(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
-          <option value="الكل">كل العقارات</option>
-          {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
-          <option value="الكل">كل الحالات</option>
-          <option value="شاغرة">شاغرة</option>
-          <option value="مؤجرة">مؤجرة</option>
-          <option value="صيانة">صيانة</option>
-        </select>
-        <select value={filterVat} onChange={e => setFilterVat(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
-          <option value="الكل">كل تصنيفات الضريبة</option>
-          {VAT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-        <button onClick={fetchAll} style={{ padding: '8px 16px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
-      </div>
 
       {loading && <p>جاري التحميل...</p>}
 
-      {!loading && sorted.length === 0 && (
-        <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>
-          لا توجد وحدات
-        </div>
+      {/* ===== شاشة العقارات ===== */}
+      {!loading && !selectedPropertyId && (
+        <>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
+            {[
+              { label: 'إجمالي الوحدات', value: totalAll, color: '#1B4D7A', icon: '🏢' },
+              { label: 'مؤجرة', value: rentedAll, color: '#166534', icon: '✅' },
+              { label: 'شاغرة', value: vacantAll, color: '#854d0e', icon: '🕓' },
+              { label: 'صيانة', value: maintenanceAll, color: '#991b1b', icon: '🔧' },
+              { label: 'خاضعة للضريبة', value: taxableAll, color: '#7c3aed', icon: '🧾' },
+            ].map(c => (
+              <div key={c.label} style={{
+                flex: '1 1 170px',
+                background: '#fff',
+                border: `1px solid ${c.color}33`,
+                borderTop: `4px solid ${c.color}`,
+                borderRadius: 14,
+                padding: '18px 22px',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 22, marginBottom: 6 }}>{c.icon}</div>
+                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6, fontWeight: 600 }}>{c.label}</div>
+                <div style={{ fontSize: 30, fontWeight: 800, color: c.color, lineHeight: 1 }}>{c.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {sortedProperties.length === 0 && (
+            <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>
+              لا توجد عقارات
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 18 }}>
+            {sortedProperties.map(p => {
+              const s = statsForProperty(p.id)
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => setSelectedPropertyId(p.id)}
+                  style={{
+                    background: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 14,
+                    padding: '20px',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                    transition: 'transform 0.15s, box-shadow 0.15s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.1)' }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.05)' }}
+                >
+                  <div style={{ fontSize: 17, fontWeight: 700, color: '#1B4D7A', marginBottom: 14 }}>{p.name}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div style={{ background: '#eef4fa', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 11, color: '#1B4D7A', fontWeight: 600 }}>إجمالي</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: '#1B4D7A' }}>{s.total}</div>
+                    </div>
+                    <div style={{ background: '#dcfce7', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 11, color: '#166534', fontWeight: 600 }}>مؤجرة</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: '#166534' }}>{s.rented}</div>
+                    </div>
+                    <div style={{ background: '#fef9c3', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 11, color: '#854d0e', fontWeight: 600 }}>شاغرة</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: '#854d0e' }}>{s.vacant}</div>
+                    </div>
+                    <div style={{ background: '#fee2e2', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 11, color: '#991b1b', fontWeight: 600 }}>صيانة</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: '#991b1b' }}>{s.maintenance}</div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
 
-      {!loading && sorted.length > 0 && (
-        <div id="units-table">
-          <ExportToolbar
-            data={exportData}
-            columns={[
-              { key: 'property', label: 'العقار' },
-              { key: 'unitNumber', label: 'رقم الوحدة' },
-              { key: 'unitType', label: 'النوع' },
-              { key: 'floor', label: 'الدور' },
-              { key: 'area', label: 'المساحة' },
-              { key: 'status', label: 'الحالة' },
-              { key: 'vatStatus', label: 'تصنيف الضريبة' },
-              { key: 'notes', label: 'ملاحظات' },
-            ]}
-            filename="units_report"
-            title="تقرير الوحدات"
-            stats={exportStats}
-          />
+      {/* ===== شاشة تفاصيل العقار: بطاقات الوحدات ===== */}
+      {!loading && selectedPropertyId && (
+        <>
+          <div className="no-print" style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
+              <option value="الكل">كل الحالات</option>
+              <option value="شاغرة">شاغرة</option>
+              <option value="مؤجرة">مؤجرة</option>
+              <option value="صيانة">صيانة</option>
+            </select>
+            <select value={filterVat} onChange={e => setFilterVat(e.target.value)}
+              style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
+              <option value="الكل">كل تصنيفات الضريبة</option>
+              {VAT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <button onClick={fetchAll} style={{ padding: '8px 16px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
+          </div>
 
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-              <thead>
-                <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                  {['العقار', 'رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'تصنيف الضريبة', 'ملاحظات'].map(h => (
-                    <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((u, idx) => {
-                  const prop = properties.find(p => p.id === u.property_id)
+          {sortedPropertyUnits.length === 0 && (
+            <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>
+              لا توجد وحدات مطابقة
+            </div>
+          )}
+
+          {sortedPropertyUnits.length > 0 && (
+            <div id="units-table">
+              <ExportToolbar
+                data={exportData}
+                columns={[
+                  { key: 'unitNumber', label: 'رقم الوحدة' },
+                  { key: 'unitType', label: 'النوع' },
+                  { key: 'floor', label: 'الدور' },
+                  { key: 'area', label: 'المساحة' },
+                  { key: 'status', label: 'الحالة' },
+                  { key: 'vatStatus', label: 'تصنيف الضريبة' },
+                  { key: 'notes', label: 'ملاحظات' },
+                ]}
+                filename={`units_${selectedProperty?.name || 'property'}`}
+                title={`تقرير وحدات: ${selectedProperty?.name || ''}`}
+                stats={exportStats}
+              />
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 18 }}>
+                {sortedPropertyUnits.map(u => {
                   const vatValue = u.vat_status || 'exempt'
                   const vatInfo = getVatStatusInfo(vatValue)
                   return (
-                    <tr key={u.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                      <td style={{ padding: '12px', color: '#1B4D7A', fontWeight: 600 }}>{prop?.name || '—'}</td>
-                      <td style={{ padding: '12px', fontWeight: 600 }}>{u.unit_number}</td>
-                      <td style={{ padding: '12px' }}>{u.unit_type || '—'}</td>
-                      <td style={{ padding: '12px' }}>{u.floor ?? '—'}</td>
-                      <td style={{ padding: '12px' }}>{u.area_sqm ? u.area_sqm + ' م²' : '—'}</td>
-                      <td style={{ padding: '12px' }}>
-                        <span style={{ ...statusColor[u.status], padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+                    <div key={u.id} style={{
+                      background: '#fff',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: 14,
+                      overflow: 'hidden',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                    }}>
+                      {/* رأس البطاقة: النوع والرقم */}
+                      <div style={{ background: '#1B4D7A', padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ color: '#cfe0f0', fontSize: 12, fontWeight: 600 }}>{u.unit_type || 'وحدة'}</div>
+                          <div style={{ color: '#fff', fontSize: 20, fontWeight: 800 }}>{u.unit_number ?? '—'}</div>
+                        </div>
+                        <span style={{ ...statusColor[u.status], padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
                           {u.status || '—'}
                         </span>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <select
-                          value={vatValue}
-                          disabled={isReadOnly || updatingId === u.id}
-                          onChange={e => handleVatChange(u.id, e.target.value)}
-                          style={{
-                            background: vatInfo.bg, color: vatInfo.color, border: `1.5px solid ${vatInfo.border}`,
-                            padding: '6px 28px 6px 12px', borderRadius: 20, fontSize: 12.5, fontWeight: 700,
-                            fontFamily: 'Cairo, sans-serif', cursor: isReadOnly ? 'default' : 'pointer',
-                            appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
-                            backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='${encodeURIComponent(vatInfo.color)}' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>")`,
-                            backgroundRepeat: 'no-repeat', backgroundPosition: 'left 10px center',
-                            minWidth: 90, textAlign: 'center', textAlignLast: 'center',
-                          }}>
-                          {VAT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                      </td>
-                      <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{u.notes || '—'}</td>
-                    </tr>
+                      </div>
+
+                      {/* جدول صغير بتفاصيل الوحدة */}
+                      <div style={{ padding: '4px 0' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                          <tbody>
+                            <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '9px 16px', color: '#6b7280', fontWeight: 600 }}>الدور</td>
+                              <td style={{ padding: '9px 16px', textAlign: 'left', fontWeight: 600 }}>{u.floor ?? '—'}</td>
+                            </tr>
+                            <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '9px 16px', color: '#6b7280', fontWeight: 600 }}>المساحة</td>
+                              <td style={{ padding: '9px 16px', textAlign: 'left', fontWeight: 600 }}>{u.area_sqm ? u.area_sqm + ' م²' : '—'}</td>
+                            </tr>
+                            <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '9px 16px', color: '#6b7280', fontWeight: 600 }}>الضريبة</td>
+                              <td style={{ padding: '7px 12px', textAlign: 'left' }}>
+                                <select
+                                  value={vatValue}
+                                  disabled={isReadOnly || updatingId === u.id}
+                                  onChange={e => handleVatChange(u.id, e.target.value)}
+                                  style={{
+                                    background: vatInfo.bg, color: vatInfo.color, border: `1.5px solid ${vatInfo.border}`,
+                                    padding: '5px 26px 5px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                                    fontFamily: 'Cairo, sans-serif', cursor: isReadOnly ? 'default' : 'pointer',
+                                    appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
+                                    backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='${encodeURIComponent(vatInfo.color)}' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>")`,
+                                    backgroundRepeat: 'no-repeat', backgroundPosition: 'left 8px center',
+                                    minWidth: 82, textAlign: 'center', textAlignLast: 'center',
+                                  }}>
+                                  {VAT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                              </td>
+                            </tr>
+                            <tr>
+                              <td style={{ padding: '9px 16px', color: '#6b7280', fontWeight: 600, verticalAlign: 'top' }}>ملاحظات</td>
+                              <td style={{ padding: '9px 16px', textAlign: 'left', color: '#9ca3af', fontSize: 12.5 }}>{u.notes || '—'}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   )
                 })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
