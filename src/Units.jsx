@@ -36,6 +36,15 @@ function getUnitNumberValue(unitNumber) {
   return isNaN(parsed) ? 999999 : parsed
 }
 
+// إعدادات كروت الفلتر العلوية
+const TOP_FILTER_CARDS = [
+  { key: 'all', label: 'إجمالي الوحدات', color: '#1B4D7A', icon: '🏢' },
+  { key: 'مؤجرة', label: 'مؤجرة', color: '#166534', icon: '✅' },
+  { key: 'شاغرة', label: 'شاغرة', color: '#854d0e', icon: '🕓' },
+  { key: 'صيانة', label: 'صيانة', color: '#991b1b', icon: '🔧' },
+  { key: 'taxable', label: 'خاضعة للضريبة', color: '#7c3aed', icon: '🧾' },
+]
+
 export default function Units({ onBack }) {
   const isReadOnly = useReadOnly()
   const [units, setUnits] = useState([])
@@ -45,6 +54,7 @@ export default function Units({ onBack }) {
   const [filterStatus, setFilterStatus] = useState('الكل')
   const [filterVat, setFilterVat] = useState('الكل')
   const [updatingId, setUpdatingId] = useState(null)
+  const [activeTopFilter, setActiveTopFilter] = useState(null) // 'all' | 'مؤجرة' | 'شاغرة' | 'صيانة' | 'taxable' | null
 
   useEffect(() => { fetchAll() }, [])
 
@@ -78,6 +88,10 @@ export default function Units({ onBack }) {
     }
   }
 
+  function handleTopFilterClick(key) {
+    setActiveTopFilter(prev => (prev === key ? null : key))
+  }
+
   // ترتيب العقارات حسب عمود priority بقاعدة البيانات (نفس مصدر الترتيب في باقي الصفحات)
   const sortedProperties = [...properties].sort((a, b) => {
     const pa = a.priority ?? 99
@@ -86,12 +100,38 @@ export default function Units({ onBack }) {
     return (a.name || '').localeCompare(b.name || '', 'ar')
   })
 
+  const propertyNameById = Object.fromEntries(properties.map(p => [p.id, p.name]))
+  const propertyPriorityById = Object.fromEntries(properties.map(p => [p.id, p.priority ?? 99]))
+
   // إحصائيات إجمالية عامة (كل العقارات)
   const totalAll = units.length
   const rentedAll = units.filter(u => u.status === 'مؤجرة').length
   const vacantAll = units.filter(u => u.status === 'شاغرة').length
   const maintenanceAll = units.filter(u => u.status === 'صيانة').length
   const taxableAll = units.filter(u => u.vat_status === 'taxable').length
+
+  const topFilterValues = { all: totalAll, 'مؤجرة': rentedAll, 'شاغرة': vacantAll, 'صيانة': maintenanceAll, taxable: taxableAll }
+
+  // الوحدات المطابقة للفلتر العلوي المفعّل (كل العقارات)
+  const topFilteredUnits = (() => {
+    if (!activeTopFilter) return []
+    let list
+    if (activeTopFilter === 'all') list = units
+    else if (activeTopFilter === 'taxable') list = units.filter(u => u.vat_status === 'taxable')
+    else list = units.filter(u => u.status === activeTopFilter)
+
+    return [...list].sort((a, b) => {
+      const prA = propertyPriorityById[a.property_id] ?? 99
+      const prB = propertyPriorityById[b.property_id] ?? 99
+      if (prA !== prB) return prA - prB
+      const typePriorityA = getUnitTypePriority(a.unit_type)
+      const typePriorityB = getUnitTypePriority(b.unit_type)
+      if (typePriorityA !== typePriorityB) return typePriorityA - typePriorityB
+      return getUnitNumberValue(a.unit_number) - getUnitNumberValue(b.unit_number)
+    })
+  })()
+
+  const activeTopFilterInfo = TOP_FILTER_CARDS.find(c => c.key === activeTopFilter)
 
   // إحصائيات لكل عقار (لبطاقات شاشة العقارات)
   function statsForProperty(propertyId) {
@@ -152,7 +192,7 @@ export default function Units({ onBack }) {
         {selectedPropertyId ? `وحدات: ${selectedProperty?.name || ''}` : 'الوحدات'}
       </h1>
       <p style={{ color: '#666', margin: '0 0 20px' }}>
-        {selectedPropertyId ? 'اضغط على أي بطاقة لتعديل تصنيف الضريبة أو الاطلاع على التفاصيل' : 'اختر عقاراً لعرض وحداته'}
+        {selectedPropertyId ? 'اضغط على أي بطاقة لتعديل تصنيف الضريبة أو الاطلاع على التفاصيل' : 'اختر عقاراً لعرض وحداته، أو اضغط على أحد الكروت أعلاه لعرض قائمة مفلترة'}
       </p>
 
       {loading && <p>جاري التحميل...</p>}
@@ -161,78 +201,157 @@ export default function Units({ onBack }) {
       {!loading && !selectedPropertyId && (
         <>
           <div style={{ display: 'flex', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
-            {[
-              { label: 'إجمالي الوحدات', value: totalAll, color: '#1B4D7A', icon: '🏢' },
-              { label: 'مؤجرة', value: rentedAll, color: '#166534', icon: '✅' },
-              { label: 'شاغرة', value: vacantAll, color: '#854d0e', icon: '🕓' },
-              { label: 'صيانة', value: maintenanceAll, color: '#991b1b', icon: '🔧' },
-              { label: 'خاضعة للضريبة', value: taxableAll, color: '#7c3aed', icon: '🧾' },
-            ].map(c => (
-              <div key={c.label} style={{
-                flex: '1 1 170px',
-                background: '#fff',
-                border: `1px solid ${c.color}33`,
-                borderTop: `4px solid ${c.color}`,
-                borderRadius: 14,
-                padding: '18px 22px',
-                boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
-                textAlign: 'center',
-              }}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>{c.icon}</div>
-                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6, fontWeight: 600 }}>{c.label}</div>
-                <div style={{ fontSize: 30, fontWeight: 800, color: c.color, lineHeight: 1 }}>{c.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {sortedProperties.length === 0 && (
-            <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>
-              لا توجد عقارات
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 18 }}>
-            {sortedProperties.map(p => {
-              const s = statsForProperty(p.id)
+            {TOP_FILTER_CARDS.map(c => {
+              const isActive = activeTopFilter === c.key
               return (
                 <div
-                  key={p.id}
-                  onClick={() => setSelectedPropertyId(p.id)}
+                  key={c.key}
+                  onClick={() => handleTopFilterClick(c.key)}
+                  className="no-print"
                   style={{
-                    background: '#fff',
-                    border: '1px solid #e5e7eb',
+                    flex: '1 1 170px',
+                    background: isActive ? `${c.color}14` : '#fff',
+                    border: `1px solid ${c.color}33`,
+                    borderTop: `4px solid ${c.color}`,
                     borderRadius: 14,
-                    padding: '20px',
+                    padding: '18px 22px',
+                    boxShadow: isActive ? `0 0 0 2px ${c.color}` : '0 2px 10px rgba(0,0,0,0.05)',
+                    textAlign: 'center',
                     cursor: 'pointer',
-                    boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
-                    transition: 'transform 0.15s, box-shadow 0.15s',
+                    transition: 'box-shadow 0.15s, transform 0.15s',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.1)' }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.05)' }}
+                  onMouseEnter={e => { if (!isActive) e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.1)' }}
+                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.05)' }}
                 >
-                  <div style={{ fontSize: 17, fontWeight: 700, color: '#1B4D7A', marginBottom: 14 }}>{p.name}</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <div style={{ background: '#eef4fa', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, color: '#1B4D7A', fontWeight: 600 }}>إجمالي</div>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: '#1B4D7A' }}>{s.total}</div>
-                    </div>
-                    <div style={{ background: '#dcfce7', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, color: '#166534', fontWeight: 600 }}>مؤجرة</div>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: '#166534' }}>{s.rented}</div>
-                    </div>
-                    <div style={{ background: '#fef9c3', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, color: '#854d0e', fontWeight: 600 }}>شاغرة</div>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: '#854d0e' }}>{s.vacant}</div>
-                    </div>
-                    <div style={{ background: '#fee2e2', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, color: '#991b1b', fontWeight: 600 }}>صيانة</div>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: '#991b1b' }}>{s.maintenance}</div>
-                    </div>
-                  </div>
+                  <div style={{ fontSize: 22, marginBottom: 6 }}>{c.icon}</div>
+                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6, fontWeight: 600 }}>{c.label}</div>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: c.color, lineHeight: 1 }}>{topFilterValues[c.key]}</div>
                 </div>
               )
             })}
           </div>
+
+          {/* ===== قائمة الوحدات المفلترة (تظهر عند تفعيل فلتر علوي) ===== */}
+          {activeTopFilter ? (
+            <div>
+              <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: activeTopFilterInfo?.color }}>
+                  {activeTopFilterInfo?.icon} عرض: {activeTopFilterInfo?.label} ({topFilteredUnits.length})
+                </div>
+                <button
+                  onClick={() => setActiveTopFilter(null)}
+                  style={{ padding: '7px 14px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600 }}
+                >
+                  ✕ إلغاء الفلتر
+                </button>
+              </div>
+
+              {topFilteredUnits.length === 0 ? (
+                <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>
+                  لا توجد وحدات مطابقة
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {topFilteredUnits.map(u => {
+                    const vatInfo = getVatStatusInfo(u.vat_status || 'exempt')
+                    return (
+                      <div
+                        key={u.id}
+                        onClick={() => setSelectedPropertyId(u.property_id)}
+                        style={{
+                          background: '#fff',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: 12,
+                          padding: '12px 18px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          flexWrap: 'wrap',
+                          cursor: 'pointer',
+                          boxShadow: '0 1px 6px rgba(0,0,0,0.04)',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.09)' }}
+                        onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 6px rgba(0,0,0,0.04)' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                          <div style={{ minWidth: 60, textAlign: 'center' }}>
+                            <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>{u.unit_type || 'وحدة'}</div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: '#1B4D7A' }}>{u.unit_number ?? '—'}</div>
+                          </div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: '#374151' }}>
+                            {propertyNameById[u.property_id] || '—'}
+                          </div>
+                          <div style={{ fontSize: 12.5, color: '#6b7280' }}>
+                            {u.floor ? `الدور ${u.floor}` : '—'}{u.area_sqm ? ` · ${u.area_sqm} م²` : ''}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <span style={{ ...(statusColor[u.status] || {}), padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
+                            {u.status || '—'}
+                          </span>
+                          <span style={{ background: vatInfo.bg, color: vatInfo.color, border: `1px solid ${vatInfo.border}`, padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
+                            {vatInfo.label}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {sortedProperties.length === 0 && (
+                <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>
+                  لا توجد عقارات
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 18 }}>
+                {sortedProperties.map(p => {
+                  const s = statsForProperty(p.id)
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => setSelectedPropertyId(p.id)}
+                      style={{
+                        background: '#fff',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: 14,
+                        padding: '20px',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                        transition: 'transform 0.15s, box-shadow 0.15s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.1)' }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.05)' }}
+                    >
+                      <div style={{ fontSize: 17, fontWeight: 700, color: '#1B4D7A', marginBottom: 14 }}>{p.name}</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div style={{ background: '#eef4fa', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 11, color: '#1B4D7A', fontWeight: 600 }}>إجمالي</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: '#1B4D7A' }}>{s.total}</div>
+                        </div>
+                        <div style={{ background: '#dcfce7', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 11, color: '#166534', fontWeight: 600 }}>مؤجرة</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: '#166534' }}>{s.rented}</div>
+                        </div>
+                        <div style={{ background: '#fef9c3', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 11, color: '#854d0e', fontWeight: 600 }}>شاغرة</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: '#854d0e' }}>{s.vacant}</div>
+                        </div>
+                        <div style={{ background: '#fee2e2', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 11, color: '#991b1b', fontWeight: 600 }}>صيانة</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: '#991b1b' }}>{s.maintenance}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
         </>
       )}
 
