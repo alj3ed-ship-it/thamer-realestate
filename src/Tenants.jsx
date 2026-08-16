@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 import { getUnitTypeColor } from './theme'
 import { useReadOnly } from './ReadOnlyContext'
@@ -31,6 +31,7 @@ function TenantDetail({ tenant, onBack }) {
     startDate: l.start_date || '—',
     endDate: l.end_date || '—',
     rent: l.rent_amount ? Number(l.rent_amount).toLocaleString() + ' ريال' : '—',
+    paymentType: l.payment_type || '—',
     status: l.status || '—',
   }))
 
@@ -62,6 +63,7 @@ function TenantDetail({ tenant, onBack }) {
               { key: 'startDate', label: 'من' },
               { key: 'endDate', label: 'إلى' },
               { key: 'rent', label: 'الإيجار' },
+              { key: 'paymentType', label: 'نوع الدفع' },
               { key: 'status', label: 'الحالة' },
             ]}
             filename={`tenant_${tenant.name || 'report'}`}
@@ -70,7 +72,7 @@ function TenantDetail({ tenant, onBack }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                {['العقار', 'من', 'إلى', 'الإيجار', 'الحالة'].map(h => (
+                {['العقار', 'من', 'إلى', 'الإيجار', 'نوع الدفع', 'الحالة'].map(h => (
                   <th key={h} style={{ padding: '12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
                 ))}
               </tr>
@@ -82,6 +84,7 @@ function TenantDetail({ tenant, onBack }) {
                   <td style={{ padding: '12px', color: '#6b7280' }}>{l.start_date || '—'}</td>
                   <td style={{ padding: '12px', color: '#6b7280' }}>{l.end_date || '—'}</td>
                   <td style={{ padding: '12px', fontWeight: 600 }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + ' ريال' : '—'}</td>
+                  <td style={{ padding: '12px' }}>{l.payment_type || '—'}</td>
                   <td style={{ padding: '12px' }}>{l.status || '—'}</td>
                 </tr>
               ))}
@@ -107,7 +110,7 @@ function Tenants({ onBack }) {
   const [deletingId, setDeletingId] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [selectedTenant, setSelectedTenant] = useState(null)
-  const [filterProperty, setFilterProperty] = useState('الكل')
+  const [selectedPropertyId, setSelectedPropertyId] = useState(null)
   const [filterTenantIds, setFilterTenantIds] = useState([])
   const [showTenantDropdown, setShowTenantDropdown] = useState(false)
   const [tenantSearchText, setTenantSearchText] = useState('')
@@ -150,7 +153,8 @@ function Tenants({ onBack }) {
   }, [])
 
   function openAddForm() {
-    setEditingId(null); setFormName(''); setFormPhone(''); setFormNote(''); setFormPropertyId(''); setFormError(''); setShowForm(true)
+    setEditingId(null); setFormName(''); setFormPhone(''); setFormNote('')
+    setFormPropertyId(selectedPropertyId || ''); setFormError(''); setShowForm(true)
   }
 
   function openEditForm(tenant) {
@@ -179,7 +183,7 @@ function Tenants({ onBack }) {
     fetchAll()
   }
 
-  // إصلاح: عرض نوع الوحدة (محل/شقة/ورشة) مع الرقم لتفادي اللبس بين وحدات بنفس الرقم من أنواع مختلفة
+  // عرض نوع الوحدة (محل/شقة/ورشة) مع الرقم لتفادي اللبس بين وحدات بنفس الرقم من أنواع مختلفة
   function getAllUnitEntries(tenantId) {
     const tenantLeases = leases.filter(l => l.tenant_id === tenantId)
     if (!tenantLeases.length) return []
@@ -241,10 +245,35 @@ function Tenants({ onBack }) {
     return Math.min(...priorities)
   }
 
-  const availableTenants = (filterProperty === 'الكل'
-    ? tenants
-    : tenants.filter(t => tenantBelongsToProperty(t, filterProperty))
-  )
+  // زر رجوع ذكي: من داخل عقار → لشاشة العقارات، ومن شاشة العقارات → للوحة التحكم
+  function handleBack() {
+    if (selectedPropertyId) {
+      setSelectedPropertyId(null)
+      setFilterTenantIds([])
+      setTenantSearchText('')
+    } else {
+      onBack()
+    }
+  }
+
+  // ترتيب العقارات حسب عمود priority بقاعدة البيانات (تم جلبها مرتبة مسبقاً، هذا ضمان إضافي)
+  const sortedProperties = [...properties].sort((a, b) => {
+    const pa = a.priority ?? 999
+    const pb = b.priority ?? 999
+    if (pa !== pb) return pa - pb
+    return (a.name || '').localeCompare(b.name || '', 'ar')
+  })
+
+  // عدد المستأجرين لكل عقار (لبطاقات شاشة العقارات)
+  function tenantCountForProperty(propertyId) {
+    return tenants.filter(t => tenantBelongsToProperty(t, propertyId)).length
+  }
+
+  const selectedProperty = properties.find(p => p.id === selectedPropertyId)
+
+  const availableTenants = selectedPropertyId
+    ? tenants.filter(t => tenantBelongsToProperty(t, selectedPropertyId))
+    : []
   const sortedTenantsForDropdown = [...availableTenants].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ar'))
   const filteredTenantOptions = sortedTenantsForDropdown.filter(t => (t.name || '').toLowerCase().includes(tenantSearchText.toLowerCase()))
 
@@ -254,20 +283,14 @@ function Tenants({ onBack }) {
       setFilterTenantIds(prev => prev.filter(id => availableIds.has(id)))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterProperty])
+  }, [selectedPropertyId])
 
   if (selectedTenant) return <TenantDetail tenant={selectedTenant} onBack={() => setSelectedTenant(null)} />
 
-  const filtered = (filterProperty === 'الكل'
-    ? tenants
-    : tenants.filter(t => tenantBelongsToProperty(t, filterProperty))
-  )
+  const filtered = availableTenants
     .filter(t => filterTenantIds.length === 0 || filterTenantIds.includes(t.id))
     .slice()
     .sort((a, b) => {
-      const pa = getTenantMinPriority(a)
-      const pb = getTenantMinPriority(b)
-      if (pa !== pb) return pa - pb
       const ua = getAllUnitNumbers(a.id)
       const ub = getAllUnitNumbers(b.id)
       if (ua.sortType !== ub.sortType) return ua.sortType - ub.sortType
@@ -308,141 +331,188 @@ function Tenants({ onBack }) {
 
   return (
     <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1100px', margin: '0 auto' }}>
-      <button onClick={onBack} className="no-print" style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-        ← رجوع للوحة التحكم
+      <button onClick={handleBack} className="no-print" style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+        ← {selectedPropertyId ? 'رجوع للعقارات' : 'رجوع للوحة التحكم'}
       </button>
-      <h1 style={{ margin: '0 0 4px' }}>المستأجرون</h1>
-      <p style={{ color: '#6b7280', margin: '0 0 24px' }}>إدارة قائمة المستأجرين</p>
 
-      <div className="no-print" style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-        {!isReadOnly && (
-        <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8 }}>
-          + إضافة مستأجر جديد
-        </button>
-        )}
-        <button onClick={fetchAll} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
-
-        <div ref={tenantBoxRef} style={{ position: 'relative' }}>
-          <button
-            type="button"
-            onClick={() => setShowTenantDropdown(!showTenantDropdown)}
-            style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontFamily: 'Cairo, sans-serif', minWidth: 200, background: '#fff', cursor: 'pointer', textAlign: 'right', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <span>
-              {filterTenantIds.length === 0
-                ? 'كل المستأجرين'
-                : filterTenantIds.length === 1
-                  ? (sortedTenantsForDropdown.find(t => t.id === filterTenantIds[0])?.name || 'مستأجر واحد')
-                  : `${filterTenantIds.length} مستأجرين محددين`}
-            </span>
-            <span style={{ fontSize: 10, color: '#999' }}>▾</span>
-          </button>
-
-          {showTenantDropdown && (
-            <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff', border: '1px solid #ddd', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 10, zIndex: 20, minWidth: 240, maxHeight: 320, overflowY: 'auto' }}>
-              <input
-                type="text"
-                placeholder="اكتب اسم المستأجر..."
-                value={tenantSearchText}
-                onChange={(e) => setTenantSearchText(e.target.value)}
-                autoFocus
-                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #ddd', borderRadius: 6, padding: '6px 10px', fontSize: 13, fontFamily: 'Cairo, sans-serif', marginBottom: 8 }}
-              />
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #eee' }}>
-                <button type="button" onClick={() => setFilterTenantIds(filteredTenantOptions.map(t => t.id))}
-                  style={{ fontSize: 12, color: '#1B4D7A', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
-                  تحديد الكل
-                </button>
-                <button type="button" onClick={() => setFilterTenantIds([])}
-                  style={{ fontSize: 12, color: '#e74c3c', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
-                  إلغاء الكل
-                </button>
-              </div>
-              {filteredTenantOptions.length === 0 && (
-                <div style={{ fontSize: 13, color: '#999', padding: '6px 4px' }}>لا يوجد مستأجر بهذا الاسم</div>
-              )}
-              {filteredTenantOptions.map(t => (
-                <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', fontSize: 14, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={filterTenantIds.includes(t.id)}
-                    onChange={() => {
-                      setFilterTenantIds(prev =>
-                        prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
-                      )
-                    }}
-                  />
-                  {t.name}
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <select value={filterProperty} onChange={e => setFilterProperty(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif', marginRight: 'auto' }}>
-          <option value="الكل">كل العقارات</option>
-          {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-      </div>
+      <h1 style={{ margin: '0 0 4px' }}>
+        {selectedPropertyId ? `مستأجرو: ${selectedProperty?.name || ''}` : 'المستأجرون'}
+      </h1>
+      <p style={{ color: '#6b7280', margin: '0 0 24px' }}>
+        {selectedPropertyId ? 'إدارة مستأجري هذا العقار' : 'اختر عقاراً لعرض مستأجريه'}
+      </p>
 
       {status === 'loading' && <p>جاري التحميل...</p>}
       {status === 'error' && <div style={{ background: '#fee', padding: 15, borderRadius: 8, color: '#c00' }}>فشل تحميل المستأجرين: {errorMsg}</div>}
-      {status === 'success' && filtered.length === 0 && (
-        <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>لا يوجد مستأجرون.</div>
+
+      {/* ===== شاشة العقارات ===== */}
+      {status === 'success' && !selectedPropertyId && (
+        <>
+          {sortedProperties.length === 0 && (
+            <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>
+              لا توجد عقارات
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 18 }}>
+            {sortedProperties.map(p => {
+              const count = tenantCountForProperty(p.id)
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => setSelectedPropertyId(p.id)}
+                  style={{
+                    background: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 14,
+                    padding: '22px 20px',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                    transition: 'transform 0.15s, box-shadow 0.15s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.1)' }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.05)' }}
+                >
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#1B4D7A' }}>{p.name}</div>
+                  <div style={{ background: '#eef4fa', borderRadius: 10, padding: '8px 16px', textAlign: 'center', minWidth: 60 }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#1B4D7A', lineHeight: 1 }}>{count}</div>
+                    <div style={{ fontSize: 11, color: '#1B4D7A', marginTop: 4 }}>مستأجر</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
 
-      {status === 'success' && filtered.length > 0 && (
-        <div id="tenants-table">
-          <ExportToolbar
-            data={exportData}
-            columns={[
-              { key: 'name', label: 'المستأجر' },
-              { key: 'property', label: 'العقار' },
-              { key: 'units', label: 'الوحدات' },
-              { key: 'phone', label: 'الجوال' },
-              { key: 'notes', label: 'ملاحظات' },
-            ]}
-            filename="tenants_report"
-            title="تقرير المستأجرين"
-            stats={exportStats}
-          />
+      {/* ===== شاشة مستأجري العقار المختار ===== */}
+      {status === 'success' && selectedPropertyId && (
+        <>
+          <div className="no-print" style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+            {!isReadOnly && (
+            <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8 }}>
+              + إضافة مستأجر جديد
+            </button>
+            )}
+            <button onClick={fetchAll} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
 
-          <div style={{ overflowX: 'auto', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
-              <thead>
-                <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
-                  {(isReadOnly ? ['المستأجر', 'العقار', 'الوحدات', 'الجوال', 'ملاحظات'] : ['المستأجر', 'العقار', 'الوحدات', 'الجوال', 'ملاحظات', '']).map(h => (
-                    <th key={h} style={{ padding: '14px 12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
+            <div ref={tenantBoxRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setShowTenantDropdown(!showTenantDropdown)}
+                style={{ border: '1px solid #e5e7eb', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontFamily: 'Cairo, sans-serif', minWidth: 200, background: '#fff', cursor: 'pointer', textAlign: 'right', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span>
+                  {filterTenantIds.length === 0
+                    ? 'كل المستأجرين'
+                    : filterTenantIds.length === 1
+                      ? (sortedTenantsForDropdown.find(t => t.id === filterTenantIds[0])?.name || 'مستأجر واحد')
+                      : `${filterTenantIds.length} مستأجرين محددين`}
+                </span>
+                <span style={{ fontSize: 10, color: '#999' }}>▾</span>
+              </button>
+
+              {showTenantDropdown && (
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff', border: '1px solid #ddd', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 10, zIndex: 20, minWidth: 240, maxHeight: 320, overflowY: 'auto' }}>
+                  <input
+                    type="text"
+                    placeholder="اكتب اسم المستأجر..."
+                    value={tenantSearchText}
+                    onChange={(e) => setTenantSearchText(e.target.value)}
+                    autoFocus
+                    style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #ddd', borderRadius: 6, padding: '6px 10px', fontSize: 13, fontFamily: 'Cairo, sans-serif', marginBottom: 8 }}
+                  />
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid #eee' }}>
+                    <button type="button" onClick={() => setFilterTenantIds(filteredTenantOptions.map(t => t.id))}
+                      style={{ fontSize: 12, color: '#1B4D7A', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
+                      تحديد الكل
+                    </button>
+                    <button type="button" onClick={() => setFilterTenantIds([])}
+                      style={{ fontSize: 12, color: '#e74c3c', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
+                      إلغاء الكل
+                    </button>
+                  </div>
+                  {filteredTenantOptions.length === 0 && (
+                    <div style={{ fontSize: 13, color: '#999', padding: '6px 4px' }}>لا يوجد مستأجر بهذا الاسم</div>
+                  )}
+                  {filteredTenantOptions.map(t => (
+                    <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', fontSize: 14, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={filterTenantIds.includes(t.id)}
+                        onChange={() => {
+                          setFilterTenantIds(prev =>
+                            prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                          )
+                        }}
+                      />
+                      {t.name}
+                    </label>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((t, idx) => (
-                  <tr key={t.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                    <td style={{ padding: '12px' }}>
-                      <span onClick={() => setSelectedTenant(t)}
-                        style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 3 }}>
-                        {t.name}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px', color: '#6b7280', fontWeight: 500 }}>{getTenantPropertyDisplay(t)}</td>
-                    <td style={{ padding: '12px' }}>{unitBadges(t.id)}</td>
-                    <td style={{ padding: '12px', color: '#6b7280' }}>{t.phone || '—'}</td>
-                    <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{t.note || '—'}</td>
-                    {!isReadOnly && (
-                    <td className="no-print" style={{ padding: '12px' }}>
-                      <button onClick={() => openEditForm(t)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
-                      <button onClick={() => handleDelete(t)} disabled={deletingId === t.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
-                        {deletingId === t.id ? '...' : 'حذف'}
-                      </button>
-                    </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+
+          {filtered.length === 0 && (
+            <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>لا يوجد مستأجرون.</div>
+          )}
+
+          {filtered.length > 0 && (
+            <div id="tenants-table">
+              <ExportToolbar
+                data={exportData}
+                columns={[
+                  { key: 'name', label: 'المستأجر' },
+                  { key: 'property', label: 'العقار' },
+                  { key: 'units', label: 'الوحدات' },
+                  { key: 'phone', label: 'الجوال' },
+                  { key: 'notes', label: 'ملاحظات' },
+                ]}
+                filename={`tenants_${selectedProperty?.name || 'property'}`}
+                title={`تقرير مستأجرين: ${selectedProperty?.name || ''}`}
+                stats={exportStats}
+              />
+
+              <div style={{ overflowX: 'auto', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, background: '#fff' }}>
+                  <thead>
+                    <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
+                      {(isReadOnly ? ['المستأجر', 'الوحدات', 'الجوال', 'ملاحظات'] : ['المستأجر', 'الوحدات', 'الجوال', 'ملاحظات', '']).map(h => (
+                        <th key={h} style={{ padding: '14px 12px', color: '#fff', fontWeight: 600, fontSize: 13 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((t, idx) => (
+                      <tr key={t.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
+                        <td style={{ padding: '12px' }}>
+                          <span onClick={() => setSelectedTenant(t)}
+                            style={{ cursor: 'pointer', color: '#1B4D7A', fontWeight: 700, textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                            {t.name}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px' }}>{unitBadges(t.id)}</td>
+                        <td style={{ padding: '12px', color: '#6b7280' }}>{t.phone || '—'}</td>
+                        <td style={{ padding: '12px', color: '#9ca3af', fontSize: 13 }}>{t.note || '—'}</td>
+                        {!isReadOnly && (
+                        <td className="no-print" style={{ padding: '12px' }}>
+                          <button onClick={() => openEditForm(t)} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer', marginLeft: 6 }}>تعديل</button>
+                          <button onClick={() => handleDelete(t)} disabled={deletingId === t.id} style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
+                            {deletingId === t.id ? '...' : 'حذف'}
+                          </button>
+                        </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {showForm && (

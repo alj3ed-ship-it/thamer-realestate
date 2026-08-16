@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import { useReadOnly } from "./ReadOnlyContext";
 import ExportToolbar from "./components/ExportToolbar";
@@ -7,10 +7,10 @@ import LeaseDetailsModal from "./LeaseDetailsModal";
 
 const PAYMENT_TYPES = [
   { label: "شهري", multiplier: 12 },
-  { label: "ربع سنوي", multiplier: 4 },
-  { label: "نصف سنوي", multiplier: 2 },
-  { label: "سنوي", multiplier: 1 },
-  { label: "كل 4 أشهر", multiplier: 3 },
+  { label: "4 دفعات", multiplier: 4 },
+  { label: "دفعتين", multiplier: 2 },
+  { label: "دفعة واحدة", multiplier: 1 },
+  { label: "3 دفعات", multiplier: 3 },
 ];
 
 const HIJRI_MONTHS = [
@@ -131,11 +131,10 @@ function addHijriMonths(hijri, monthsToAdd) {
 function getInstallmentPlan(paymentType) {
   const map = {
     "شهري": { count: 12, stepMonths: 1 },
-    "ربع سنوي": { count: 4, stepMonths: 3 },
-    "نصف سنوي": { count: 2, stepMonths: 6 },
-    "سنوي": { count: 1, stepMonths: 12 },
-    "كل 4 أشهر": { count: 3, stepMonths: 4 },
+    "4 دفعات": { count: 4, stepMonths: 3 },
     "دفعتين": { count: 2, stepMonths: 6 },
+    "دفعة واحدة": { count: 1, stepMonths: 12 },
+    "3 دفعات": { count: 3, stepMonths: 4 },
   };
   return map[paymentType] || { count: 1, stepMonths: 12 };
 }
@@ -269,7 +268,7 @@ export default function Leases({ onBack }) {
     start_date: "", end_date: "",
     start_date_hijri: "", end_date_hijri: "",
     lease_number: "",
-    rent_amount: "", payment_type: "سنوي", notes: "",
+    rent_amount: "", payment_type: "دفعة واحدة", notes: "",
     installments: [],
     tax_enabled: false,
     tax_effective_hijri: { year: "", month: "", day: "" },
@@ -426,7 +425,7 @@ export default function Leases({ onBack }) {
       start_date: "", end_date: "",
       start_date_hijri: "", end_date_hijri: "",
       lease_number: "",
-      rent_amount: "", payment_type: "سنوي", notes: "",
+      rent_amount: "", payment_type: "دفعة واحدة", notes: "",
       installments: [],
       tax_enabled: false,
       tax_effective_hijri: { year: "", month: "", day: "" },
@@ -451,7 +450,7 @@ export default function Leases({ onBack }) {
       start_date_hijri: lease.start_date_hijri || "",
       end_date_hijri: lease.end_date_hijri || "",
       rent_amount: lease.rent_amount || "",
-      payment_type: lease.payment_type || "سنوي",
+      payment_type: lease.payment_type || "دفعة واحدة",
       notes: lease.notes || "",
       installments: [],
       tax_enabled: lease.tax_enabled || false,
