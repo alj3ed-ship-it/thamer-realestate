@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 
-const FREQUENCY_MAP = { 'سنوي': 1, 'نصف سنوي': 2, 'ربع سنوي': 4, 'كل 4 أشهر': 3, 'شهري': 12 }
+const FREQUENCY_MAP = { 'دفعة واحدة': 1, 'دفعتين': 2, '4 دفعات': 4, '3 دفعات': 3, 'شهري': 12 }
 
 function parseHijriDate(dateStr) {
   if (!dateStr) return null
