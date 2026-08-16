@@ -15,7 +15,7 @@ function hijriSortKey(hijriText) {
   return y * 10000 + m * 100 + d
 }
 
-const FREQUENCY_MAP = { 'سنوي': 1, 'نصف سنوي': 2, 'ربع سنوي': 4, 'كل 4 أشهر': 3, 'شهري': 12 }
+const FREQUENCY_MAP = { 'شهري': 12, 'دفعتين': 2, '4 دفعات': 4, '3 دفعات': 3, 'دفعة واحدة': 1 }
 
 function parseHijriDate(dateStr) {
   if (!dateStr) return null
