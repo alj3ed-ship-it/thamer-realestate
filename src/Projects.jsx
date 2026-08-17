@@ -338,7 +338,13 @@ function Projects() {
                 { key: 'notes', label: 'ملاحظات' }
               ]}
               filename="projects_report"
-              title={searchQuery.trim() ? `تقرير المشاريع — بحث: ${searchQuery.trim()}` : 'تقرير المشاريع'}
+              title={
+                searchQuery.trim()
+                  ? (filteredProjects.length === 1
+                      ? filteredProjects[0].name
+                      : `تقرير المشاريع — نتائج البحث: ${searchQuery.trim()}`)
+                  : 'تقرير المشاريع'
+              }
               stats={exportStats}
             />
 
