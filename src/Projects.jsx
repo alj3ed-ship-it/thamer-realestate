@@ -8,6 +8,11 @@ const STATUS_COLORS = {
   'منتهي': { bg: '#dcfce7', text: '#15803d', border: '#86efac' }
 };
 
+const TYPE_COLORS = {
+  'مصروف': { bg: '#FDEDEC', text: '#c0392b', border: '#F1948A' },
+  'إيراد': { bg: '#eafaf1', text: '#1e8449', border: '#82e0aa' }
+};
+
 function Projects() {
   const isReadOnly = useReadOnly();
   const [projects, setProjects] = useState([]);
@@ -22,6 +27,7 @@ function Projects() {
     description: '',
     date_created: '',
     status: 'جاري',
+    project_type: 'مصروف',
     expenses: '',
     revenues: '',
     notes: ''
@@ -71,6 +77,7 @@ function Projects() {
       description: formData.description,
       date_created: formData.date_created,
       status: formData.status,
+      project_type: formData.project_type,
       expenses: Number(formData.expenses) || 0,
       revenues: Number(formData.revenues) || 0,
       notes: formData.notes
@@ -108,6 +115,7 @@ function Projects() {
       description: project.description || '',
       date_created: project.date_created,
       status: project.status,
+      project_type: project.project_type || 'مصروف',
       expenses: project.expenses || '',
       revenues: project.revenues || '',
       notes: project.notes || ''
@@ -160,12 +168,17 @@ function Projects() {
     (p.name || '').toLowerCase().includes(searchQuery.trim().toLowerCase())
   );
 
-  const totalExpenses = filteredProjects.reduce((sum, p) => sum + (Number(p.expenses) || 0), 0);
-  const totalRevenues = filteredProjects.reduce((sum, p) => sum + (Number(p.revenues) || 0), 0);
-  const balance = totalRevenues - totalExpenses;
+  // كل مربع إحصائي يحسب نوعه بس: المصروفات من مشاريع "مصروف"، والإيرادات من مشاريع "إيراد"
+  const totalExpenses = filteredProjects
+    .filter(p => (p.project_type || 'مصروف') === 'مصروف')
+    .reduce((sum, p) => sum + (Number(p.expenses) || 0), 0);
+  const totalRevenues = filteredProjects
+    .filter(p => (p.project_type || 'مصروف') === 'إيراد')
+    .reduce((sum, p) => sum + (Number(p.revenues) || 0), 0);
 
   const exportData = filteredProjects.map(p => ({
     name: p.name,
+    type: p.project_type || 'مصروف',
     description: p.description || '—',
     date: p.date_created ? `${p.date_created} هـ` : '—',
     status: p.status,
@@ -176,7 +189,8 @@ function Projects() {
   }));
 
   const exportStats = [
-    { label: 'إجمالي المصروفات', value: `${totalExpenses.toLocaleString()} ريال`, color: '#e74c3c' }
+    { label: 'إجمالي المصروفات', value: `${totalExpenses.toLocaleString()} ريال`, color: '#c0392b' },
+    { label: 'إجمالي الإيرادات', value: `${totalRevenues.toLocaleString()} ريال`, color: '#1e8449' }
   ];
 
   return (
@@ -216,6 +230,18 @@ function Projects() {
                     style={styles.input}
                     placeholder="مثال: صيانة الاستراحات الخمس"
                   />
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>نوع المشروع</label>
+                  <select
+                    value={formData.project_type}
+                    onChange={(e) => handleInputChange('project_type', e.target.value)}
+                    style={styles.input}
+                  >
+                    <option value="مصروف">مصروف</option>
+                    <option value="إيراد">إيراد</option>
+                  </select>
                 </div>
 
                 <div style={styles.formGroup}>
@@ -302,6 +328,7 @@ function Projects() {
               data={exportData}
               columns={[
                 { key: 'name', label: 'اسم المشروع' },
+                { key: 'type', label: 'النوع' },
                 { key: 'description', label: 'الوصف' },
                 { key: 'date', label: 'التاريخ' },
                 { key: 'status', label: 'الحالة' },
@@ -337,9 +364,13 @@ function Projects() {
             </div>
 
             <div style={styles.statsRow} className="no-print">
-              <div style={{ ...styles.statBox, background: '#FDEDEC', border: '1px solid #F1948A' }}>
+              <div style={{ ...styles.statBox, background: TYPE_COLORS['مصروف'].bg, border: `1px solid ${TYPE_COLORS['مصروف'].border}` }}>
                 <div style={styles.statLabel}>إجمالي المصروفات</div>
-                <div style={{ ...styles.statValue, color: '#e74c3c' }}>{totalExpenses.toLocaleString()} ريال</div>
+                <div style={{ ...styles.statValue, color: TYPE_COLORS['مصروف'].text }}>{totalExpenses.toLocaleString()} ريال</div>
+              </div>
+              <div style={{ ...styles.statBox, background: TYPE_COLORS['إيراد'].bg, border: `1px solid ${TYPE_COLORS['إيراد'].border}` }}>
+                <div style={styles.statLabel}>إجمالي الإيرادات</div>
+                <div style={{ ...styles.statValue, color: TYPE_COLORS['إيراد'].text }}>{totalRevenues.toLocaleString()} ريال</div>
               </div>
             </div>
 
@@ -355,8 +386,8 @@ function Projects() {
                 <thead>
                   <tr style={styles.headRow}>
                     {(isReadOnly
-                      ? ['اسم المشروع', 'الوصف', 'التاريخ', 'الحالة', 'المصروفات', 'الإيرادات', 'الرصيد', 'ملاحظات']
-                      : ['اسم المشروع', 'الوصف', 'التاريخ', 'الحالة', 'المصروفات', 'الإيرادات', 'الرصيد', 'ملاحظات', '']
+                      ? ['اسم المشروع', 'النوع', 'الوصف', 'التاريخ', 'الحالة', 'المصروفات', 'الإيرادات', 'الرصيد', 'ملاحظات']
+                      : ['اسم المشروع', 'النوع', 'الوصف', 'التاريخ', 'الحالة', 'المصروفات', 'الإيرادات', 'الرصيد', 'ملاحظات', '']
                     ).map((h) => (
                       <th key={h} style={styles.th}>{h}</th>
                     ))}
@@ -365,6 +396,7 @@ function Projects() {
                 <tbody>
                   {filteredProjects.map((project, idx) => {
                     const colors = STATUS_COLORS[project.status];
+                    const typeInfo = TYPE_COLORS[project.project_type || 'مصروف'];
                     const projectBalance = (Number(project.revenues) || 0) - (Number(project.expenses) || 0);
                     const descExpanded = expandedDesc.has(project.id);
                     const notesExpanded = expandedNotes.has(project.id);
@@ -373,6 +405,11 @@ function Projects() {
                     return (
                       <tr key={project.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
                         <td style={{ ...styles.td, fontWeight: 600, color: '#1B4D7A' }}>{project.name}</td>
+                        <td style={styles.td}>
+                          <span style={{ ...styles.badge, backgroundColor: typeInfo.bg, color: typeInfo.text, border: `1px solid ${typeInfo.border}` }}>
+                            {project.project_type || 'مصروف'}
+                          </span>
+                        </td>
                         <td
                           onClick={() => hasLongDesc && toggleDesc(project.id)}
                           title={project.description || ''}
