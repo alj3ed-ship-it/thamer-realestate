@@ -14,7 +14,6 @@ import ViewerLayout from "./ViewerLayout";
 import { ReadOnlyProvider } from "./ReadOnlyContext";
 import ViewerLimited from "./ViewerLimited";
 import PropertyDetail from "./PropertyDetail";
-import Units from "./Units";
 import Entitlements from "./Entitlements";
 import Letters from "./Letters";
 import VatReturns from "./VatReturns";
@@ -42,7 +41,6 @@ const T = {
 const NAV_ITEMS = [
   { key: "dashboard", label: T.dashboard, icon: "🏠" },
   { key: "properties", label: T.properties, icon: "🏢" },
-  { key: "units", label: T.units, icon: "🚪" },
   { key: "tenants", label: T.tenants, icon: "👤" },
   { key: "leases", label: T.leases, icon: "📄" },
   { key: "payments", label: T.payments, icon: "💰" },
@@ -195,7 +193,7 @@ export default function App() {
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
               {[
                 { label: T.properties, value: stats.properties, icon: "🏢", color: "#2E6394", page: "properties" },
-                { label: T.units, value: stats.units, icon: "🚪🚪🚪", color: "#27ae60", page: "units" },
+                { label: T.units, value: stats.units, icon: "🚪🚪🚪", color: "#27ae60", page: "properties" },
                 { label: T.tenants, value: stats.tenants, icon: "👤", color: "#8e44ad", page: "tenants" },
                 { label: T.leases, value: stats.leases, icon: "📄", color: "#e67e22", page: "leases" },
                 { label: T.payments, value: stats.payments, icon: "💰", color: "#c0392b", page: "payments" },
@@ -218,7 +216,6 @@ export default function App() {
         {activePage === "properties" && selectedPropertyId && (
           <PropertyDetail propertyId={selectedPropertyId} onBack={() => setSelectedPropertyId(null)} />
         )}
-        {activePage === "units" && <Units onBack={goBack} />}
         {activePage === "tenants" && <Tenants onBack={goBack} />}
         {activePage === "leases" && <Leases onBack={goBack} />}
         {activePage === "payments" && <Payments onBack={goBack} />}

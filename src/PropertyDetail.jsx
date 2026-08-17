@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from './supabaseClient'
 import { useReadOnly } from './ReadOnlyContext'
 import ExportToolbar from './components/ExportToolbar'
@@ -7,6 +7,16 @@ const UNIT_STATUS = ['مؤجرة', 'شاغرة', 'صيانة']
 const UNIT_TYPES = ['شقة', 'محل', 'مستودع', 'غرفة', 'فيلا', 'أرض', 'عمارة', 'مجمع', 'برج']
 
 const TYPE_ORDER = { 'محل': 1, 'شقة': 2, 'ورشة': 3 }
+
+const VAT_STATUS_OPTIONS = [
+  { value: 'exempt', label: 'معفى', color: '#166534', bg: '#dcfce7', border: '#bbf7d0' },
+  { value: 'taxable', label: 'خاضع', color: '#b91c1c', bg: '#fee2e2', border: '#fecaca' },
+  { value: 'mixed', label: 'مزدوج', color: '#92400e', bg: '#fef3c7', border: '#fde68a' },
+]
+
+function getVatInfo(value) {
+  return VAT_STATUS_OPTIONS.find(o => o.value === value) || VAT_STATUS_OPTIONS[0]
+}
 
 function sortUnits(list) {
   return [...list].sort((a, b) => {
@@ -29,7 +39,10 @@ export default function PropertyDetail({ propertyId, onBack }) {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({ unit_number: '', unit_type: 'شقة', floor: '', area_sqm: '', status: 'شاغرة', notes: '' })
+  const [updatingVatId, setUpdatingVatId] = useState(null)
+  const [filterStatus, setFilterStatus] = useState('الكل')
+  const [filterVat, setFilterVat] = useState('الكل')
+  const [form, setForm] = useState({ unit_number: '', unit_type: 'شقة', floor: '', area_sqm: '', status: 'شاغرة', vat_status: 'exempt', notes: '' })
   const [formError, setFormError] = useState('')
 
   useEffect(() => { fetchAll() }, [propertyId])
@@ -47,7 +60,7 @@ export default function PropertyDetail({ propertyId, onBack }) {
 
   function openAddForm() {
     setEditingId(null)
-    setForm({ unit_number: '', unit_type: 'شقة', floor: '', area_sqm: '', status: 'شاغرة', notes: '' })
+    setForm({ unit_number: '', unit_type: 'شقة', floor: '', area_sqm: '', status: 'شاغرة', vat_status: 'exempt', notes: '' })
     setFormError('')
     setShowForm(true)
   }
@@ -60,6 +73,7 @@ export default function PropertyDetail({ propertyId, onBack }) {
       floor: unit.floor ?? '',
       area_sqm: unit.area_sqm ?? '',
       status: unit.status || 'شاغرة',
+      vat_status: unit.vat_status || 'exempt',
       notes: unit.notes || ''
     })
     setFormError('')
@@ -74,6 +88,7 @@ export default function PropertyDetail({ propertyId, onBack }) {
       unit_number: form.unit_number.trim(),
       unit_type: form.unit_type,
       status: form.status,
+      vat_status: form.vat_status,
       notes: form.notes.trim() || null
     }
     if (form.floor !== '' && form.floor !== null) payload.floor = parseInt(form.floor)
@@ -99,6 +114,14 @@ export default function PropertyDetail({ propertyId, onBack }) {
     setDeletingId(null); fetchAll()
   }
 
+  async function handleVatChange(unitId, newValue) {
+    setUpdatingVatId(unitId)
+    const { error } = await supabase.from('units').update({ vat_status: newValue }).eq('id', unitId)
+    setUpdatingVatId(null)
+    if (error) { alert('فشل التحديث: ' + error.message); return }
+    setUnits(prev => prev.map(u => u.id === unitId ? { ...u, vat_status: newValue } : u))
+  }
+
   const statusColor = {
     'مؤجرة': { background: '#dcfce7', color: '#166534' },
     'شاغرة': { background: '#fef9c3', color: '#854d0e' },
@@ -107,12 +130,19 @@ export default function PropertyDetail({ propertyId, onBack }) {
 
   if (loading) return <div style={{ padding: 40, fontFamily: 'Cairo, sans-serif' }}>جاري التحميل...</div>
 
-  const exportData = units.map((u) => ({
+  const filteredUnits = units.filter(u => {
+    const matchStatus = filterStatus === 'الكل' || u.status === filterStatus
+    const matchVat = filterVat === 'الكل' || (u.vat_status || 'exempt') === filterVat
+    return matchStatus && matchVat
+  })
+
+  const exportData = filteredUnits.map((u) => ({
     unitNumber: u.unit_number || '—',
     unitType: u.unit_type || '—',
     floor: u.floor ?? '—',
     area: u.area_sqm ? u.area_sqm + ' م²' : '—',
     status: u.status || '—',
+    vatStatus: getVatInfo(u.vat_status).label,
     notes: u.notes || '—',
   }))
 
@@ -124,7 +154,7 @@ export default function PropertyDetail({ propertyId, onBack }) {
   ]
 
   return (
-    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1000px', margin: '0 auto' }}>
+    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px', maxWidth: '1050px', margin: '0 auto' }}>
       <button onClick={onBack} className="no-print" style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
         ← رجوع للعقارات
       </button>
@@ -148,7 +178,6 @@ export default function PropertyDetail({ propertyId, onBack }) {
             padding: '18px 22px',
             boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
             textAlign: 'center',
-            transition: 'transform .15s ease'
           }}>
             <div style={{ fontSize: 22, marginBottom: 6 }}>{c.icon}</div>
             <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 6, fontWeight: 600 }}>{c.label}</div>
@@ -157,20 +186,34 @@ export default function PropertyDetail({ propertyId, onBack }) {
         ))}
       </div>
 
-      <div className="no-print" style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+      <div className="no-print" style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         {!isReadOnly && (
         <button onClick={openAddForm} style={{ padding: '10px 20px', cursor: 'pointer', background: '#1B4D7A', color: '#fff', border: 'none', borderRadius: 8 }}>
           + إضافة وحدة
         </button>
         )}
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
+          <option value="الكل">كل الحالات</option>
+          <option value="شاغرة">شاغرة</option>
+          <option value="مؤجرة">مؤجرة</option>
+          <option value="صيانة">صيانة</option>
+        </select>
+        <select value={filterVat} onChange={e => setFilterVat(e.target.value)}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }}>
+          <option value="الكل">كل تصنيفات الضريبة</option>
+          {VAT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
         <button onClick={fetchAll} style={{ padding: '10px 20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>تحديث</button>
       </div>
 
-      {units.length === 0 && (
-        <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>لا توجد وحدات مسجّلة لهذا العقار</div>
+      {filteredUnits.length === 0 && (
+        <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center' }}>
+          {units.length === 0 ? 'لا توجد وحدات مسجّلة لهذا العقار' : 'لا توجد وحدات مطابقة للفلتر'}
+        </div>
       )}
 
-      {units.length > 0 && (
+      {filteredUnits.length > 0 && (
         <div id="property-detail-table">
           <ExportToolbar
             data={exportData}
@@ -180,6 +223,7 @@ export default function PropertyDetail({ propertyId, onBack }) {
               { key: 'floor', label: 'الدور' },
               { key: 'area', label: 'المساحة' },
               { key: 'status', label: 'الحالة' },
+              { key: 'vatStatus', label: 'تصنيف الضريبة' },
               { key: 'notes', label: 'ملاحظات' },
             ]}
             filename="property_detail_report"
@@ -191,15 +235,18 @@ export default function PropertyDetail({ propertyId, onBack }) {
             <thead>
               <tr style={{ background: '#1B4D7A', textAlign: 'right' }}>
                 {(isReadOnly
-                  ? ['رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'ملاحظات']
-                  : ['رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'ملاحظات', '']
+                  ? ['رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'الضريبة', 'ملاحظات']
+                  : ['رقم الوحدة', 'النوع', 'الدور', 'المساحة', 'الحالة', 'الضريبة', 'ملاحظات', '']
                 ).map(h => (
                   <th key={h} style={{ padding: '14px 16px', color: '#fff', fontWeight: 600 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {units.map((u, i) => (
+              {filteredUnits.map((u, i) => {
+                const vatValue = u.vat_status || 'exempt'
+                const vatInfo = getVatInfo(vatValue)
+                return (
                 <tr key={u.id} style={{ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#f9fafb' }}>
                   <td style={{ padding: '14px 16px', fontWeight: 600, color: '#1B4D7A' }}>{u.unit_number}</td>
                   <td style={{ padding: '14px 16px' }}>{u.unit_type || '—'}</td>
@@ -207,6 +254,23 @@ export default function PropertyDetail({ propertyId, onBack }) {
                   <td style={{ padding: '14px 16px' }}>{u.area_sqm ? u.area_sqm + ' م²' : '—'}</td>
                   <td style={{ padding: '14px 16px' }}>
                     <span style={{ ...statusColor[u.status], padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>{u.status || '—'}</span>
+                  </td>
+                  <td style={{ padding: '10px 12px' }}>
+                    <select
+                      value={vatValue}
+                      disabled={isReadOnly || updatingVatId === u.id}
+                      onChange={e => handleVatChange(u.id, e.target.value)}
+                      style={{
+                        background: vatInfo.bg, color: vatInfo.color, border: `1.5px solid ${vatInfo.border}`,
+                        padding: '5px 26px 5px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                        fontFamily: 'Cairo, sans-serif', cursor: isReadOnly ? 'default' : 'pointer',
+                        appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
+                        backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='${encodeURIComponent(vatInfo.color)}' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>")`,
+                        backgroundRepeat: 'no-repeat', backgroundPosition: 'left 8px center',
+                        minWidth: 82, textAlign: 'center', textAlignLast: 'center',
+                      }}>
+                      {VAT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
                   </td>
                   <td style={{ padding: '14px 16px', color: '#9ca3af', fontSize: 13 }}>{u.notes || '—'}</td>
                   {!isReadOnly && (
@@ -218,7 +282,8 @@ export default function PropertyDetail({ propertyId, onBack }) {
                   </td>
                   )}
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -247,10 +312,16 @@ export default function PropertyDetail({ propertyId, onBack }) {
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>المساحة (م²)</label>
                 <input value={form.area_sqm} onChange={e => setForm({ ...form, area_sqm: e.target.value })} placeholder="اختياري" style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box' }} />
               </div>
-              <div style={{ gridColumn: 'span 2' }}>
+              <div>
                 <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>الحالة</label>
                 <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }}>
                   {UNIT_STATUS.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }}>تصنيف الضريبة</label>
+                <select value={form.vat_status} onChange={e => setForm({ ...form, vat_status: e.target.value })} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                  {VAT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
               <div style={{ gridColumn: 'span 2' }}>
