@@ -1,40 +1,24 @@
-﻿import pathlib
+﻿import re
 
-path = pathlib.Path("src/Units.jsx")
-text = path.read_text(encoding="utf-8")
+path = r"src\Units.jsx"
+with open(path, "r", encoding="utf-8") as f:
+    content = f.read()
 
-old = """  const total = units.length
-  const rented = units.filter(u => u.status === 'مؤجرة').length
-  const vacant = units.filter(u => u.status === 'شاغرة').length
-  const maintenance = units.filter(u => u.status === 'صيانة').length
-  const taxableCount = units.filter(u => u.vat_status === 'taxable').length"""
+old1 = "  const propertyPriorityById = Object.fromEntries(properties.map(p => [p.id, p.priority ?? 99]))"
+new1 = "  const propertyOrderIndex = Object.fromEntries(sortedProperties.map((p, idx) => [p.id, idx]))"
 
-new = """  const propertyScoped = filterProperty === 'الكل' ? units : units.filter(u => u.property_id === filterProperty)
-  const total = propertyScoped.length
-  const rented = propertyScoped.filter(u => u.status === 'مؤجرة').length
-  const vacant = propertyScoped.filter(u => u.status === 'شاغرة').length
-  const maintenance = propertyScoped.filter(u => u.status === 'صيانة').length
-  const taxableCount = propertyScoped.filter(u => u.vat_status === 'taxable').length"""
+old2 = """      const prA = propertyPriorityById[a.property_id] ?? 99
+      const prB = propertyPriorityById[b.property_id] ?? 99"""
+new2 = """      const prA = propertyOrderIndex[a.property_id] ?? 999
+      const prB = propertyOrderIndex[b.property_id] ?? 999"""
 
-if old not in text:
-    raise SystemExit("OLD BLOCK NOT FOUND")
+assert old1 in content, "old1 not found"
+assert old2 in content, "old2 not found"
 
-text = text.replace(old, new)
+content = content.replace(old1, new1)
+content = content.replace(old2, new2)
 
-old_subtitle = """      <h1 style={{ margin: '0 0 4px', color: '#1B4D7A' }}>الوحدات</h1>
-      <p style={{ color: '#666', margin: '0 0 20px' }}>جميع الوحدات في كل العقارات</p>"""
+with open(path, "w", encoding="utf-8") as f:
+    f.write(content)
 
-new_subtitle = """      <h1 style={{ margin: '0 0 4px', color: '#1B4D7A' }}>الوحدات</h1>
-      <p style={{ color: '#666', margin: '0 0 20px' }}>
-        {filterProperty === 'الكل'
-          ? 'جميع الوحدات في كل العقارات'
-          : `وحدات عقار: ${properties.find(p => p.id === filterProperty)?.name || ''}`}
-      </p>"""
-
-if old_subtitle not in text:
-    raise SystemExit("SUBTITLE BLOCK NOT FOUND")
-
-text = text.replace(old_subtitle, new_subtitle)
-
-path.write_text(text, encoding="utf-8")
 print("تم التعديل بنجاح")

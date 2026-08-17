@@ -101,7 +101,7 @@ export default function Units({ onBack }) {
   })
 
   const propertyNameById = Object.fromEntries(properties.map(p => [p.id, p.name]))
-  const propertyPriorityById = Object.fromEntries(properties.map(p => [p.id, p.priority ?? 99]))
+  const propertyOrderIndex = Object.fromEntries(sortedProperties.map((p, idx) => [p.id, idx]))
 
   // إحصائيات إجمالية عامة (كل العقارات)
   const totalAll = units.length
@@ -121,8 +121,8 @@ export default function Units({ onBack }) {
     else list = units.filter(u => u.status === activeTopFilter)
 
     return [...list].sort((a, b) => {
-      const prA = propertyPriorityById[a.property_id] ?? 99
-      const prB = propertyPriorityById[b.property_id] ?? 99
+      const prA = propertyOrderIndex[a.property_id] ?? 999
+      const prB = propertyOrderIndex[b.property_id] ?? 999
       if (prA !== prB) return prA - prB
       const typePriorityA = getUnitTypePriority(a.unit_type)
       const typePriorityB = getUnitTypePriority(b.unit_type)
