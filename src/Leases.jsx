@@ -292,7 +292,7 @@ export default function Leases({ onBack }) {
     const [l, lu, p, u, t, pay] = await Promise.all([
       supabase.from("leases").select("*").order("created_at", { ascending: false }),
       supabase.from("lease_units").select("*"),
-      supabase.from("properties").select("id, name").order("name"),
+      supabase.from("properties").select("id, name, priority").order("priority", { ascending: true, nullsFirst: false }),
       supabase.from("units").select("id, unit_number, unit_type, property_id, status"),
       supabase.from("tenants").select("id, name"),
       supabase.from("payments").select("lease_id, installment_number, total_installments, due_date_hijri, due_date_gregorian, status").order("installment_number"),
@@ -416,10 +416,41 @@ export default function Leases({ onBack }) {
     return "15% من بداية العقد";
   }
 
+  // الصافي الفعلي للمالك: يُخصم من الداخل للعقود الشاملة، ويُخصم 15% (يتحملها المالك) للعقود غير الشاملة
+  function getNetRentAmount(lease) {
+    const amt = Number(lease.rent_amount || 0);
+    if (!lease.tax_enabled) return amt;
+    if (lease.amount_includes_vat) {
+      return Math.round(amt / 1.15);
+    }
+    return Math.round(amt * 0.85);
+  }
+
+  // الإجمالي الخام: قيمة العقد كما هي دائماً — الضريبة تُستقطع من نفس المبلغ (داخلياً أو يتحملها المالك)، ولا تُضاف عليه أبداً
+  function getGrossRentAmount(lease) {
+    return Number(lease.rent_amount || 0);
+  }
+
+  // إحصائيات كرت العقار بشاشة النظرة العامة
+  function statsForProperty(propertyId) {
+    const propLeases = leases.filter(l => l.property_id === propertyId);
+    const totalNet = propLeases.reduce((sum, l) => sum + getNetRentAmount(l), 0);
+    return { count: propLeases.length, totalNet };
+  }
+
+  // زر رجوع ذكي: من داخل عقار → لشاشة العقارات، ومن شاشة العقارات → للوحة التحكم
+  function handleBack() {
+    if (filterProperty !== "الكل") {
+      setFilterProperty("الكل");
+    } else {
+      onBack();
+    }
+  }
+
   function openAddForm() {
     setEditingId(null);
     setForm({
-      property_id: "", selected_unit_ids: [], tenant_id: "",
+      property_id: filterProperty !== "الكل" ? filterProperty : "", selected_unit_ids: [], tenant_id: "",
       start_hijri: { year: "", month: "", day: "" },
       end_hijri: { year: "", month: "", day: "" },
       start_date: "", end_date: "",
@@ -431,7 +462,14 @@ export default function Leases({ onBack }) {
       tax_effective_hijri: { year: "", month: "", day: "" },
       tax_effective_date: "",
     });
-    setFilteredUnits([]);
+    if (filterProperty !== "الكل") {
+      setFilteredUnits(
+        units.filter(u => u.property_id === filterProperty && u.status === "شاغرة")
+          .sort((a, b) => Number(a.unit_number) - Number(b.unit_number))
+      );
+    } else {
+      setFilteredUnits([]);
+    }
     setShowForm(true);
   }
 
@@ -686,20 +724,13 @@ export default function Leases({ onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterProperty]);
 
-  // الصافي الفعلي للمالك: يُخصم من الداخل للعقود الشاملة، ويُخصم 15% (يتحملها المالك) للعقود غير الشاملة
-  function getNetRentAmount(lease) {
-    const amt = Number(lease.rent_amount || 0);
-    if (!lease.tax_enabled) return amt;
-    if (lease.amount_includes_vat) {
-      return Math.round(amt / 1.15);
-    }
-    return Math.round(amt * 0.85);
-  }
-
-  // الإجمالي الخام: قيمة العقد كما هي دائماً — الضريبة تُستقطع من نفس المبلغ (داخلياً أو يتحملها المالك)، ولا تُضاف عليه أبداً
-  function getGrossRentAmount(lease) {
-    return Number(lease.rent_amount || 0);
-  }
+  // ترتيب العقارات لشاشة الكروت (نفس ترتيب priority المستخدم بباقي الصفحات)
+  const sortedPropertiesForCards = [...properties].sort((a, b) => {
+    const pa = a.priority ?? 99;
+    const pb = b.priority ?? 99;
+    if (pa !== pb) return pa - pb;
+    return (a.name || "").localeCompare(b.name || "", "ar");
+  });
 
   const totalAmountNet = filteredLeases.reduce((sum, l) => sum + getNetRentAmount(l), 0);
   const totalAmountGross = filteredLeases.reduce((sum, l) => sum + getGrossRentAmount(l), 0);
@@ -734,13 +765,19 @@ export default function Leases({ onBack }) {
     },
   ];
 
+  const selectedPropertyName = filterProperty !== "الكل"
+    ? (properties.find(p => p.id === filterProperty)?.name || "")
+    : "";
+
   return (
     <div dir="rtl" style={{ fontFamily: "Cairo, sans-serif", padding: "40px", maxWidth: "1500px", margin: "0 auto" }}>
-      <button onClick={onBack} className="no-print" style={{ padding: "8px 16px", marginBottom: "20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
-        ← رجوع للوحة التحكم
+      <button onClick={handleBack} className="no-print" style={{ padding: "8px 16px", marginBottom: "20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
+        ← {filterProperty !== "الكل" ? "رجوع للعقارات" : "رجوع للوحة التحكم"}
       </button>
-      <h1 style={{ margin: "0 0 4px" }}>العقود</h1>
-      <p style={{ color: "#6b7280", margin: "0 0 24px" }}>إدارة عقود الإيجار</p>
+      <h1 style={{ margin: "0 0 4px" }}>{filterProperty !== "الكل" ? `عقود: ${selectedPropertyName}` : "العقود"}</h1>
+      <p style={{ color: "#6b7280", margin: "0 0 24px" }}>
+        {filterProperty !== "الكل" ? "إدارة عقود هذا العقار" : "اختر عقاراً لعرض عقوده، أو اضغط + لإضافة عقد جديد"}
+      </p>
 
       <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
         {!isReadOnly && (
@@ -751,66 +788,70 @@ export default function Leases({ onBack }) {
         <button onClick={fetchAll} style={{ padding: "10px 20px", cursor: "pointer", borderRadius: 8, border: "1px solid #e5e7eb" }}>
           تحديث
         </button>
-        <div ref={tenantBoxRef} style={{ position: "relative" }}>
-          <button
-            type="button"
-            onClick={() => setShowTenantDropdown(!showTenantDropdown)}
-            style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 12px", fontSize: 14, fontFamily: "Cairo, sans-serif", minWidth: 200, background: "#fff", cursor: "pointer", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-            <span>
-              {filterTenants.length === 0
-                ? "كل المستأجرين"
-                : filterTenants.length === 1
-                  ? (sortedTenants.find(t => t.id === filterTenants[0])?.name || "مستأجر واحد")
-                  : `${filterTenants.length} مستأجرين محددين`}
-            </span>
-            <span style={{ fontSize: 10, color: "#999" }}>▾</span>
-          </button>
+        {filterProperty !== "الكل" && (
+          <>
+            <div ref={tenantBoxRef} style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => setShowTenantDropdown(!showTenantDropdown)}
+                style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 12px", fontSize: 14, fontFamily: "Cairo, sans-serif", minWidth: 200, background: "#fff", cursor: "pointer", textAlign: "right", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <span>
+                  {filterTenants.length === 0
+                    ? "كل المستأجرين"
+                    : filterTenants.length === 1
+                      ? (sortedTenants.find(t => t.id === filterTenants[0])?.name || "مستأجر واحد")
+                      : `${filterTenants.length} مستأجرين محددين`}
+                </span>
+                <span style={{ fontSize: 10, color: "#999" }}>▾</span>
+              </button>
 
-          {showTenantDropdown && (
-            <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: "#fff", border: "1px solid #ddd", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", padding: 10, zIndex: 20, minWidth: 240, maxHeight: 320, overflowY: "auto" }}>
-              <input
-                type="text"
-                placeholder="اكتب اسم المستأجر..."
-                value={tenantSearchText}
-                onChange={(e) => setTenantSearchText(e.target.value)}
-                autoFocus
-                style={{ width: "100%", boxSizing: "border-box", border: "1px solid #ddd", borderRadius: 6, padding: "6px 10px", fontSize: 13, fontFamily: "Cairo, sans-serif", marginBottom: 8 }}
-              />
-              <div style={{ display: "flex", gap: 8, marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #eee" }}>
-                <button type="button" onClick={() => setFilterTenants(filteredTenantOptions.map(t => t.id))}
-                  style={{ fontSize: 12, color: "#1B4D7A", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>
-                  تحديد الكل
-                </button>
-                <button type="button" onClick={() => setFilterTenants([])}
-                  style={{ fontSize: 12, color: "#e74c3c", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>
-                  إلغاء الكل
-                </button>
-              </div>
-              {filteredTenantOptions.length === 0 && (
-                <div style={{ fontSize: 13, color: "#999", padding: "6px 4px" }}>لا يوجد مستأجر بهذا الاسم</div>
-              )}
-              {filteredTenantOptions.map(t => (
-                <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px", fontSize: 14, cursor: "pointer" }}>
+              {showTenantDropdown && (
+                <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: "#fff", border: "1px solid #ddd", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", padding: 10, zIndex: 20, minWidth: 240, maxHeight: 320, overflowY: "auto" }}>
                   <input
-                    type="checkbox"
-                    checked={filterTenants.includes(t.id)}
-                    onChange={() => {
-                      setFilterTenants(prev =>
-                        prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
-                      );
-                    }}
+                    type="text"
+                    placeholder="اكتب اسم المستأجر..."
+                    value={tenantSearchText}
+                    onChange={(e) => setTenantSearchText(e.target.value)}
+                    autoFocus
+                    style={{ width: "100%", boxSizing: "border-box", border: "1px solid #ddd", borderRadius: 6, padding: "6px 10px", fontSize: 13, fontFamily: "Cairo, sans-serif", marginBottom: 8 }}
                   />
-                  {t.name}
-                </label>
-              ))}
+                  <div style={{ display: "flex", gap: 8, marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid #eee" }}>
+                    <button type="button" onClick={() => setFilterTenants(filteredTenantOptions.map(t => t.id))}
+                      style={{ fontSize: 12, color: "#1B4D7A", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>
+                      تحديد الكل
+                    </button>
+                    <button type="button" onClick={() => setFilterTenants([])}
+                      style={{ fontSize: 12, color: "#e74c3c", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>
+                      إلغاء الكل
+                    </button>
+                  </div>
+                  {filteredTenantOptions.length === 0 && (
+                    <div style={{ fontSize: 13, color: "#999", padding: "6px 4px" }}>لا يوجد مستأجر بهذا الاسم</div>
+                  )}
+                  {filteredTenantOptions.map(t => (
+                    <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px", fontSize: 14, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={filterTenants.includes(t.id)}
+                        onChange={() => {
+                          setFilterTenants(prev =>
+                            prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                          );
+                        }}
+                      />
+                      {t.name}
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <select value={filterUnitType} onChange={e => setFilterUnitType(e.target.value)}
-          style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, fontFamily: "Cairo, sans-serif" }}>
-          <option value="">كل أنواع الوحدات</option>
-          {uniqueUnitTypes.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
+            <select value={filterUnitType} onChange={e => setFilterUnitType(e.target.value)}
+              style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, fontFamily: "Cairo, sans-serif" }}>
+              <option value="">كل أنواع الوحدات</option>
+              {uniqueUnitTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </>
+        )}
         <select value={filterProperty} onChange={e => setFilterProperty(e.target.value)}
           style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #e5e7eb", fontSize: 14, fontFamily: "Cairo, sans-serif", marginRight: "auto" }}>
           <option value="الكل">كل العقارات</option>
@@ -818,159 +859,214 @@ export default function Leases({ onBack }) {
         </select>
       </div>
 
-      {!loading && (
-        <div className="no-print" style={{
-          background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10,
-          padding: "14px 20px", marginBottom: 20, display: "flex",
-          justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8
-        }}>
-          <span style={{ color: "#374151", fontSize: 14 }}>
-            عدد العقود الظاهرة: <strong>{filteredLeases.length}</strong>
-          </span>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid #bfdbfe" }}>
-              <button
-                type="button"
-                onClick={() => setTotalsMode("net")}
-                style={{
-                  padding: "5px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none",
-                  background: totalsMode === "net" ? "#1d4ed8" : "#fff",
-                  color: totalsMode === "net" ? "#fff" : "#1d4ed8",
-                  fontFamily: "Cairo, sans-serif"
-                }}>
-                صافي
-              </button>
-              <button
-                type="button"
-                onClick={() => setTotalsMode("gross")}
-                style={{
-                  padding: "5px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none",
-                  background: totalsMode === "gross" ? "#8e44ad" : "#fff",
-                  color: totalsMode === "gross" ? "#fff" : "#8e44ad",
-                  fontFamily: "Cairo, sans-serif"
-                }}>
-                شامل الضريبة
-              </button>
-            </div>
-            <span style={{ color: totalsMode === "gross" ? "#8e44ad" : "#1d4ed8", fontWeight: 700, fontSize: 18 }}>
-              الإجمالي ({totalsMode === "gross" ? "شامل الضريبة" : "صافي بدون ضريبة"}): {totalAmount.toLocaleString()} ريال
-            </span>
-          </div>
-        </div>
-      )}
-
       {loading && <p>جاري التحميل...</p>}
 
-      {!loading && filteredLeases.length === 0 && (
-        <div style={{ background: "#f9fafb", padding: 20, borderRadius: 10, color: "#6b7280", textAlign: "center" }}>
-          لا توجد عقود
-        </div>
+      {/* ===== شاشة العقارات (نظرة عامة) ===== */}
+      {!loading && filterProperty === "الكل" && (
+        <>
+          <div style={{ display: "flex", gap: 16, marginBottom: 28, flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 220px", background: "#fff", border: "1px solid #1B4D7A33", borderTop: "4px solid #1B4D7A", borderRadius: 14, padding: "18px 22px", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", textAlign: "center" }}>
+              <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 6, fontWeight: 600 }}>إجمالي العقود</div>
+              <div style={{ fontSize: 30, fontWeight: 800, color: "#1B4D7A" }}>{leases.length}</div>
+            </div>
+            <div style={{ flex: "1 1 220px", background: "#fff", border: "1px solid #1d4ed833", borderTop: "4px solid #1d4ed8", borderRadius: 14, padding: "18px 22px", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", textAlign: "center" }}>
+              <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 6, fontWeight: 600 }}>إجمالي القيمة (صافي)</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: "#1d4ed8" }}>{leases.reduce((sum, l) => sum + getNetRentAmount(l), 0).toLocaleString()} ريال</div>
+            </div>
+          </div>
+
+          {sortedPropertiesForCards.length === 0 && (
+            <div style={{ background: "#f9fafb", padding: 20, borderRadius: 10, color: "#6b7280", textAlign: "center" }}>
+              لا توجد عقارات
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 18 }}>
+            {sortedPropertiesForCards.map(p => {
+              const s = statsForProperty(p.id);
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => setFilterProperty(p.id)}
+                  style={{
+                    background: "#fff", border: "1px solid #e5e7eb", borderRadius: 14, padding: "20px",
+                    cursor: "pointer", boxShadow: "0 2px 10px rgba(0,0,0,0.05)", transition: "transform 0.15s, box-shadow 0.15s",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 6px 18px rgba(0,0,0,0.1)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 2px 10px rgba(0,0,0,0.05)"; }}
+                >
+                  <div style={{ fontSize: 17, fontWeight: 700, color: "#1B4D7A", marginBottom: 14 }}>{p.name}</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div style={{ background: "#eef4fa", borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                      <div style={{ fontSize: 11, color: "#1B4D7A", fontWeight: 600 }}>عدد العقود</div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: "#1B4D7A" }}>{s.count}</div>
+                    </div>
+                    <div style={{ background: "#dcfce7", borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                      <div style={{ fontSize: 11, color: "#166534", fontWeight: 600 }}>القيمة (صافي)</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: "#166534" }}>{s.totalNet.toLocaleString()}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
-      {!loading && filteredLeases.length > 0 && (
-        <div id="leases-table">
-          <ExportToolbar
-            data={exportData}
-            columns={[
-              { key: "tenant", label: "المستأجر" },
-              { key: "property", label: "العقار" },
-              { key: "units", label: "الوحدات" },
-              { key: "paymentType", label: "نوع الدفع" },
-              { key: "amount", label: "المبلغ" },
-              { key: "installment1", label: "الدفعة 1" },
-              { key: "installment2", label: "الدفعة 2" },
-              { key: "installment3", label: "الدفعة 3" },
-              { key: "installment4", label: "الدفعة 4" },
-              { key: "tax", label: "الضريبة" },
-              { key: "notes", label: "الملاحظات" },
-            ]}
-            filename="leases_report"
-            title="تقرير العقود"
-            stats={exportStats}
-          />
-
-          <div className="no-print" style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
-            💡 اضغط على أي وحدة بعمود "الوحدات" لاستثنائها من فرز النوع (مفيد للعقود المختلطة مثل محلات + شقة).
+      {/* ===== شاشة عقود العقار المختار ===== */}
+      {!loading && filterProperty !== "الكل" && (
+        <>
+          <div className="no-print" style={{
+            background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10,
+            padding: "14px 20px", marginBottom: 20, display: "flex",
+            justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8
+          }}>
+            <span style={{ color: "#374151", fontSize: 14 }}>
+              عدد العقود الظاهرة: <strong>{filteredLeases.length}</strong>
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1px solid #bfdbfe" }}>
+                <button
+                  type="button"
+                  onClick={() => setTotalsMode("net")}
+                  style={{
+                    padding: "5px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none",
+                    background: totalsMode === "net" ? "#1d4ed8" : "#fff",
+                    color: totalsMode === "net" ? "#fff" : "#1d4ed8",
+                    fontFamily: "Cairo, sans-serif"
+                  }}>
+                  صافي
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTotalsMode("gross")}
+                  style={{
+                    padding: "5px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: "none",
+                    background: totalsMode === "gross" ? "#8e44ad" : "#fff",
+                    color: totalsMode === "gross" ? "#fff" : "#8e44ad",
+                    fontFamily: "Cairo, sans-serif"
+                  }}>
+                  شامل الضريبة
+                </button>
+              </div>
+              <span style={{ color: totalsMode === "gross" ? "#8e44ad" : "#1d4ed8", fontWeight: 700, fontSize: 18 }}>
+                الإجمالي ({totalsMode === "gross" ? "شامل الضريبة" : "صافي بدون ضريبة"}): {totalAmount.toLocaleString()} ريال
+              </span>
+            </div>
           </div>
 
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-              <thead>
-                <tr style={{ background: "#1B4D7A", textAlign: "right" }}>
-                  {(isReadOnly
-                    ? ["الحالة", "رقم العقد", "المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الضريبة", "الملاحظات"]
-                    : ["الحالة", "رقم العقد", "المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الضريبة", "الملاحظات", ""]
-                  ).map(h => (
-                    <th key={h} style={{ padding: "12px", color: "#fff", fontWeight: 600, fontSize: 13 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLeases.map((l, idx) => {
-                  const tenant = tenants.find(t => t.id === l.tenant_id);
-                  const property = properties.find(p => p.id === l.property_id);
-                  return (
-                    <tr key={l.id} style={{ background: idx % 2 === 0 ? "#fff" : "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
-                      <td style={{ padding: "12px" }}>
-                        <button type="button" onClick={() => setViewingLeaseId(l.id)} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }} title="عرض تفاصيل العقد">
-                          <LeaseStatusBadge endDate={l.end_date} />
-                        </button>
-                      </td>
-                      <td style={{ padding: "12px", color: "#374151", fontSize: 13 }}>{l.lease_number || "—"}</td>
-                      <td style={{ padding: "12px", fontWeight: 600, color: "#1B4D7A" }}>{tenant?.name || "—"}</td>
-                      <td style={{ padding: "12px", color: "#0e7490", fontWeight: 600 }}>{property?.name || "—"}</td>
-                      <td style={{ padding: "12px" }} className="no-print">{unitsCell(l.id)}</td>
-                      <td style={{ padding: "12px", color: "#7c3aed", fontWeight: 600, display: "none" }} data-print-only>{getLeaseUnitsDisplay(l.id)}</td>
-                      <td style={{ padding: "12px" }}>
-                        <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "3px 10px", borderRadius: 6, fontSize: 12, whiteSpace: "nowrap", display: "inline-block" }}>
-                          {l.payment_type || "—"}
-                        </span>
-                      </td>
-                      <td style={{ padding: "12px", fontWeight: 600 }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</td>
-                      <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 1)}</td>
-                      <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 2)}</td>
-                      <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 3)}</td>
-                      <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
-                        {getInstallmentDate(l.id, 4)}
-                        {getExtraInstallmentsCount(l.id) > 0 && (
-                          <div style={{ color: "#9ca3af", fontSize: 10, fontWeight: 400 }}>
-                            +{getExtraInstallmentsCount(l.id)} دفعة أخرى (بصفحة الدفعات)
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: "12px" }}>
-                        {l.tax_enabled ? (
-                          <span style={{ background: "#F4ECF7", color: "#8e44ad", padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", display: "inline-block" }}>
-                            {getTaxSummary(l)}
-                          </span>
-                        ) : (
-                          <span style={{ color: "#9ca3af", fontSize: 12 }}>—</span>
-                        )}
-                      </td>
-                      <td
-                        style={{
-                          padding: "12px", color: "#6b7280", maxWidth: "260px", minWidth: "140px",
-                          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", cursor: l.notes ? "help" : "default"
-                        }}
-                        title={l.notes || ""}
-                      >
-                        {l.notes || "—"}
-                      </td>
-                      {!isReadOnly && (
-                      <td className="no-print" style={{ padding: "12px" }}>
-                        <button onClick={() => openEditForm(l)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer", marginLeft: 6 }}>تعديل</button>
-                        <button onClick={() => handleDelete(l)} disabled={deletingId === l.id} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>
-                          {deletingId === l.id ? "..." : "حذف"}
-                        </button>
-                      </td>
-                      )}
+          {filteredLeases.length === 0 && (
+            <div style={{ background: "#f9fafb", padding: 20, borderRadius: 10, color: "#6b7280", textAlign: "center" }}>
+              لا توجد عقود
+            </div>
+          )}
+
+          {filteredLeases.length > 0 && (
+            <div id="leases-table">
+              <ExportToolbar
+                data={exportData}
+                columns={[
+                  { key: "tenant", label: "المستأجر" },
+                  { key: "property", label: "العقار" },
+                  { key: "units", label: "الوحدات" },
+                  { key: "paymentType", label: "نوع الدفع" },
+                  { key: "amount", label: "المبلغ" },
+                  { key: "installment1", label: "الدفعة 1" },
+                  { key: "installment2", label: "الدفعة 2" },
+                  { key: "installment3", label: "الدفعة 3" },
+                  { key: "installment4", label: "الدفعة 4" },
+                  { key: "tax", label: "الضريبة" },
+                  { key: "notes", label: "الملاحظات" },
+                ]}
+                filename="leases_report"
+                title="تقرير العقود"
+                stats={exportStats}
+              />
+
+              <div className="no-print" style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>
+                💡 اضغط على أي وحدة بعمود "الوحدات" لاستثنائها من فرز النوع (مفيد للعقود المختلطة مثل محلات + شقة).
+              </div>
+
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                  <thead>
+                    <tr style={{ background: "#1B4D7A", textAlign: "right" }}>
+                      {(isReadOnly
+                        ? ["الحالة", "رقم العقد", "المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الضريبة", "الملاحظات"]
+                        : ["الحالة", "رقم العقد", "المستأجر", "العقار", "الوحدات", "نوع الدفع", "المبلغ", "الدفعة 1", "الدفعة 2", "الدفعة 3", "الدفعة 4", "الضريبة", "الملاحظات", ""]
+                      ).map(h => (
+                        <th key={h} style={{ padding: "12px", color: "#fff", fontWeight: 600, fontSize: 13 }}>{h}</th>
+                      ))}
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                  </thead>
+                  <tbody>
+                    {filteredLeases.map((l, idx) => {
+                      const tenant = tenants.find(t => t.id === l.tenant_id);
+                      const property = properties.find(p => p.id === l.property_id);
+                      return (
+                        <tr key={l.id} style={{ background: idx % 2 === 0 ? "#fff" : "#f8fafc", borderBottom: "1px solid #e5e7eb" }}>
+                          <td style={{ padding: "12px" }}>
+                            <button type="button" onClick={() => setViewingLeaseId(l.id)} style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }} title="عرض تفاصيل العقد">
+                              <LeaseStatusBadge endDate={l.end_date} />
+                            </button>
+                          </td>
+                          <td style={{ padding: "12px", color: "#374151", fontSize: 13 }}>{l.lease_number || "—"}</td>
+                          <td style={{ padding: "12px", fontWeight: 600, color: "#1B4D7A" }}>{tenant?.name || "—"}</td>
+                          <td style={{ padding: "12px", color: "#0e7490", fontWeight: 600 }}>{property?.name || "—"}</td>
+                          <td style={{ padding: "12px" }} className="no-print">{unitsCell(l.id)}</td>
+                          <td style={{ padding: "12px", color: "#7c3aed", fontWeight: 600, display: "none" }} data-print-only>{getLeaseUnitsDisplay(l.id)}</td>
+                          <td style={{ padding: "12px" }}>
+                            <span style={{ background: "#eff6ff", color: "#1d4ed8", padding: "3px 10px", borderRadius: 6, fontSize: 12, whiteSpace: "nowrap", display: "inline-block" }}>
+                              {l.payment_type || "—"}
+                            </span>
+                          </td>
+                          <td style={{ padding: "12px", fontWeight: 600 }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</td>
+                          <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 1)}</td>
+                          <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 2)}</td>
+                          <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 3)}</td>
+                          <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
+                            {getInstallmentDate(l.id, 4)}
+                            {getExtraInstallmentsCount(l.id) > 0 && (
+                              <div style={{ color: "#9ca3af", fontSize: 10, fontWeight: 400 }}>
+                                +{getExtraInstallmentsCount(l.id)} دفعة أخرى (بصفحة الدفعات)
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ padding: "12px" }}>
+                            {l.tax_enabled ? (
+                              <span style={{ background: "#F4ECF7", color: "#8e44ad", padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", display: "inline-block" }}>
+                                {getTaxSummary(l)}
+                              </span>
+                            ) : (
+                              <span style={{ color: "#9ca3af", fontSize: 12 }}>—</span>
+                            )}
+                          </td>
+                          <td
+                            style={{
+                              padding: "12px", color: "#6b7280", maxWidth: "260px", minWidth: "140px",
+                              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", cursor: l.notes ? "help" : "default"
+                            }}
+                            title={l.notes || ""}
+                          >
+                            {l.notes || "—"}
+                          </td>
+                          {!isReadOnly && (
+                          <td className="no-print" style={{ padding: "12px" }}>
+                            <button onClick={() => openEditForm(l)} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #c0d0e8", background: "#eef3ff", color: "#1B4D7A", cursor: "pointer", marginLeft: 6 }}>تعديل</button>
+                            <button onClick={() => handleDelete(l)} disabled={deletingId === l.id} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 6, border: "1px solid #fcc", background: "#fee", color: "#c00", cursor: "pointer" }}>
+                              {deletingId === l.id ? "..." : "حذف"}
+                            </button>
+                          </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {showForm && (
