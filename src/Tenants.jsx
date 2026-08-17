@@ -4,6 +4,9 @@ import { getUnitTypeColor } from './theme'
 import { useReadOnly } from './ReadOnlyContext'
 import ExportToolbar from './components/ExportToolbar'
 
+// لوحة ألوان لكروت العقارات بشاشة المستأجرين (لون مختلف لكل عقار)
+const TENANT_CARD_COLORS = ['#1B4D7A', '#166534', '#8e44ad', '#b45309', '#0e7490', '#be185d', '#4338ca', '#059669', '#c2410c', '#0f766e']
+
 function TenantDetail({ tenant, onBack }) {
   const [leases, setLeases] = useState([])
   const [properties, setProperties] = useState([])
@@ -354,32 +357,33 @@ function Tenants({ onBack }) {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 18 }}>
-            {sortedProperties.map(p => {
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 18 }}>
+            {sortedProperties.map((p, idx) => {
               const count = tenantCountForProperty(p.id)
+              const color = TENANT_CARD_COLORS[idx % TENANT_CARD_COLORS.length]
               return (
                 <div
                   key={p.id}
                   onClick={() => setSelectedPropertyId(p.id)}
                   style={{
                     background: '#fff',
-                    border: '1px solid #e5e7eb',
+                    border: `1px solid ${color}33`,
+                    borderTop: `4px solid ${color}`,
                     borderRadius: 14,
-                    padding: '22px 20px',
+                    padding: '20px',
                     cursor: 'pointer',
                     boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
                     transition: 'transform 0.15s, box-shadow 0.15s',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
+                    textAlign: 'center',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 6px 18px rgba(0,0,0,0.1)' }}
                   onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,0,0,0.05)' }}
                 >
-                  <div style={{ fontSize: 16, fontWeight: 700, color: '#1B4D7A' }}>{p.name}</div>
-                  <div style={{ background: '#eef4fa', borderRadius: 10, padding: '8px 16px', textAlign: 'center', minWidth: 60 }}>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: '#1B4D7A', lineHeight: 1 }}>{count}</div>
-                    <div style={{ fontSize: 11, color: '#1B4D7A', marginTop: 4 }}>مستأجر</div>
+                  <div style={{ fontSize: 22, marginBottom: 6 }}>🏢</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#1f2937', marginBottom: 12 }}>{p.name}</div>
+                  <div style={{ background: `${color}14`, borderRadius: 10, padding: '8px 18px', display: 'inline-block', minWidth: 70 }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color, lineHeight: 1 }}>{count}</div>
+                    <div style={{ fontSize: 11, color, marginTop: 4, fontWeight: 600 }}>مستأجر</div>
                   </div>
                 </div>
               )
