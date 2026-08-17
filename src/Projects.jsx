@@ -16,6 +16,7 @@ function Projects() {
   const [showForm, setShowForm] = useState(false);
   const [expandedDesc, setExpandedDesc] = useState(new Set());
   const [expandedNotes, setExpandedNotes] = useState(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
   const emptyFormState = {
     name: '',
     description: '',
@@ -154,11 +155,16 @@ function Projects() {
     });
   };
 
-  const totalExpenses = projects.reduce((sum, p) => sum + (Number(p.expenses) || 0), 0);
-  const totalRevenues = projects.reduce((sum, p) => sum + (Number(p.revenues) || 0), 0);
+  // فلترة بالاسم — تُستخدم لعزل مشروع واحد بس (للطباعة أو التصدير)
+  const filteredProjects = projects.filter(p =>
+    (p.name || '').toLowerCase().includes(searchQuery.trim().toLowerCase())
+  );
+
+  const totalExpenses = filteredProjects.reduce((sum, p) => sum + (Number(p.expenses) || 0), 0);
+  const totalRevenues = filteredProjects.reduce((sum, p) => sum + (Number(p.revenues) || 0), 0);
   const balance = totalRevenues - totalExpenses;
 
-  const exportData = projects.map(p => ({
+  const exportData = filteredProjects.map(p => ({
     name: p.name,
     description: p.description || '—',
     date: p.date_created ? `${p.date_created} هـ` : '—',
@@ -305,12 +311,29 @@ function Projects() {
                 { key: 'notes', label: 'ملاحظات' }
               ]}
               filename="projects_report"
-              title="تقرير المشاريع"
+              title={searchQuery.trim() ? `تقرير المشاريع — بحث: ${searchQuery.trim()}` : 'تقرير المشاريع'}
               stats={exportStats}
             />
 
+            <div className="no-print" style={styles.searchRow}>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="🔍 اكتب اسم المشروع لعزله وطباعته بمفرده..."
+                style={styles.searchInput}
+              />
+              {searchQuery.trim() && (
+                <button onClick={() => setSearchQuery('')} style={styles.clearSearchBtn}>
+                  ✕ إلغاء البحث
+                </button>
+              )}
+            </div>
+
             <div className="no-print" style={{ marginBottom: 14, fontSize: 13, color: '#374151' }}>
-              إجمالي المشاريع: {projects.length}
+              {searchQuery.trim()
+                ? `عدد المشاريع الظاهرة: ${filteredProjects.length} من أصل ${projects.length}`
+                : `إجمالي المشاريع: ${projects.length}`}
             </div>
 
             <div style={styles.statsRow} className="no-print">
@@ -320,6 +343,13 @@ function Projects() {
               </div>
             </div>
 
+            {filteredProjects.length === 0 && (
+              <div style={{ background: '#f9fafb', padding: 20, borderRadius: 10, color: '#6b7280', textAlign: 'center', marginBottom: 16 }}>
+                لا يوجد مشروع مطابق للبحث
+              </div>
+            )}
+
+            {filteredProjects.length > 0 && (
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>
@@ -333,7 +363,7 @@ function Projects() {
                   </tr>
                 </thead>
                 <tbody>
-                  {projects.map((project, idx) => {
+                  {filteredProjects.map((project, idx) => {
                     const colors = STATUS_COLORS[project.status];
                     const projectBalance = (Number(project.revenues) || 0) - (Number(project.expenses) || 0);
                     const descExpanded = expandedDesc.has(project.id);
@@ -422,6 +452,7 @@ function Projects() {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         </>
       )}
@@ -447,6 +478,10 @@ const styles = {
   input: { padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', fontFamily: 'inherit' },
   formButtonRow: { display: 'flex', gap: '10px', marginTop: '20px' },
   saveBtn: { padding: '10px 20px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' },
+
+  searchRow: { display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap' },
+  searchInput: { flex: '1 1 260px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', fontFamily: 'inherit', boxSizing: 'border-box' },
+  clearSearchBtn: { padding: '9px 16px', backgroundColor: '#fff', color: '#374151', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' },
 
   statsRow: { display: 'flex', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' },
   statBox: { flex: '1 1 150px', borderRadius: '10px', padding: '14px 20px', textAlign: 'center' },
