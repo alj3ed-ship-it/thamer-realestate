@@ -1,0 +1,68 @@
+﻿
+src\Entitlements.jsx:164:  const [selectedYear, setSelectedYear] = 
+useState("1448");
+src\Entitlements.jsx:165:  const [selectedMonthNum, setSelectedMonthNum] = 
+useState("1");
+src\Entitlements.jsx:166:  const [selectedProperties, setSelectedProperties] = 
+useState([]);
+src\Entitlements.jsx:168:  const [selectedTenants, setSelectedTenants] = 
+useState([]);
+src\Entitlements.jsx:171:  const [selectedUnitType, setSelectedUnitType] = 
+useState("");
+src\Entitlements.jsx:194:    const { data: propsData } = await 
+supabase.from("properties").select("id, name, priority").order("priority");
+src\Entitlements.jsx:195:    const { data: paymentsData } = await 
+supabase.from("payments").select(`
+src\Entitlements.jsx:220:      if (selectedProperties.length === 0) return true;
+src\Entitlements.jsx:222:        (p) => p.leases?.tenants?.name === name && 
+selectedProperties.includes(p.leases?.property_id)
+src\Entitlements.jsx:288:    const filterYear = parseInt(selectedYear);
+src\Entitlements.jsx:289:    const filterMonth = parseInt(selectedMonthNum);
+src\Entitlements.jsx:295:      if (selectedProperties.length > 0 && 
+!selectedProperties.includes(lease.property_id)) continue;
+src\Entitlements.jsx:296:      if (selectedTenants.length > 0 && 
+!selectedTenants.includes(lease.tenants?.name)) continue;
+src\Entitlements.jsx:302:      if (selectedUnitType && !units.some((u) => 
+(u.unit_type || "").trim() === selectedUnitType)) continue;
+src\Entitlements.jsx:470:          <input type="number" value={selectedYear} 
+onChange={(e) => setSelectedYear(e.target.value)}
+src\Entitlements.jsx:477:          <select value={selectedMonthNum} 
+onChange={(e) => setSelectedMonthNum(e.target.value)}
+src\Entitlements.jsx:482:          </select>
+src\Entitlements.jsx:492:              {selectedProperties.length === 0
+src\Entitlements.jsx:494:                : selectedProperties.length === 1
+src\Entitlements.jsx:495:                  ? (properties.find((p) => p.id === 
+selectedProperties[0])?.name || "عقار واحد")
+src\Entitlements.jsx:496:                  : `${selectedProperties.length} 
+عقارات محددة`}
+src\Entitlements.jsx:504:                <button type="button" onClick={() => 
+setSelectedProperties(properties.map((p) => p.id))}
+src\Entitlements.jsx:508:                <button type="button" onClick={() => 
+setSelectedProperties([])}
+src\Entitlements.jsx:517:                    
+checked={selectedProperties.includes(p.id)}
+src\Entitlements.jsx:519:                      setSelectedProperties((prev) =>
+src\Entitlements.jsx:538:              {selectedTenants.length === 0
+src\Entitlements.jsx:540:                : selectedTenants.length === 1
+src\Entitlements.jsx:541:                  ? selectedTenants[0]
+src\Entitlements.jsx:542:                  : `${selectedTenants.length} مستأجرين 
+محددين`}
+src\Entitlements.jsx:558:                <button type="button" onClick={() => 
+setSelectedTenants(filteredTenantOptions)}
+src\Entitlements.jsx:562:                <button type="button" onClick={() => 
+setSelectedTenants([])}
+src\Entitlements.jsx:574:                    
+checked={selectedTenants.includes(name)}
+src\Entitlements.jsx:576:                      setSelectedTenants((prev) =>
+src\Entitlements.jsx:590:          <select value={selectedUnitType} 
+onChange={(e) => setSelectedUnitType(e.target.value)}
+src\Entitlements.jsx:596:          </select>
+src\Entitlements.jsx:665:            
+filename={`entitlements_${selectedYear}_${selectedMonthNum}${statusFilter !== 
+"all" ? "_" + statusFilter : ""}`}
+src\Entitlements.jsx:666:            title={`جدول الاستحقاقات - 
+${HIJRI_MONTHS[parseInt(selectedMonthNum) - 1]} ${selectedYear} هـ${statusFilter 
+!== "all" ? " - " + (STATUS_FILTERS.find((f) => f.key === statusFilter)?.label 
+|| "") : ""}`}
+
+

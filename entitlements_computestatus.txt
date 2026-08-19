@@ -1,0 +1,49 @@
+﻿
+> src\Entitlements.jsx:245:  function computeStatus(row, hijri) {
+  src\Entitlements.jsx:246:    const due = Number(row.amount_due || 0);
+  src\Entitlements.jsx:247:    const paid = Number(row.amount_paid || 0);
+  src\Entitlements.jsx:248:
+  src\Entitlements.jsx:249:    let paidState = "none";
+  src\Entitlements.jsx:250:    if (paid > 0 && paid >= due && due > 0) paidState 
+= "full";
+  src\Entitlements.jsx:251:    else if (paid > 0) paidState = "partial";
+  src\Entitlements.jsx:252:
+  src\Entitlements.jsx:253:    if (paidState === "full") return { status: 
+"paid", paidState };
+  src\Entitlements.jsx:254:
+  src\Entitlements.jsx:255:    // لم يُسدد كامل المبلغ — نحدد إذا فات استحقاقه 
+أو لسا ما جاء وقته
+  src\Entitlements.jsx:256:    if (hijri) {
+  src\Entitlements.jsx:257:      const dueDate = hijriToGregorian(hijri.year, 
+hijri.month, hijri.day);
+  src\Entitlements.jsx:258:      if (dueDate) {
+  src\Entitlements.jsx:259:        const today = new Date();
+  src\Entitlements.jsx:260:        today.setHours(0, 0, 0, 0);
+  src\Entitlements.jsx:261:        dueDate.setHours(0, 0, 0, 0);
+  src\Entitlements.jsx:262:        // يوم الاستحقاق نفسه يُعتبر مستحقاً (متأخر) 
+وليس "غير مستحق بعد"
+  src\Entitlements.jsx:263:        return { status: dueDate <= today ? "overdue" 
+: "not_due", paidState };
+  src\Entitlements.jsx:264:      }
+  src\Entitlements.jsx:265:    }
+  src\Entitlements.jsx:266:    return { status: "overdue", paidState }; // 
+احتياطي إذا تعذر حساب التاريخ
+  src\Entitlements.jsx:267:  }
+  src\Entitlements.jsx:268:
+  src\Entitlements.jsx:269:  function statusToArabic(status, paidState) {
+  src\Entitlements.jsx:270:    if (status === "paid") return "مدفوع";
+  src\Entitlements.jsx:271:    if (status === "not_due") return "غير مستحق بعد";
+  src\Entitlements.jsx:272:    // overdue
+  src\Entitlements.jsx:273:    return paidState === "partial" ? "متأخر - متبقي 
+جزء" : "متأخر";
+  src\Entitlements.jsx:274:  }
+  src\Entitlements.jsx:275:
+  src\Entitlements.jsx:276:  // هل الضريبة تسري على هذه الدفعة، حسب إعداد العقد 
+وتاريخ استحقاق الدفعة
+  src\Entitlements.jsx:277:  function isTaxApplicable(lease, dueDateHijri) {
+  src\Entitlements.jsx:278:    if (!lease?.tax_enabled) return false;
+  src\Entitlements.jsx:279:    if (!dueDateHijri || dueDateHijri === "—") return 
+false;
+  src\Entitlements.jsx:280:    if (!lease.tax_effective_hijri) return true;
+
+

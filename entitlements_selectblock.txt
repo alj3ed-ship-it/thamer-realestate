@@ -1,0 +1,26 @@
+﻿    const { data: paymentsData } = await supabase.from("payments").select(`
+      id, lease_id, amount_due, amount_paid, payment_date_hijri, payment_date, installment_number, total_installments,
+    leases (
+      id, property_id, start_date_hijri, end_date, lease_number, tax_enabled, tax_effective_hijri, amount_includes_vat,
+        properties ( name, priority ),
+        tenants ( name, note ),
+        lease_units ( units ( unit_number, unit_type ) )
+      )
+    `);
+    setProperties(propsData || []);
+    setPayments((paymentsData || []).filter((p) => p.leases));
+    setLoading(false);
+  }
+
+  const uniqueTenants = useMemo(() => {
+    const names = new Set();
+    payments.forEach((p) => {
+      const name = p.leases?.tenants?.name;
+      if (name) names.add(name);
+    });
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "ar"));
+  }, [payments]);
+
+  const filteredTenantOptions = uniqueTenants
+    .filter((name) => {
+      if (selectedProperties.length === 0) return true;

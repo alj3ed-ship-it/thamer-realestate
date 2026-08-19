@@ -109,7 +109,7 @@ export default function App() {
       supabase.from("units").select("id", { count: "exact", head: true }),
       supabase.from("tenants").select("id", { count: "exact", head: true }),
       supabase.from("leases").select("id", { count: "exact", head: true }),
-      supabase.from("payments").select("id", { count: "exact", head: true }),
+      supabase.from("payments").select("id", { count: "exact", head: true }).neq("status", "ملغى"),
     ]);
     setStats({
       properties: p.count || 0,

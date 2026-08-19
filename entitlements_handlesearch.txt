@@ -1,0 +1,107 @@
+﻿
+> src\Entitlements.jsx:284:  function handleSearch() {
+  src\Entitlements.jsx:285:    setShowPropDropdown(false);
+  src\Entitlements.jsx:286:    setShowTenantDropdown(false);
+  src\Entitlements.jsx:287:    setStatusFilter("all"); // إعادة ضبط فلتر الحالة 
+عند كل بحث جديد
+  src\Entitlements.jsx:288:    const filterYear = parseInt(selectedYear);
+  src\Entitlements.jsx:289:    const filterMonth = parseInt(selectedMonthNum);
+  src\Entitlements.jsx:290:    const found = [];
+  src\Entitlements.jsx:291:
+  src\Entitlements.jsx:292:    for (const row of payments) {
+  src\Entitlements.jsx:293:      const lease = row.leases;
+  src\Entitlements.jsx:294:      if (selectedProperties.length > 0 && 
+!selectedProperties.includes(lease.property_id)) continue;
+  src\Entitlements.jsx:295:      if (selectedTenants.length > 0 && 
+!selectedTenants.includes(lease.tenants?.name)) continue;
+  src\Entitlements.jsx:296:
+  src\Entitlements.jsx:297:      const hijri = 
+computeInstallmentHijri(lease.start_date_hijri, row.total_installments, 
+row.installment_number);
+  src\Entitlements.jsx:298:      if (!hijri || hijri.year !== filterYear || 
+hijri.month !== filterMonth) continue;
+  src\Entitlements.jsx:299:
+  src\Entitlements.jsx:300:      const units = lease.lease_units?.map((lu) => 
+lu.units).filter(Boolean) || [];
+  src\Entitlements.jsx:301:      if (selectedUnitType && !units.some((u) => 
+(u.unit_type || "").trim() === selectedUnitType)) continue;
+  src\Entitlements.jsx:302:      let sortType = 99;
+  src\Entitlements.jsx:303:      let sortNum = 999;
+  src\Entitlements.jsx:304:      units.forEach((u) => {
+  src\Entitlements.jsx:305:        const t = UNIT_TYPE_ORDER[u.unit_type] || 4;
+  src\Entitlements.jsx:306:        const n = parseInt(u.unit_number) || 999;
+  src\Entitlements.jsx:307:        if (t < sortType || (t === sortType && n < 
+sortNum)) {
+  src\Entitlements.jsx:308:          sortType = t;
+  src\Entitlements.jsx:309:          sortNum = n;
+  src\Entitlements.jsx:310:        }
+  src\Entitlements.jsx:311:      });
+  src\Entitlements.jsx:312:
+  src\Entitlements.jsx:313:      const { status, paidState } = 
+computeStatus(row, hijri);
+  src\Entitlements.jsx:314:      const dueDateHijri = hijri
+  src\Entitlements.jsx:315:        ? 
+`${hijri.year}/${String(hijri.month).padStart(2, 
+"0")}/${String(hijri.day).padStart(2, "0")}`
+  src\Entitlements.jsx:316:        : "—";
+  src\Entitlements.jsx:317:
+  src\Entitlements.jsx:318:      const taxApplies = isTaxApplicable(lease, 
+dueDateHijri);
+  src\Entitlements.jsx:319:      const includesVat = !!lease.amount_includes_vat;
+  src\Entitlements.jsx:320:      const taxAmount = taxApplies ? 
+computeTaxAmount(lease, row.amount_due) : 0;
+  src\Entitlements.jsx:321:      const grossTotal = taxApplies && includesVat ? 
+Number(row.amount_due || 0) : Number(row.amount_due || 0) + taxAmount;
+  src\Entitlements.jsx:322:
+  src\Entitlements.jsx:323:      // إذا الحقل الهجري فاضي، نحوّل التاريخ 
+الميلادي المخزَّن (payment_date) إلى هجري تلقائياً
+  src\Entitlements.jsx:324:      const paymentDateHijri = row.payment_date_hijri 
+|| gregorianToHijri(row.payment_date) || null;
+  src\Entitlements.jsx:325:
+  src\Entitlements.jsx:326:      found.push({
+  src\Entitlements.jsx:327:        leaseId: lease.id,
+  src\Entitlements.jsx:328:        leaseEndDate: lease.end_date,
+  src\Entitlements.jsx:329:        leaseNumber: lease.lease_number,
+  src\Entitlements.jsx:330:        tenant: lease.tenants?.name || "",
+  src\Entitlements.jsx:331:        activity: lease.tenants?.note || "—",
+  src\Entitlements.jsx:332:        property: lease.properties?.name || "",
+  src\Entitlements.jsx:333:        propertyPriority: lease.properties?.priority 
+?? 99,
+  src\Entitlements.jsx:334:        unit: units.map((u) => `${u.unit_type} 
+${u.unit_number}`).join(" + ") || "—",
+  src\Entitlements.jsx:335:        units,
+  src\Entitlements.jsx:336:        sortType, sortNum,
+  src\Entitlements.jsx:337:        amount: Number(row.amount_due || 0),
+  src\Entitlements.jsx:338:        paidAmount: Number(row.amount_paid || 0),
+  src\Entitlements.jsx:339:        status,
+  src\Entitlements.jsx:340:        paidState,
+  src\Entitlements.jsx:341:        statusLabel: statusToArabic(status, 
+paidState),
+  src\Entitlements.jsx:342:        dueDateHijri,
+  src\Entitlements.jsx:343:        paymentDateHijri,
+  src\Entitlements.jsx:344:        taxApplies,
+  src\Entitlements.jsx:345:        taxAmount,
+  src\Entitlements.jsx:346:        includesVat,
+  src\Entitlements.jsx:347:        grossTotal,
+  src\Entitlements.jsx:348:      });
+  src\Entitlements.jsx:349:
+  src\Entitlements.jsx:350:      
+  src\Entitlements.jsx:351:    }
+  src\Entitlements.jsx:352:
+  src\Entitlements.jsx:353:    found.sort((a, b) => {
+  src\Entitlements.jsx:354:      if (a.propertyPriority !== b.propertyPriority) 
+return a.propertyPriority - b.propertyPriority;
+  src\Entitlements.jsx:355:      if (a.sortType !== b.sortType) return 
+a.sortType - b.sortType;
+  src\Entitlements.jsx:356:      return a.sortNum - b.sortNum;
+  src\Entitlements.jsx:357:    });
+  src\Entitlements.jsx:358:
+  src\Entitlements.jsx:359:    setResults(found);
+  src\Entitlements.jsx:360:    setSearched(true);
+  src\Entitlements.jsx:361:  }
+  src\Entitlements.jsx:362:
+  src\Entitlements.jsx:363:  // عدد كل حالة (لعرضه كعداد بجانب زر الفلتر) — زمني 
+فقط الآن
+  src\Entitlements.jsx:364:  const statusCounts = useMemo(() => {
+
+

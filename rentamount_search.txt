@@ -1,0 +1,22 @@
+﻿
+src\Leases.jsx:420:  function getNetRentAmount(lease) {
+src\Leases.jsx:430:  function getGrossRentAmount(lease) {
+src\Leases.jsx:437:    const totalNet = propLeases.reduce((sum, l) => sum + 
+getNetRentAmount(l), 0);
+src\Leases.jsx:550:    const rentAmount = Number(overrides.rent_amount ?? 
+form.rent_amount) || 0;
+src\Leases.jsx:554:    if (!rentAmount || !startDate) {
+src\Leases.jsx:558:    const amountPer = Math.round(rentAmount / count);
+src\Leases.jsx:590:  async function syncUnpaidInstallments(leaseId, 
+newRentAmount) {
+src\Leases.jsx:599:    const newInstallmentAmount = 
+Math.round(Number(newRentAmount) / totalInstallments);
+src\Leases.jsx:735:  const totalAmountNet = filteredLeases.reduce((sum, l) => 
+sum + getNetRentAmount(l), 0);
+src\Leases.jsx:736:  const totalAmountGross = filteredLeases.reduce((sum, l) => 
+sum + getGrossRentAmount(l), 0);
+src\Leases.jsx:874:              <div style={{ fontSize: 26, fontWeight: 800, 
+color: "#1d4ed8" }}>{leases.reduce((sum, l) => sum + getNetRentAmount(l), 
+0).toLocaleString()} ريال</div>
+
+

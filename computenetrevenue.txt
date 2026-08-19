@@ -1,0 +1,26 @@
+﻿
+> src\components\DashboardCharts.jsx:83:  function computeNetRevenue(rentAmount, 
+taxEnabled, amountIncludesVat) {
+  src\components\DashboardCharts.jsx:84:    const amt = Number(rentAmount || 0);
+  src\components\DashboardCharts.jsx:85:    if (!taxEnabled) return amt;
+  src\components\DashboardCharts.jsx:86:    if (amountIncludesVat) return amt / 
+1.15;
+  src\components\DashboardCharts.jsx:87:    return amt * 0.85;
+  src\components\DashboardCharts.jsx:88:  }
+  src\components\DashboardCharts.jsx:89:
+  src\components\DashboardCharts.jsx:90:  const loadRevenue = async () => {
+  src\components\DashboardCharts.jsx:91:    if (selectedProperty === 'all') {
+  src\components\DashboardCharts.jsx:92:      const { data: leases, error } = 
+await supabase.from('leases').select('rent_amount, property_id, tax_enabled, 
+amount_includes_vat, properties(name)');
+  src\components\DashboardCharts.jsx:93:      if (!error && leases) {
+  src\components\DashboardCharts.jsx:94:        const totals = {};
+  src\components\DashboardCharts.jsx:95:        leases.forEach((l) => {
+  src\components\DashboardCharts.jsx:96:          const pname = 
+l.properties?.name || 'غير محدد';
+  src\components\DashboardCharts.jsx:97:          const net = 
+computeNetRevenue(l.rent_amount, l.tax_enabled, l.amount_includes_vat);
+  src\components\DashboardCharts.jsx:98:          totals[pname] = (totals[pname] 
+|| 0) + net;
+
+

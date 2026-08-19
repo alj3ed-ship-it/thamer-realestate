@@ -1,0 +1,5 @@
+﻿
+src\components\DashboardCharts.jsx:55:    await Promise.all([loadOccupancy(), 
+loadPayments(), loadRevenue()]);
+
+

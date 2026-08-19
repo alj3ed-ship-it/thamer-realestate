@@ -193,7 +193,7 @@ export default function Entitlements() {
     setLoading(true);
     const { data: propsData } = await supabase.from("properties").select("id, name, priority").order("priority");
     const { data: paymentsData } = await supabase.from("payments").select(`
-      id, lease_id, amount_due, amount_paid, payment_date_hijri, payment_date, installment_number, total_installments,
+      id, lease_id, amount_due, amount_paid, payment_date_hijri, payment_date, installment_number, total_installments, status,
     leases (
       id, property_id, start_date_hijri, end_date, lease_number, tax_enabled, tax_effective_hijri, amount_includes_vat,
         properties ( name, priority ),
@@ -289,7 +289,8 @@ export default function Entitlements() {
     const filterMonth = parseInt(selectedMonthNum);
     const found = [];
 
-    for (const row of payments) {
+        for (const row of payments) {
+      if (row.status === "ملغى") continue; // تجاهل الدفعات الملغاة تماماً
       const lease = row.leases;
       if (selectedProperties.length > 0 && !selectedProperties.includes(lease.property_id)) continue;
       if (selectedTenants.length > 0 && !selectedTenants.includes(lease.tenants?.name)) continue;

@@ -1,0 +1,9 @@
+﻿
+src\Entitlements.jsx:1:import { useState, useEffect, useMemo, useRef } from 
+"react";
+src\Entitlements.jsx:209:  const uniqueTenants = useMemo(() => {
+src\Entitlements.jsx:227:  const uniqueUnitTypes = useMemo(() => {
+src\Entitlements.jsx:364:  const statusCounts = useMemo(() => {
+src\Entitlements.jsx:373:  const filteredResults = useMemo(() => {
+
+
