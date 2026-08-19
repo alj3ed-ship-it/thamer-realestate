@@ -88,6 +88,14 @@ export default function Letters({ onBack, prefillData, onPrefillConsumed }) {
   const leaseBoxRef = useRef(null);
 
   useEffect(() => { fetchLeases(); initDate(); }, []);
+  useEffect(() => {
+    if (document.getElementById("aref-ruqaa-font-link")) return;
+    const link = document.createElement("link");
+    link.id = "aref-ruqaa-font-link";
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&family=Tajawal:wght@500&display=swap";
+    document.head.appendChild(link);
+  }, []);
 useEffect(() => {
     if (!prefillData) return;
     setSelectedLeaseId("");
@@ -264,7 +272,7 @@ useEffect(() => {
 
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      const canvas = await html2canvas(node, {
+      const canvasPromise = html2canvas(node, {
         scale: 2,
         useCORS: true,
         backgroundColor: "#ffffff",
@@ -273,6 +281,10 @@ useEffect(() => {
         // المفروض على أرقام التصاريح بالأسطر أعلاه — false هو الإعداد الصحيح والمستقر.
         foreignObjectRendering: false,
       });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("انتهت المهلة أثناء تجهيز الملف — حاول مرة أخرى")), 15000)
+      );
+      const canvas = await Promise.race([canvasPromise, timeoutPromise]);
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pageWidth = pdf.internal.pageSize.getWidth();
@@ -520,12 +532,12 @@ useEffect(() => {
               minHeight: "760px",
               boxSizing: "border-box",
               position: "relative",
-              overflow: "hidden",
+              overflow: "visible",
             }}
           >
             <div style={{ position: "relative", zIndex: 1 }}>
 
-            <style>{`@import url('https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&family=Tajawal:wght@500&display=swap');`}</style>
+            
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #1B4D7A", paddingBottom: "16px", marginBottom: "28px" }}>
               <div>
