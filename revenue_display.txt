@@ -1,0 +1,54 @@
+﻿
+  src\components\DashboardCharts.jsx:191:          <div style={styles.kpiRow}>
+  src\components\DashboardCharts.jsx:192:            <div style={styles.kpiCard}>
+  src\components\DashboardCharts.jsx:193:              <div style={{ 
+...styles.kpiValue, color: '#2563eb' }}>{totalRevenue.toLocaleString()}</div>
+> src\components\DashboardCharts.jsx:194:              <div 
+style={styles.kpiLabel}>صافي الإيراد السنوي (ريال) — بعد خصم الضريبة</div>
+  src\components\DashboardCharts.jsx:195:            </div>
+  src\components\DashboardCharts.jsx:196:            <div style={styles.kpiCard}>
+  src\components\DashboardCharts.jsx:197:              <div style={{ 
+...styles.kpiValue, color: '#10b981' }}>{occupancyPct}%</div>
+  src\components\DashboardCharts.jsx:198:              <div 
+style={styles.kpiLabel}>نسبة الإشغال ({occupiedCount} من {totalUnits})</div>
+  src\components\DashboardCharts.jsx:199:            </div>
+  src\components\DashboardCharts.jsx:200:            <div style={styles.kpiCard}>
+  src\components\DashboardCharts.jsx:201:              <div style={{ 
+...styles.kpiValue, color: '#f59e0b' }}>{collectionPct}%</div>
+  src\components\DashboardCharts.jsx:202:              <div 
+style={styles.kpiLabel}>نسبة التحصيل ({paidCount} من {dueSoFarCount} مستحق)</div>
+  src\components\DashboardCharts.jsx:203:            </div>
+  src\components\DashboardCharts.jsx:204:          </div>
+  src\components\DashboardCharts.jsx:205:
+  src\components\DashboardCharts.jsx:206:          {/* صف واحد: حالة الوحدات | 
+الإيراد السنوي (بالوسط) | حالة الدفعات */}
+  src\components\DashboardCharts.jsx:207:          <div style={styles.chartsRow}>
+  src\components\DashboardCharts.jsx:208:            {occupancy.length > 0 && (
+  src\components\DashboardCharts.jsx:209:              <div 
+style={styles.sideChartSection}>
+  src\components\DashboardCharts.jsx:214:
+  src\components\DashboardCharts.jsx:215:            {revenue.length > 0 && (
+  src\components\DashboardCharts.jsx:216:              <div 
+style={styles.middleChartSection}>
+> src\components\DashboardCharts.jsx:217:                <div 
+style={styles.sectionTitle}>صافي الإيراد السنوي</div>
+  src\components\DashboardCharts.jsx:218:                <RevenueBars />
+  src\components\DashboardCharts.jsx:219:              </div>
+  src\components\DashboardCharts.jsx:220:            )}
+  src\components\DashboardCharts.jsx:221:
+  src\components\DashboardCharts.jsx:222:            {payments.length > 0 && (
+  src\components\DashboardCharts.jsx:223:              <div 
+style={styles.sideChartSection}>
+  src\components\DashboardCharts.jsx:224:                <div 
+style={styles.sectionTitle}>حالة الدفعات</div>
+  src\components\DashboardCharts.jsx:225:                <Donut data={payments} 
+colors={PAY_COLORS} centerValue={collectionPct} centerLabel="تحصيل" />
+  src\components\DashboardCharts.jsx:226:              </div>
+  src\components\DashboardCharts.jsx:227:            )}
+  src\components\DashboardCharts.jsx:228:          </div>
+  src\components\DashboardCharts.jsx:229:        </>
+  src\components\DashboardCharts.jsx:230:      )}
+  src\components\DashboardCharts.jsx:231:    </div>
+  src\components\DashboardCharts.jsx:232:  );
+
+

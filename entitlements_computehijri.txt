@@ -1,0 +1,33 @@
+﻿
+> src\Entitlements.jsx:95:function computeInstallmentHijri(startDateHijri, 
+totalInstallments, installmentNumber) {
+  src\Entitlements.jsx:96:  const start = parseHijri(startDateHijri);
+  src\Entitlements.jsx:97:  if (!start || !totalInstallments) return null;
+  src\Entitlements.jsx:98:  const intervalMonths = 12 / totalInstallments;
+  src\Entitlements.jsx:99:  const monthsToAdd = (Number(installmentNumber || 1) 
+- 1) * intervalMonths;
+  src\Entitlements.jsx:100:  return addHijriMonths(start, 
+Math.round(monthsToAdd));
+  src\Entitlements.jsx:101:}
+  src\Entitlements.jsx:102:
+  src\Entitlements.jsx:103:// تحويل هجري إلى ميلادي باستخدام تقويم "أم القرى" 
+الرسمي (بحث تكراري عبر Intl، نفس الأسلوب في VatReturns.jsx)
+  src\Entitlements.jsx:104:function hijriToGregorian(hy, hm, hd) {
+  src\Entitlements.jsx:105:  try {
+  src\Entitlements.jsx:106:    const fmt = new 
+Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { year: 'numeric', month: 
+'numeric', day: 'numeric' });
+  src\Entitlements.jsx:107:    function getHijriParts(d) {
+  src\Entitlements.jsx:108:      const parts = fmt.formatToParts(d);
+  src\Entitlements.jsx:109:      return {
+  src\Entitlements.jsx:110:        y: parseInt(parts.find(p => p.type === 
+'year').value),
+  src\Entitlements.jsx:111:        m: parseInt(parts.find(p => p.type === 
+'month').value),
+  src\Entitlements.jsx:112:        d: parseInt(parts.find(p => p.type === 
+'day').value),
+  src\Entitlements.jsx:113:      };
+  src\Entitlements.jsx:114:    }
+  src\Entitlements.jsx:115:    const epoch = new Date(Date.UTC(622, 6, 19));
+
+

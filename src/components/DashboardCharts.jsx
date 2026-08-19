@@ -1,6 +1,27 @@
 import { useState, useEffect } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../supabaseClient';
+function parseHijri(dateStr) {
+  if (!dateStr) return null;
+  const parts = dateStr.split("/").map((p) => parseInt(p));
+  if (parts.length !== 3 || parts.some((p) => isNaN(p))) return null;
+  if (parts[0] >= 1300) return { year: parts[0], month: parts[1], day: parts[2] };
+  if (parts[2] >= 1300) return { day: parts[0], month: parts[1], year: parts[2] };
+  return null;
+}
+
+function addHijriMonths(date, months) {
+  const totalMonths = date.year * 12 + (date.month - 1) + months;
+  return { year: Math.floor(totalMonths / 12), month: (totalMonths % 12) + 1, day: date.day };
+}
+
+function computeInstallmentHijri(startDateHijri, totalInstallments, installmentNumber) {
+  const start = parseHijri(startDateHijri);
+  if (!start || !totalInstallments) return null;
+  const intervalMonths = 12 / totalInstallments;
+  const monthsToAdd = (Number(installmentNumber || 1) - 1) * intervalMonths;
+  return addHijriMonths(start, Math.round(monthsToAdd));
+}
 
 const OCC_COLORS = { مؤجرة: '#2563eb', شاغرة: '#f59e0b', صيانة: '#ef4444' };
 const PAY_COLORS = { مدفوع: '#10b981', جزئي: '#f59e0b', متأخر: '#f43f5e', 'لم يستحق بعد': '#9ca3af' };
@@ -12,6 +33,7 @@ function DashboardCharts() {
   const [selectedProperty, setSelectedProperty] = useState('all');
   const [occupancy, setOccupancy] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [hijriYearTotal, setHijriYearTotal] = useState(0);
   const [revenue, setRevenue] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -30,7 +52,7 @@ function DashboardCharts() {
 
   const loadAll = async () => {
     setLoading(true);
-    await Promise.all([loadOccupancy(), loadPayments(), loadRevenue()]);
+    await Promise.all([loadOccupancy(), loadPayments(), loadRevenue(), loadHijriYearTotal()]);
     setLoading(false);
   };
 
@@ -52,11 +74,12 @@ function DashboardCharts() {
     if (leaseErr || !leases) { setPayments([]); return; }
     const leaseIds = leases.map((l) => l.id);
     if (leaseIds.length === 0) { setPayments([]); return; }
-    const { data: pays, error: payErr } = await supabase.from('payments').select('amount, amount_paid, due_date_gregorian').in('lease_id', leaseIds);
+    const { data: pays, error: payErr } = await supabase.from('payments').select('amount, amount_paid, due_date_gregorian, status').in('lease_id', leaseIds);
     if (!payErr && pays) {
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const counts = { مدفوع: 0, جزئي: 0, متأخر: 0, 'لم يستحق بعد': 0 };
-      pays.forEach((p) => {
+            pays.forEach((p) => {
+        if (p.status === "ملغى") return;
         const due = Number(p.amount || 0);
         const paid = Number(p.amount_paid || 0);
         // نفس منطق حساب الحالة المستخدم في صفحة الاستحقاقات (Entitlements.jsx):
@@ -79,12 +102,29 @@ function DashboardCharts() {
   // - عقد غير خاضع للضريبة: الصافي = المبلغ كامل
   // - عقد خاضع وشامل الضريبة (مثل المجاهدين): الصافي = المبلغ الأساسي بعد فرز الـ15% من الداخل (الضريبة مو من جيبه)
   // - عقد خاضع وغير شامل: الصافي = المبلغ ناقص الـ15% اللي يتحملها المالك من جيبه لصالح الحكومة
-  function computeNetRevenue(rentAmount, taxEnabled, amountIncludesVat) {
+   function computeNetRevenue(rentAmount, taxEnabled, amountIncludesVat) {
     const amt = Number(rentAmount || 0);
     if (!taxEnabled) return amt;
     if (amountIncludesVat) return amt / 1.15;
     return amt * 0.85;
   }
+
+  const loadHijriYearTotal = async () => {
+    const { data, error } = await supabase
+      .from("payments")
+      .select("amount_due, status, installment_number, total_installments, leases(start_date_hijri, tax_enabled, amount_includes_vat)");
+    if (error || !data) return;
+    let total = 0;
+    data.forEach((row) => {
+      if (row.status === "ملغى") return;
+      const lease = row.leases;
+      if (!lease) return;
+      const hijri = computeInstallmentHijri(lease.start_date_hijri, row.total_installments, row.installment_number);
+      if (!hijri || hijri.year !== 1448) return;
+      total += computeNetRevenue(row.amount_due, lease.tax_enabled, lease.amount_includes_vat);
+    });
+    setHijriYearTotal(Math.round(total));
+  };
 
   const loadRevenue = async () => {
     if (selectedProperty === 'all') {
@@ -187,20 +227,16 @@ function DashboardCharts() {
         <p style={styles.loading}>جارِ التحميل...</p>
       ) : (
         <>
-          <div style={styles.kpiRow}>
-            <div style={styles.kpiCard}>
-              <div style={{ ...styles.kpiValue, color: '#2563eb' }}>{totalRevenue.toLocaleString()}</div>
-              <div style={styles.kpiLabel}>صافي الإيراد السنوي (ريال) — بعد خصم الضريبة</div>
-            </div>
-            <div style={styles.kpiCard}>
-              <div style={{ ...styles.kpiValue, color: '#10b981' }}>{occupancyPct}%</div>
-              <div style={styles.kpiLabel}>نسبة الإشغال ({occupiedCount} من {totalUnits})</div>
-            </div>
-            <div style={styles.kpiCard}>
-              <div style={{ ...styles.kpiValue, color: '#f59e0b' }}>{collectionPct}%</div>
-              <div style={styles.kpiLabel}>نسبة التحصيل ({paidCount} من {dueSoFarCount} مستحق)</div>
-            </div>
-          </div>
+              <div style={styles.kpiRow}>
+                <div style={styles.kpiCard}>
+        <div style={{ ...styles.kpiValue, color: '#f59e0b' }}>{collectionPct}%</div>
+        <div style={styles.kpiLabel}>نسبة التحصيل ({paidCount} من {dueSoFarCount} مستحق)</div>
+      </div>
+      <div style={styles.kpiCard}>
+        <div style={{ ...styles.kpiValue, color: '#7c3aed' }}>{hijriYearTotal.toLocaleString()}</div>
+        <div style={styles.kpiLabel}>إجمالي عقود السنة الهجرية 1448 (صافي، ريال)</div>
+      </div>
+    </div>
 
           {/* صف واحد: حالة الوحدات | الإيراد السنوي (بالوسط) | حالة الدفعات */}
           <div style={styles.chartsRow}>

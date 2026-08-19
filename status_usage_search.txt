@@ -1,0 +1,8 @@
+﻿
+src\Leases.jsx:656:            status: "لم يُسدَّد",
+src\ViewerLayout.jsx:517:    return "لم يُسدَّد";
+src\ViewerLayout.jsx:523:    return <span style={{ background: "#FDEDEC", color: 
+"#e74c3c", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", 
+fontWeight: "bold" }}>لم يُسدَّد ✗</span>;
+
+

@@ -1,0 +1,13 @@
+﻿
+src\Entitlements.jsx:95:function computeInstallmentHijri(startDateHijri, 
+totalInstallments, installmentNumber) {
+src\Payments.jsx:111:function computeInstallmentHijri(startDateHijri, 
+totalInstallments, installmentNumber) {
+src\VatReturns.jsx:34:function computeInstallmentHijri(startDateHijri, 
+totalInstallments, installmentNumber) {
+src\ViewerLayout.jsx:88:function computeInstallmentHijri(startDateHijri, 
+totalInstallments, installmentNumber) {
+src\ViewerLimited.jsx:54:function computeInstallmentHijri(startDateHijri, 
+totalInstallments, installmentNumber) {
+
+

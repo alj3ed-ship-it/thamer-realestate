@@ -1,0 +1,15 @@
+﻿
+src\components\DashboardCharts.jsx:6:const PAY_COLORS = { مدفوع: '#10b981', 
+جزئي: '#f59e0b', متأخر: '#f43f5e', 'لم يستحق بعد': '#9ca3af' };
+src\components\DashboardCharts.jsx:58:      const counts = { مدفوع: 0, جزئي: 0, 
+متأخر: 0, 'لم يستحق بعد': 0 };
+src\components\DashboardCharts.jsx:63:        // فصل حالة السداد (مدفوع/جزئي/لا 
+شيء) عن الحالة الزمنية (استحق/لم يستحق بعد)
+src\components\DashboardCharts.jsx:70:          if (dueDate && dueDate > today) 
+counts['لم يستحق بعد']++;
+src\components\DashboardCharts.jsx:118:  // نسبة التحصيل تُحسب من الدفعات 
+المستحقة فقط (نستثني "لم يستحق بعد" لأنها ليست جزءاً من المطلوب تحصيله حالياً)
+src\components\DashboardCharts.jsx:119:  const dueSoFarCount = totalPayments - 
+(payments.find((p) => p.name === 'لم يستحق بعد')?.value || 0);
+
+

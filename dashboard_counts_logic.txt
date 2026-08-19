@@ -1,0 +1,73 @@
+﻿
+> src\components\DashboardCharts.jsx:42:      const counts = { مؤجرة: 0, شاغرة: 
+0, صيانة: 0 };
+  src\components\DashboardCharts.jsx:43:      data.forEach((u) => { if 
+(counts[u.status] !== undefined) counts[u.status]++; });
+  src\components\DashboardCharts.jsx:44:      
+setOccupancy(Object.entries(counts).filter(([, v]) => v > 0).map(([name, value]) 
+=> ({ name, value })));
+  src\components\DashboardCharts.jsx:45:    }
+  src\components\DashboardCharts.jsx:46:  };
+  src\components\DashboardCharts.jsx:47:
+  src\components\DashboardCharts.jsx:48:  const loadPayments = async () => {
+  src\components\DashboardCharts.jsx:49:    let leaseQuery = 
+supabase.from('leases').select('id, property_id');
+  src\components\DashboardCharts.jsx:50:    if (selectedProperty !== 'all') 
+leaseQuery = leaseQuery.eq('property_id', selectedProperty);
+  src\components\DashboardCharts.jsx:51:    const { data: leases, error: 
+leaseErr } = await leaseQuery;
+  src\components\DashboardCharts.jsx:52:    if (leaseErr || !leases) { 
+setPayments([]); return; }
+  src\components\DashboardCharts.jsx:53:    const leaseIds = leases.map((l) => 
+l.id);
+  src\components\DashboardCharts.jsx:54:    if (leaseIds.length === 0) { 
+setPayments([]); return; }
+  src\components\DashboardCharts.jsx:55:    const { data: pays, error: payErr } 
+= await supabase.from('payments').select('amount, amount_paid, 
+due_date_gregorian').in('lease_id', leaseIds);
+  src\components\DashboardCharts.jsx:56:    if (!payErr && pays) {
+  src\components\DashboardCharts.jsx:57:      const today = new Date(); 
+today.setHours(0, 0, 0, 0);
+> src\components\DashboardCharts.jsx:58:      const counts = { مدفوع: 0, جزئي: 
+0, متأخر: 0, 'لم يستحق بعد': 0 };
+  src\components\DashboardCharts.jsx:59:      pays.forEach((p) => {
+  src\components\DashboardCharts.jsx:60:        const due = Number(p.amount || 
+0);
+  src\components\DashboardCharts.jsx:61:        const paid = 
+Number(p.amount_paid || 0);
+  src\components\DashboardCharts.jsx:62:        // نفس منطق حساب الحالة المستخدم 
+في صفحة الاستحقاقات (Entitlements.jsx):
+  src\components\DashboardCharts.jsx:63:        // فصل حالة السداد 
+(مدفوع/جزئي/لا شيء) عن الحالة الزمنية (استحق/لم يستحق بعد)
+  src\components\DashboardCharts.jsx:64:        if (paid > 0 && paid >= due && 
+due > 0) {
+  src\components\DashboardCharts.jsx:65:          counts['مدفوع']++;
+  src\components\DashboardCharts.jsx:66:        } else if (paid > 0) {
+  src\components\DashboardCharts.jsx:67:          counts['جزئي']++;
+  src\components\DashboardCharts.jsx:68:        } else {
+  src\components\DashboardCharts.jsx:69:          const dueDate = 
+p.due_date_gregorian ? new Date(p.due_date_gregorian) : null;
+  src\components\DashboardCharts.jsx:70:          if (dueDate && dueDate > 
+today) counts['لم يستحق بعد']++;
+  src\components\DashboardCharts.jsx:71:          else counts['متأخر']++;
+  src\components\DashboardCharts.jsx:72:        }
+  src\components\DashboardCharts.jsx:73:      });
+  src\components\DashboardCharts.jsx:74:      
+setPayments(Object.entries(counts).filter(([, v]) => v > 0).map(([name, value]) 
+=> ({ name, value })));
+  src\components\DashboardCharts.jsx:75:    }
+  src\components\DashboardCharts.jsx:76:  };
+  src\components\DashboardCharts.jsx:77:
+  src\components\DashboardCharts.jsx:78:  // يحسب صافي دخل المالك الفعلي من مبلغ 
+عقد واحد، حسب حالة الضريبة عليه:
+  src\components\DashboardCharts.jsx:79:  // - عقد غير خاضع للضريبة: الصافي = 
+المبلغ كامل
+  src\components\DashboardCharts.jsx:80:  // - عقد خاضع وشامل الضريبة (مثل 
+المجاهدين): الصافي = المبلغ الأساسي بعد فرز الـ15% من الداخل (الضريبة مو من جيبه)
+  src\components\DashboardCharts.jsx:81:  // - عقد خاضع وغير شامل: الصافي = 
+المبلغ ناقص الـ15% اللي يتحملها المالك من جيبه لصالح الحكومة
+  src\components\DashboardCharts.jsx:82:  function computeNetRevenue(rentAmount, 
+taxEnabled, amountIncludesVat) {
+  src\components\DashboardCharts.jsx:83:    const amt = Number(rentAmount || 0);
+
+

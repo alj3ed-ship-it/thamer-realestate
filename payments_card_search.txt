@@ -1,0 +1,61 @@
+﻿
+src\App.jsx:28:  payments: "الدفعات",
+src\DataAudit.jsx:105:    // تجميع الدفعات حسب العقد — أساس الفحص 1 و6
+src\DataAudit.jsx:242:            ? `العقد مسجل "${label}" (${expectedCount} قسط 
+بالسنة عادةً) لكن الدفعات الفعلية ${actualCount} قسط — المبلغ الإجمالي مطابق 
+تماماً لقيمة العقد، الأرجح مدة عقد غير قياسية (مثل 11 شهر). تحقق فقط إن هذا 
+مقصود`
+src\DataAudit.jsx:243:            : `العقد مسجل "${label}" (المفترض 
+${expectedCount} قسط بالسنة) لكن الدفعات الفعلية مقسّمة على ${actualCount} قسط 
+والمجموع لا يطابق قيمة العقد — تحقق من payment_type/payment_frequency أو 
+total_installments`,
+src\DataAudit.jsx:267:        فحص تلقائي لسلامة العقود والدفعات وإعدادات الضريبة
+src\Entitlements.jsx:293:      if (row.status === "ملغى") continue; // تجاهل 
+الدفعات الملغاة تماماً
+src\LeaseDetailsModal.jsx:73:              <h4 style={{ margin: "0 0 8px", 
+fontSize: 14, color: "#374151" }}>جدول الدفعات</h4>
+src\Leases.jsx:121:// إضافة عدد أشهر هجرية على تاريخ هجري (لتوليد تواريخ الدفعات 
+المقترحة)
+src\Leases.jsx:130:// عدد الدفعات والفاصل الهجري بالأشهر حسب نوع الدفع
+src\Leases.jsx:1031:                                
++{getExtraInstallmentsCount(l.id)} دفعة أخرى (بصفحة الدفعات)
+src\Leases.jsx:1195:                  <label style={{ fontSize: 13, color: 
+"#374151", fontWeight: 700 }}>جدول الدفعات (قابل للتعديل)</label>
+src\Leases.jsx:1240:                ملاحظة: تعديل المبلغ هنا سيحدّث تلقائياً كل 
+الأقساط <strong>غير المدفوعة</strong> بنفس المبلغ الجديد موزّعاً بالتساوي على 
+عدد الدفعات الأصلي. أي دفعة سبق سدادها تبقى بمبلغها التاريخي كما هو. تفعيل/تعديل 
+الضريبة هنا يطبّق فوراً على حساب كل الدفعات (القديمة والجديدة) في صفحتي الدفعات 
+والاستحقاقات حسب تاريخ كل دفعة. ملاحظة: حفظ التعديل هنا يعيد بناء ربط الوحدات من 
+الصفر، فأي استثناء من فرز النوع كنت قد فعّلته على وحدة معينة سيُلغى تلقائياً — 
+أعد تفعيله من جدول العقود بعد الحفظ إذا احتجته.
+src\Payments.jsx:703:        {isOverview ? '← رجوع للوحة التحكم' : '← رجوع لصفحة 
+الدفعات'}
+src\Payments.jsx:705:      <h1 style={{ margin: '0 0 4px' }}>الدفعات</h1>
+src\VatReturns.jsx:191:  // تاريخ الاستحقاق المحسوب لأي دفعة (نفس منطق صفحة 
+الدفعات) — الأساس الصحيح لتجميع الأرباع
+src\ViewerLayout.jsx:96:// يحسب مفتاح فرز رقمي من نص هجري (سنة/شهر/يوم) لترتيب 
+الدفعات زمنياً
+src\ViewerLayout.jsx:251:  // فلاتر تبويب "الدفعات" الجديد (نفس أسلوب باقي 
+الصفحات)
+src\ViewerLayout.jsx:485:  // قائمة الدفعات لصفحة "الدفعات" الجديدة — بدون تجميع 
+حسب شهر (عرض كل الدفعات المسجّلة)
+src\ViewerLayout.jsx:619:  // إجماليات تبويب "الدفعات" الجديد
+src\ViewerLayout.jsx:667:  // بيانات تصدير تبويب "الدفعات" الجديد
+src\ViewerLayout.jsx:759:        <button style={navStyle("payments")} 
+onClick={() => { setActivePage("payments"); setSelectedProperty(null); 
+setSelectedTenant(null); }}>الدفعات</button>
+src\ViewerLayout.jsx:1429:                    title="تقرير الدفعات"
+src\ViewerLimited.jsx:21:// فلتر حالة الاستحقاقات/الدفعات — زمني فقط (نفس منطق 
+Entitlements.jsx)
+src\ViewerLimited.jsx:1005:        <button style={navStyle("payments")} 
+onClick={() => { setActivePage("payments"); setSelectedTenant(null); 
+}}>الدفعات</button>
+src\ViewerLimited.jsx:1475:                    title="تقرير الدفعات"
+src\components\DashboardCharts.jsx:119:  // نسبة التحصيل تُحسب من الدفعات 
+المستحقة فقط (نستثني "لم يستحق بعد" لأنها ليست جزءاً من المطلوب تحصيله حالياً)
+src\components\DashboardCharts.jsx:206:          {/* صف واحد: حالة الوحدات | 
+الإيراد السنوي (بالوسط) | حالة الدفعات */}
+src\components\DashboardCharts.jsx:224:                <div 
+style={styles.sectionTitle}>حالة الدفعات</div>
+
+

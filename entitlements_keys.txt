@@ -1,0 +1,16 @@
+﻿
+src\Entitlements.jsx:407:            <span key={idx} style={{
+src\Entitlements.jsx:479:              <option key={i + 1} value={i + 1}>{i + 1} 
+- {name}</option>
+src\Entitlements.jsx:513:                <label key={p.id} style={{ display: 
+"flex", alignItems: "center", gap: "8px", padding: "6px 4px", fontSize: "14px", 
+cursor: "pointer" }}>
+src\Entitlements.jsx:570:                <label key={name} style={{ display: 
+"flex", alignItems: "center", gap: "8px", padding: "6px 4px", fontSize: "14px", 
+cursor: "pointer" }}>
+src\Entitlements.jsx:593:              <option key={t} value={t}>{t}</option>
+src\Entitlements.jsx:612:                  key={f.key}
+src\Entitlements.jsx:724:                    <tr key={i} style={{ borderBottom: 
+"1px solid #f0f0f0", background: i % 2 === 0 ? "#fff" : "#fafafa" }}>
+
+

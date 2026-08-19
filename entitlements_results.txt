@@ -1,0 +1,7 @@
+﻿
+src\Entitlements.jsx:172:  const [results, setResults] = useState([]);
+src\Entitlements.jsx:359:    setResults(found);
+src\Entitlements.jsx:370:  }, [results]);
+src\Entitlements.jsx:376:  }, [results, statusFilter]);
+
+

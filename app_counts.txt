@@ -1,0 +1,18 @@
+﻿
+src\App.jsx:108:      supabase.from("properties").select("id", { count: "exact", 
+head: true }),
+src\App.jsx:109:      supabase.from("units").select("id", { count: "exact", 
+head: true }),
+src\App.jsx:110:      supabase.from("tenants").select("id", { count: "exact", 
+head: true }),
+src\App.jsx:111:      supabase.from("leases").select("id", { count: "exact", 
+head: true }),
+src\App.jsx:112:      supabase.from("payments").select("id", { count: "exact", 
+head: true }),
+src\App.jsx:115:      properties: p.count || 0,
+src\App.jsx:116:      units: u.count || 0,
+src\App.jsx:117:      tenants: t.count || 0,
+src\App.jsx:118:      leases: l.count || 0,
+src\App.jsx:119:      payments: pay.count || 0,
+
+

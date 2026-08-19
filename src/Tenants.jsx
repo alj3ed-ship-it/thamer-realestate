@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient'
 import { getUnitTypeColor } from './theme'
 import { useReadOnly } from './ReadOnlyContext'
 import ExportToolbar from './components/ExportToolbar'
+import { LeaseStatusBadge } from './leaseStatus'
 
 // لوحة ألوان لكروت العقارات بشاشة المستأجرين (لون مختلف لكل عقار)
 const TENANT_CARD_COLORS = ['#1B4D7A', '#166534', '#8e44ad', '#b45309', '#0e7490', '#be185d', '#4338ca', '#059669', '#c2410c', '#0f766e']
@@ -88,7 +89,7 @@ function TenantDetail({ tenant, onBack }) {
                   <td style={{ padding: '12px', color: '#6b7280' }}>{l.end_date || '—'}</td>
                   <td style={{ padding: '12px', fontWeight: 600 }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + ' ريال' : '—'}</td>
                   <td style={{ padding: '12px' }}>{l.payment_type || '—'}</td>
-                  <td style={{ padding: '12px' }}>{l.status || '—'}</td>
+                  <td style={{ padding: '12px' }}><LeaseStatusBadge endDate={l.end_date} /></td>
                 </tr>
               ))}
             </tbody>
