@@ -290,7 +290,7 @@ export default function Leases({ onBack }) {
   async function fetchAll() {
     setLoading(true);
     const [l, lu, p, u, t, pay] = await Promise.all([
-      supabase.from("leases").select("*").order("created_at", { ascending: false }),
+      supabase.from("leases").select("*").neq("status", "منتهي").order("created_at", { ascending: false }),
       supabase.from("lease_units").select("*"),
       supabase.from("properties").select("id, name, priority").order("priority", { ascending: true, nullsFirst: false }),
       supabase.from("units").select("id, unit_number, unit_type, property_id, status"),

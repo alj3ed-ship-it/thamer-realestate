@@ -128,7 +128,7 @@ function DashboardCharts() {
 
   const loadRevenue = async () => {
     if (selectedProperty === 'all') {
-      const { data: leases, error } = await supabase.from('leases').select('rent_amount, property_id, tax_enabled, amount_includes_vat, properties(name)');
+      const { data: leases, error } = await supabase.from('leases').select('rent_amount, property_id, tax_enabled, amount_includes_vat, properties(name)').neq('status', 'منتهي');
       if (!error && leases) {
         const totals = {};
         leases.forEach((l) => {
@@ -139,7 +139,7 @@ function DashboardCharts() {
         setRevenue(Object.entries(totals).map(([name, value]) => ({ name, value: Math.round(value) })).sort((a, b) => b.value - a.value));
       }
     } else {
-      const { data: leases, error } = await supabase.from('leases').select('rent_amount, tenant_id, tax_enabled, amount_includes_vat, tenants(name)').eq('property_id', selectedProperty);
+      const { data: leases, error } = await supabase.from('leases').select('rent_amount, tenant_id, tax_enabled, amount_includes_vat, tenants(name)').eq('property_id', selectedProperty).neq('status', 'منتهي');
       if (!error && leases) {
         setRevenue(leases.map((l) => ({
           name: l.tenants?.name || 'غير محدد',

@@ -499,7 +499,7 @@ function Payments({ onBack }) {
 
   // ملخص إحصائي لكل عقار — يُستخدم في شاشة العقارات الرئيسية
   const propertySummaries = properties.map(prop => {
-    const propPayments = payments.filter(p => getPropertyId(p.lease_id) === prop.id)
+    const propPayments = payments.filter(p => getPropertyId(p.lease_id) === prop.id && p.status !== "ملغى")
     const total = propPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
     const paid = propPayments.reduce((s, p) => s + Number(p.amount_paid || 0), 0)
     const remaining = Math.max(total - paid, 0)
@@ -526,7 +526,7 @@ function Payments({ onBack }) {
 
   const filteredPayments = (isOverview
     ? []
-    : payments.filter(p => getPropertyId(p.lease_id) === filterProperty)
+    : payments.filter(p => getPropertyId(p.lease_id) === filterProperty && p.status !== "ملغى")
   )
     .filter(p => filterTenants.length === 0 || filterTenants.includes(getTenantId(p.lease_id)))
     .sort((a, b) => {
