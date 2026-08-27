@@ -39,7 +39,7 @@ function sortByPriority(list) {
   });
 }
 
-function DashboardCharts() {
+function DashboardCharts({ restrictToPropertyIds = null }) {
   const [properties, setProperties] = useState([]);
   const [selectedProperties, setSelectedProperties] = useState([]); // [] = كل العقارات
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -50,7 +50,7 @@ function DashboardCharts() {
   const [revenue, setRevenue] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const filterIds = selectedProperties.length > 0 ? selectedProperties : null;
+  const filterIds = selectedProperties.length > 0 ? selectedProperties : restrictToPropertyIds;
   const isGroupedView = !filterIds || filterIds.length > 1;
 
   useEffect(() => {
@@ -72,7 +72,9 @@ function DashboardCharts() {
   }, []);
 
   const loadProperties = async () => {
-    const { data, error } = await supabase.from('properties').select('id, name');
+    let query = supabase.from('properties').select('id, name');
+    if (restrictToPropertyIds) query = query.in('id', restrictToPropertyIds);
+    const { data, error } = await query;
     if (!error) setProperties(sortByPriority(data || []));
   };
 
@@ -85,7 +87,7 @@ function DashboardCharts() {
   const clearFilter = () => setSelectedProperties([]);
 
   const filterLabel = () => {
-    if (selectedProperties.length === 0) return 'كل العقارات';
+    if (selectedProperties.length === 0) return restrictToPropertyIds ? 'كل عقاراتي' : 'كل العقارات';
     if (selectedProperties.length === 1) {
       const p = properties.find((x) => x.id === selectedProperties[0]);
       return p ? p.name : 'عقار واحد';
@@ -270,7 +272,7 @@ function DashboardCharts() {
             <div style={styles.dropdownMenu}>
               <label style={styles.dropdownItem}>
                 <input type="checkbox" checked={selectedProperties.length === 0} onChange={clearFilter} />
-                <span>كل العقارات</span>
+                <span>{restrictToPropertyIds ? 'كل عقاراتي' : 'كل العقارات'}</span>
               </label>
               <div style={styles.dropdownDivider} />
               {properties.map((p) => (
