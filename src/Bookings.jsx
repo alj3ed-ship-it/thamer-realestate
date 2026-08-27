@@ -128,6 +128,7 @@ export default function Bookings() {
   const [hallId, setHallId] = useState(null);
   const [selectedYear, setSelectedYear] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
+  const [lockedYears, setLockedYears] = useState(new Set());
   const [staffRates, setStaffRates] = useState(() => {
     const saved = localStorage.getItem('bookings_staff_rates');
     try {
@@ -293,6 +294,15 @@ export default function Bookings() {
 
       if (extraErr) throw extraErr;
       setExtraIncome(extraData || []);
+
+      const { data: lockData, error: lockErr } = await supabase
+        .from('hall_year_locks')
+        .select('year')
+        .eq('property_id', hall.id)
+        .eq('locked', true);
+
+      if (lockErr) throw lockErr;
+      setLockedYears(new Set((lockData || []).map((l) => l.year)));
     } catch (err) {
       console.error(err);
       setError('حدث خطأ أثناء تحميل الحجوزات: ' + err.message);
@@ -475,6 +485,35 @@ export default function Bookings() {
       loadHallAndBookings();
     } catch (err) {
       alert('خطأ أثناء إعادة التفعيل: ' + err.message);
+    }
+  }
+
+  async function handleToggleYearLock(year) {
+    const isLocked = lockedYears.has(year);
+    if (isLocked) {
+      if (!confirm(`فتح قفل سنة ${year} هـ؟ راح تقدر تعدّل/تحذف/تلغي حجوزاتها من جديد.`)) return;
+      try {
+        const { error: unlockErr } = await supabase
+          .from('hall_year_locks')
+          .update({ locked: false })
+          .eq('property_id', hallId)
+          .eq('year', year);
+        if (unlockErr) throw unlockErr;
+        loadHallAndBookings();
+      } catch (err) {
+        alert('خطأ أثناء فتح القفل: ' + err.message);
+      }
+    } else {
+      if (!confirm(`قفل سنة ${year} هـ من التعديل والحذف والإلغاء؟ (تقدر تفتحها لاحقاً لو احتجت)`)) return;
+      try {
+        const { error: lockErr } = await supabase
+          .from('hall_year_locks')
+          .upsert({ property_id: hallId, year, locked: true }, { onConflict: 'property_id,year' });
+        if (lockErr) throw lockErr;
+        loadHallAndBookings();
+      } catch (err) {
+        alert('خطأ أثناء القفل: ' + err.message);
+      }
     }
   }
 
@@ -764,10 +803,21 @@ export default function Bookings() {
             onClick={() => setSelectedYear(y)}
             style={yearTabStyle(selectedYear === y)}
           >
-            {y} هـ
+            {lockedYears.has(y) ? '🔒 ' : ''}{y} هـ
           </button>
         ))}
       </div>
+
+      {selectedYear !== 'all' && !isReadOnly && (
+        <div style={{ marginBottom: '16px' }}>
+          <button
+            onClick={() => handleToggleYearLock(selectedYear)}
+            style={{ ...actionBtn(lockedYears.has(selectedYear) ? '#7f8c8d' : '#8E44AD'), padding: '8px 16px', fontSize: '13px' }}
+          >
+            {lockedYears.has(selectedYear) ? `🔓 فتح قفل سنة ${selectedYear} هـ` : `🔒 قفل سنة ${selectedYear} هـ`}
+          </button>
+        </div>
+      )}
 
       {/* تبويبات نوع الحفلة */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -981,13 +1031,19 @@ export default function Bookings() {
                         </td>
                         {!isReadOnly && (
                         <td style={td}>
-                          <button onClick={() => openEditForm(b)} style={actionBtn('#1B4D7A')}>تعديل</button>
-                          {b.booking_status && b.booking_status !== 'active' ? (
-                            <button onClick={() => handleReactivateBooking(b)} style={actionBtn('#27ae60')}>إعادة تفعيل</button>
+                          {lockedYears.has(getHijriYear(b.event_date_hijri)) ? (
+                            <span style={{ color: '#7f8c8d', fontSize: '12px', fontWeight: 'bold' }}>🔒 سنة مقفلة</span>
                           ) : (
-                            <button onClick={() => handleCancelBooking(b)} style={actionBtn('#f39c12')}>إلغاء</button>
+                            <>
+                              <button onClick={() => openEditForm(b)} style={actionBtn('#1B4D7A')}>تعديل</button>
+                              {b.booking_status && b.booking_status !== 'active' ? (
+                                <button onClick={() => handleReactivateBooking(b)} style={actionBtn('#27ae60')}>إعادة تفعيل</button>
+                              ) : (
+                                <button onClick={() => handleCancelBooking(b)} style={actionBtn('#f39c12')}>إلغاء</button>
+                              )}
+                              <button onClick={() => handleDelete(b.id)} style={actionBtn('#e74c3c')}>حذف</button>
+                            </>
                           )}
-                          <button onClick={() => handleDelete(b.id)} style={actionBtn('#e74c3c')}>حذف</button>
                         </td>
                         )}
                       </tr>
