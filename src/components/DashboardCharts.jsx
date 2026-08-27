@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../supabaseClient';
 function parseHijri(dateStr) {
@@ -27,15 +27,31 @@ const OCC_COLORS = { مؤجرة: '#2563eb', شاغرة: '#f59e0b', صيانة: '
 const PAY_COLORS = { مدفوع: '#10b981', جزئي: '#f59e0b', متأخر: '#f43f5e', 'لم يستحق بعد': '#9ca3af' };
 const BAR_PALETTE = ['#2563eb', '#0e7490', '#7c3aed', '#c2410c', '#0f766e', '#be123c', '#4338ca', '#15803d'];
 const BAR_HIGHLIGHT = '#f59e0b';
+const PROPERTY_ORDER = ['عمارة سلمان', 'عمارة أبراهيم', 'عمارة عبدالله الكبيرة', 'عمارة عبدالله الصغيره'];
+function sortByPriority(list) {
+  return [...list].sort((a, b) => {
+    const ia = PROPERTY_ORDER.indexOf(a.name);
+    const ib = PROPERTY_ORDER.indexOf(b.name);
+    const ra = ia === -1 ? 999 : ia;
+    const rb = ib === -1 ? 999 : ib;
+    if (ra !== rb) return ra - rb;
+    return a.name.localeCompare(b.name, 'ar');
+  });
+}
 
 function DashboardCharts() {
   const [properties, setProperties] = useState([]);
-  const [selectedProperty, setSelectedProperty] = useState('all');
+  const [selectedProperties, setSelectedProperties] = useState([]); // [] = كل العقارات
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
   const [occupancy, setOccupancy] = useState([]);
   const [payments, setPayments] = useState([]);
   const [hijriYearTotal, setHijriYearTotal] = useState(0);
   const [revenue, setRevenue] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const filterIds = selectedProperties.length > 0 ? selectedProperties : null;
+  const isGroupedView = !filterIds || filterIds.length > 1;
 
   useEffect(() => {
     loadProperties();
@@ -43,11 +59,38 @@ function DashboardCharts() {
 
   useEffect(() => {
     loadAll();
-  }, [selectedProperty]);
+  }, [selectedProperties]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const loadProperties = async () => {
-    const { data, error } = await supabase.from('properties').select('id, name').order('name');
-    if (!error) setProperties(data || []);
+    const { data, error } = await supabase.from('properties').select('id, name');
+    if (!error) setProperties(sortByPriority(data || []));
+  };
+
+  const toggleProperty = (id) => {
+    setSelectedProperties((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const clearFilter = () => setSelectedProperties([]);
+
+  const filterLabel = () => {
+    if (selectedProperties.length === 0) return 'كل العقارات';
+    if (selectedProperties.length === 1) {
+      const p = properties.find((x) => x.id === selectedProperties[0]);
+      return p ? p.name : 'عقار واحد';
+    }
+    return `${selectedProperties.length} عقارات محددة`;
   };
 
   const loadAll = async () => {
@@ -58,7 +101,7 @@ function DashboardCharts() {
 
   const loadOccupancy = async () => {
     let query = supabase.from('units').select('status, property_id');
-    if (selectedProperty !== 'all') query = query.eq('property_id', selectedProperty);
+    if (filterIds) query = query.in('property_id', filterIds);
     const { data, error } = await query;
     if (!error && data) {
       const counts = { مؤجرة: 0, شاغرة: 0, صيانة: 0 };
@@ -69,7 +112,7 @@ function DashboardCharts() {
 
   const loadPayments = async () => {
     let leaseQuery = supabase.from('leases').select('id, property_id');
-    if (selectedProperty !== 'all') leaseQuery = leaseQuery.eq('property_id', selectedProperty);
+    if (filterIds) leaseQuery = leaseQuery.in('property_id', filterIds);
     const { data: leases, error: leaseErr } = await leaseQuery;
     if (leaseErr || !leases) { setPayments([]); return; }
     const leaseIds = leases.map((l) => l.id);
@@ -109,26 +152,27 @@ function DashboardCharts() {
     return amt * 0.85;
   }
 
+  // إجمالي صافي كل العقود النشطة (بدون تقييد بسنة هجرية) — نفس رقم صفحة العقود دائماً
   const loadHijriYearTotal = async () => {
-    const { data, error } = await supabase
-      .from("payments")
-      .select("amount_due, status, installment_number, total_installments, leases(start_date_hijri, tax_enabled, amount_includes_vat)");
+    let query = supabase
+      .from("leases")
+      .select("rent_amount, tax_enabled, amount_includes_vat, property_id")
+      .neq("status", "منتهي");
+    if (filterIds) query = query.in("property_id", filterIds);
+    const { data, error } = await query;
     if (error || !data) return;
-    let total = 0;
-    data.forEach((row) => {
-      if (row.status === "ملغى") return;
-      const lease = row.leases;
-      if (!lease) return;
-      const hijri = computeInstallmentHijri(lease.start_date_hijri, row.total_installments, row.installment_number);
-      if (!hijri || hijri.year !== 1448) return;
-      total += computeNetRevenue(row.amount_due, lease.tax_enabled, lease.amount_includes_vat);
-    });
+    const total = data.reduce(
+      (sum, l) => sum + computeNetRevenue(l.rent_amount, l.tax_enabled, l.amount_includes_vat),
+      0
+    );
     setHijriYearTotal(Math.round(total));
   };
 
   const loadRevenue = async () => {
-    if (selectedProperty === 'all') {
-      const { data: leases, error } = await supabase.from('leases').select('rent_amount, property_id, tax_enabled, amount_includes_vat, properties(name)').neq('status', 'منتهي');
+    if (isGroupedView) {
+      let query = supabase.from('leases').select('rent_amount, property_id, tax_enabled, amount_includes_vat, properties(name)').neq('status', 'منتهي');
+      if (filterIds) query = query.in('property_id', filterIds);
+      const { data: leases, error } = await query;
       if (!error && leases) {
         const totals = {};
         leases.forEach((l) => {
@@ -139,7 +183,7 @@ function DashboardCharts() {
         setRevenue(Object.entries(totals).map(([name, value]) => ({ name, value: Math.round(value) })).sort((a, b) => b.value - a.value));
       }
     } else {
-      const { data: leases, error } = await supabase.from('leases').select('rent_amount, tenant_id, tax_enabled, amount_includes_vat, tenants(name)').eq('property_id', selectedProperty).neq('status', 'منتهي');
+      const { data: leases, error } = await supabase.from('leases').select('rent_amount, tenant_id, tax_enabled, amount_includes_vat, tenants(name)').eq('property_id', filterIds[0]).neq('status', 'منتهي');
       if (!error && leases) {
         setRevenue(leases.map((l) => ({
           name: l.tenants?.name || 'غير محدد',
@@ -199,7 +243,7 @@ function DashboardCharts() {
     <div style={styles.revenueList}>
       {revenue.map((r, i) => {
         const pct = Math.max((r.value / maxRevenue) * 100, 3);
-        const color = selectedProperty === 'all' ? BAR_PALETTE[i % BAR_PALETTE.length] : BAR_HIGHLIGHT;
+        const color = isGroupedView ? BAR_PALETTE[i % BAR_PALETTE.length] : BAR_HIGHLIGHT;
         return (
           <div key={i} style={styles.revenueRow} title={r.name}>
             <div style={styles.revenueName}>{r.name}</div>
@@ -217,10 +261,27 @@ function DashboardCharts() {
     <div style={styles.card}>
       <div style={styles.header}>
         <h3 style={styles.title}>لوحة المعلومات</h3>
-        <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)} style={styles.select}>
-          <option value="all">كل العقارات</option>
-          {properties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        <div style={styles.filterWrap} ref={dropdownRef}>
+          <button type="button" style={styles.filterButton} onClick={() => setDropdownOpen((o) => !o)}>
+            <span>{filterLabel()}</span>
+            <span style={styles.filterArrow}>▾</span>
+          </button>
+          {dropdownOpen && (
+            <div style={styles.dropdownMenu}>
+              <label style={styles.dropdownItem}>
+                <input type="checkbox" checked={selectedProperties.length === 0} onChange={clearFilter} />
+                <span>كل العقارات</span>
+              </label>
+              <div style={styles.dropdownDivider} />
+              {properties.map((p) => (
+                <label key={p.id} style={styles.dropdownItem}>
+                  <input type="checkbox" checked={selectedProperties.includes(p.id)} onChange={() => toggleProperty(p.id)} />
+                  <span>{p.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -234,7 +295,7 @@ function DashboardCharts() {
       </div>
       <div style={styles.kpiCard}>
         <div style={{ ...styles.kpiValue, color: '#7c3aed' }}>{hijriYearTotal.toLocaleString()}</div>
-        <div style={styles.kpiLabel}>إجمالي عقود السنة الهجرية 1448 (صافي، ريال)</div>
+        <div style={styles.kpiLabel}>{isGroupedView && !filterIds ? 'إجمالي صافي كل العقود (ريال)' : 'إجمالي صافي العقود المحددة (ريال)'}</div>
       </div>
     </div>
 
@@ -271,8 +332,14 @@ const styles = {
   card: { backgroundColor: '#fff', borderRadius: '12px', padding: '22px 26px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '16px' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' },
   title: { margin: 0, fontSize: '19px', fontWeight: 'bold', color: '#111827' },
-  select: { padding: '7px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827' },
   loading: { textAlign: 'center', color: '#6b7280', padding: '30px 0' },
+
+  filterWrap: { position: 'relative' },
+  filterButton: { display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '13px', color: '#111827', backgroundColor: '#fff', cursor: 'pointer', minWidth: '160px', justifyContent: 'space-between' },
+  filterArrow: { fontSize: '11px', color: '#6b7280' },
+  dropdownMenu: { position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 20, backgroundColor: '#fff', border: '1px solid #d1d5db', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)', minWidth: '220px', maxHeight: '280px', overflowY: 'auto', padding: '6px' },
+  dropdownItem: { display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 8px', borderRadius: '6px', fontSize: '13px', color: '#111827', cursor: 'pointer' },
+  dropdownDivider: { height: '1px', backgroundColor: '#e5e7eb', margin: '4px 0' },
 
   kpiRow: { display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '20px' },
   kpiCard: { flex: 1, minWidth: '170px', backgroundColor: '#f8fafc', borderRadius: '10px', padding: '14px 18px', textAlign: 'center' },
