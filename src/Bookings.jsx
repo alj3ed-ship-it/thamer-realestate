@@ -763,7 +763,11 @@ export default function Bookings() {
 
       <ExportToolbar
         title={`حجوزات قاعة مذهلة${selectedYear !== 'all' ? ' - سنة ' + selectedYear + ' هـ' : ' - كل السنين'}${selectedType !== 'all' ? ' - ' + selectedType : ''}`}
-        data={filteredBookings.map((b) => ({ ...b, event_date_hijri: formatHijriDisplay(b.event_date_hijri) }))}
+        data={filteredBookings.map((b) => ({
+          ...b,
+          event_date_hijri: formatHijriDisplay(b.event_date_hijri),
+          booking_status_label: (CANCEL_STATUS_LABELS[b.booking_status] || {}).label || 'نشط',
+        }))}
         columns={[
           { key: 'event_date_hijri', label: 'التاريخ الهجري' },
           { key: 'event_type', label: 'النوع' },
@@ -772,9 +776,11 @@ export default function Bookings() {
           { key: 'deposit_amount', label: 'العربون' },
           { key: 'remaining_amount', label: 'الباقي' },
           { key: 'remaining_status', label: 'حالة الباقي' },
+          { key: 'booking_status_label', label: 'حالة الحجز' },
         ]}
         stats={[
-          { label: 'عدد الحجوزات', value: filteredBookings.length, color: '#1B4D7A' },
+          { label: 'عدد الحجوزات النشطة', value: activeFilteredBookings.length, color: '#1B4D7A' },
+          { label: 'عدد الحجوزات الملغاة', value: filteredBookings.length - activeFilteredBookings.length, color: '#f39c12' },
           { label: 'إجمالي قيمة الحجوزات', value: `${totalRevenue.toLocaleString()} ر.س`, color: '#1B4D7A' },
           { label: 'دخل إضافي', value: `${totalExtraIncome.toLocaleString()} ر.س`, color: '#148F77' },
           { label: 'الإجمالي الكلي', value: `${grandTotal.toLocaleString()} ر.س`, color: '#B9770E' },
@@ -840,7 +846,8 @@ export default function Bookings() {
 
       {/* بطاقات ملخص (حسب التبويب المختار) */}
       <div style={{ display: 'flex', gap: '16px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <SummaryCard label="عدد الحجوزات" value={filteredBookings.length} color="#1B4D7A" />
+        <SummaryCard label="عدد الحجوزات النشطة" value={activeFilteredBookings.length} color="#1B4D7A" />
+        <SummaryCard label="عدد الحجوزات الملغاة" value={filteredBookings.length - activeFilteredBookings.length} color="#f39c12" />
         <SummaryCard label="المصاريف" value={`${totalExpenses.toLocaleString()} ر.س`} color="#D35400" />
         <SummaryCard label="الباقي غير المحصّل" value={`${totalPending.toLocaleString()} ر.س`} color="#e74c3c" />
         <SummaryCard label="صافي الدخل (بعد خصم المصاريف)" value={`${totalNet.toLocaleString()} ر.س`} color="#8E44AD" />
