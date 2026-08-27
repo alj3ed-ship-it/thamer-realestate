@@ -1,0 +1,16 @@
+﻿
+> src\ViewerLimited.jsx:8:const ALLOWED_PROPERTY_KEYWORDS = ["سلمان", "براهيم", "عبدالله الكبيرة", "عبدالله الصغير"];
+  src\ViewerLimited.jsx:9:const HALL_PROPERTY_NAME = "قاعة مذهلة";
+  src\ViewerLimited.jsx:10:
+  src\ViewerLimited.jsx:11:// كلمة السر البسيطة لفتح صلاحية إضافة/تعديل حجوزات القاعة (غيّرها هنا وقتما تبي)
+  src\ViewerLimited.jsx:12:const HALL_EDIT_PASSWORD = "adil2026";
+  src\ViewerLimited.jsx:13:const EVENT_TYPES = ["كاملة", "نساء", "رجال", "أخرى"];
+> src\ViewerLimited.jsx:380:      ALLOWED_PROPERTY_KEYWORDS.some((kw) => (p.name || "").includes(kw))
+  src\ViewerLimited.jsx:381:    );
+  src\ViewerLimited.jsx:382:  }, [properties]);
+  src\ViewerLimited.jsx:383:  const allowedPropertyIds = useMemo(() => allowedProperties.map((p) => p.id), 
+[allowedProperties]);
+  src\ViewerLimited.jsx:384:
+  src\ViewerLimited.jsx:385:  // === فصل الحجوزات المعتمدة عن بانتظار الاعتماد ===
+
+

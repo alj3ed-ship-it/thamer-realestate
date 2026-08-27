@@ -1,0 +1,25 @@
+﻿
+  src\ViewerLimited.jsx:433:    padding: "10px 20px", cursor: "pointer", borderRadius: "8px",
+> src\ViewerLimited.jsx:434:    background: activePage === page ? "#1B4D7A" : "transparent",
+> src\ViewerLimited.jsx:435:    color: activePage === page ? "#fff" : "#1B4D7A",
+  src\ViewerLimited.jsx:436:    border: "none", fontSize: "15px", fontFamily: "Tahoma, Arial, sans-serif"
+  src\ViewerLimited.jsx:1078:          <>
+> src\ViewerLimited.jsx:1079:            {activePage === "tenants" && (
+  src\ViewerLimited.jsx:1080:              <div>
+  src\ViewerLimited.jsx:1214:
+> src\ViewerLimited.jsx:1215:            {activePage === "leases" && (
+  src\ViewerLimited.jsx:1216:              <div>
+  src\ViewerLimited.jsx:1364:
+> src\ViewerLimited.jsx:1365:            {activePage === "payments" && (
+  src\ViewerLimited.jsx:1366:              <div>
+  src\ViewerLimited.jsx:1544:
+> src\ViewerLimited.jsx:1545:            {activePage === "entitlements" && (
+  src\ViewerLimited.jsx:1546:              <div>
+  src\ViewerLimited.jsx:1807:
+> src\ViewerLimited.jsx:1808:            {activePage === "projects" && (
+  src\ViewerLimited.jsx:1809:              <div id="viewer-projects-table">
+  src\ViewerLimited.jsx:1933:
+> src\ViewerLimited.jsx:1934:            {activePage === "bookings" && (
+  src\ViewerLimited.jsx:1935:              <div id="viewer-bookings-table">
+
+

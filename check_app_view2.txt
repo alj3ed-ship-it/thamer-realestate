@@ -1,0 +1,24 @@
+﻿
+  src\App.jsx:12:import ResetPassword from "./ResetPassword";
+  src\App.jsx:13:import ViewerLayout from "./ViewerLayout";
+  src\App.jsx:14:import { ReadOnlyProvider } from "./ReadOnlyContext";
+> src\App.jsx:15:import ViewerLimited from "./ViewerLimited";
+  src\App.jsx:16:import PropertyDetail from "./PropertyDetail";
+  src\App.jsx:17:import Entitlements from "./Entitlements";
+  src\App.jsx:18:import Letters from "./Letters";
+  src\App.jsx:68:      setCheckingSession(false);
+  src\App.jsx:69:      return;
+  src\App.jsx:70:    }
+> src\App.jsx:71:    if (window.location.pathname === "/view2") {
+  src\App.jsx:72:      setRole("viewer2");
+  src\App.jsx:73:      setCheckingSession(false);
+  src\App.jsx:74:      return;
+  src\App.jsx:147:    );
+  src\App.jsx:148:  }
+  src\App.jsx:149:
+> src\App.jsx:150:   if (role === "viewer2") return <ViewerLimited />;
+  src\App.jsx:151:  if (!role) return <Login onLogin={(r) => setRole(r)} />;
+  src\App.jsx:152:
+  src\App.jsx:153: const cardStyle = {
+
+

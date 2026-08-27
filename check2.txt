@@ -1,0 +1,52 @@
+﻿
+src\ViewerLimited.jsx:1:import { useState, useEffect, useMemo } from "react";
+src\ViewerLimited.jsx:261:  const [properties, setProperties] = useState([]);
+src\ViewerLimited.jsx:262:  const [tenants, setTenants] = useState([]);
+src\ViewerLimited.jsx:263:  const [leases, setLeases] = useState([]);
+src\ViewerLimited.jsx:264:  const [payments, setPayments] = useState([]);
+src\ViewerLimited.jsx:265:  const [projects, setProjects] = useState([]);
+src\ViewerLimited.jsx:266:  const [bookings, setBookings] = useState([]);
+src\ViewerLimited.jsx:267:  const [extraIncome, setExtraIncome] = useState([]);
+src\ViewerLimited.jsx:268:  const [activePage, setActivePage] = useState("tenants");
+src\ViewerLimited.jsx:269:  const [bookingsSelectedYear, setBookingsSelectedYear] = useState("all");
+src\ViewerLimited.jsx:270:  const [bookingsShowExtraDetails, setBookingsShowExtraDetails] = useState(false);
+src\ViewerLimited.jsx:271:  const [bookingsExpensePct, setBookingsExpensePct] = useState(() => {
+src\ViewerLimited.jsx:275:  const [selectedTenant, setSelectedTenant] = useState(null);
+src\ViewerLimited.jsx:278:  const [hallId, setHallId] = useState(null);
+src\ViewerLimited.jsx:279:  const [hallUnlocked, setHallUnlocked] = useState(false);
+src\ViewerLimited.jsx:280:  const [showBookingForm, setShowBookingForm] = useState(false);
+src\ViewerLimited.jsx:281:  const [editingBookingId, setEditingBookingId] = useState(null);
+src\ViewerLimited.jsx:296:  const [bookingForm, setBookingForm] = useState(emptyBookingForm);
+src\ViewerLimited.jsx:298:  const [tenantsSelectedProperties, setTenantsSelectedProperties] = useState([]);
+src\ViewerLimited.jsx:299:  const [showTenantsPropDropdown, setShowTenantsPropDropdown] = useState(false);
+src\ViewerLimited.jsx:300:  const [tenantsSelectedTenants, setTenantsSelectedTenants] = useState([]);
+src\ViewerLimited.jsx:301:  const [showTenantsTenantDropdown, setShowTenantsTenantDropdown] = useState(false);
+src\ViewerLimited.jsx:302:  const [tenantsTenantSearchText, setTenantsTenantSearchText] = useState("");
+src\ViewerLimited.jsx:303:  const [tenantsSelectedUnitType, setTenantsSelectedUnitType] = useState("");
+src\ViewerLimited.jsx:305:  const [leasesSelectedProperties, setLeasesSelectedProperties] = useState([]);
+src\ViewerLimited.jsx:306:  const [showLeasesPropDropdown, setShowLeasesPropDropdown] = useState(false);
+src\ViewerLimited.jsx:307:  const [leasesSelectedTenants, setLeasesSelectedTenants] = useState([]);
+src\ViewerLimited.jsx:308:  const [showLeasesTenantDropdown, setShowLeasesTenantDropdown] = useState(false);
+src\ViewerLimited.jsx:309:  const [leasesTenantSearchText, setLeasesTenantSearchText] = useState("");
+src\ViewerLimited.jsx:310:  const [leasesSelectedUnitType, setLeasesSelectedUnitType] = useState("");
+src\ViewerLimited.jsx:312:  const [paymentsSelectedProperties, setPaymentsSelectedProperties] = useState([]);
+src\ViewerLimited.jsx:313:  const [showPaymentsPropDropdown, setShowPaymentsPropDropdown] = useState(false);
+src\ViewerLimited.jsx:314:  const [paymentsSelectedTenants, setPaymentsSelectedTenants] = useState([]);
+src\ViewerLimited.jsx:315:  const [showPaymentsTenantDropdown, setShowPaymentsTenantDropdown] = useState(false);
+src\ViewerLimited.jsx:316:  const [paymentsTenantSearchText, setPaymentsTenantSearchText] = useState("");
+src\ViewerLimited.jsx:317:  const [paymentsSelectedUnitType, setPaymentsSelectedUnitType] = useState("");
+src\ViewerLimited.jsx:319:  const [viewerExpandedDesc, setViewerExpandedDesc] = useState(new Set());
+src\ViewerLimited.jsx:320:  const [viewerExpandedNotes, setViewerExpandedNotes] = useState(new Set());
+src\ViewerLimited.jsx:322:  const [selectedYear, setSelectedYear] = useState("1448");
+src\ViewerLimited.jsx:323:  const [selectedMonthNum, setSelectedMonthNum] = useState("1");
+src\ViewerLimited.jsx:324:  const [entResults, setEntResults] = useState([]);
+src\ViewerLimited.jsx:325:  const [entSearched, setEntSearched] = useState(false);
+src\ViewerLimited.jsx:326:  const [entSelectedProperties, setEntSelectedProperties] = useState([]);
+src\ViewerLimited.jsx:327:  const [showEntPropDropdown, setShowEntPropDropdown] = useState(false);
+src\ViewerLimited.jsx:328:  const [entSelectedTenants, setEntSelectedTenants] = useState([]);
+src\ViewerLimited.jsx:329:  const [showEntTenantDropdown, setShowEntTenantDropdown] = useState(false);
+src\ViewerLimited.jsx:330:  const [entTenantSearchText, setEntTenantSearchText] = useState("");
+src\ViewerLimited.jsx:331:  const [entSelectedUnitType, setEntSelectedUnitType] = useState("");
+src\ViewerLimited.jsx:332:  const [entStatusFilter, setEntStatusFilter] = useState("all");
+
+

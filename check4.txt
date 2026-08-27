@@ -1,0 +1,28 @@
+﻿
+  src\ViewerLimited.jsx:988:      setShowBookingForm(false);
+  src\ViewerLimited.jsx:989:      reloadBookings();
+  src\ViewerLimited.jsx:990:    } catch (err) {
+  src\ViewerLimited.jsx:991:      alert("خطأ أثناء الحفظ: " + err.message);
+  src\ViewerLimited.jsx:992:    }
+  src\ViewerLimited.jsx:993:  }
+  src\ViewerLimited.jsx:994:
+  src\ViewerLimited.jsx:995:  return (
+  src\ViewerLimited.jsx:996:    <div style={{ minHeight: "100vh", background: "#f0f4f8", fontFamily: "Tahoma, Arial, 
+sans-serif", direction: "rtl" }}>
+  src\ViewerLimited.jsx:997:      <div className="no-print" style={{ background: "#1B4D7A", padding: "16px 32px", display: 
+"flex", alignItems: "center", gap: "16px" }}>
+  src\ViewerLimited.jsx:998:        <img src="/logo_v6_wide.svg" alt="شعار" style={{ height: "40px" }} />
+  src\ViewerLimited.jsx:999:        <span style={{ color: "#F5D98C", fontSize: "18px", fontWeight: "bold" }}>مكتب ثامر بن 
+سلمان العقاري — عرض</span>
+  src\ViewerLimited.jsx:1000:      </div>
+  src\ViewerLimited.jsx:1001:
+  src\ViewerLimited.jsx:1002:      <div className="no-print" style={{ background: "#fff", padding: "12px 32px", display: 
+"flex", gap: "8px", borderBottom: "1px solid #e0e7ef", flexWrap: "wrap" }}>
+> src\ViewerLimited.jsx:1003:        <button style={navStyle("tenants")} onClick={() => { setActivePage("tenants"); 
+setSelectedTenant(null); }}>المستأجرون</button>
+  src\ViewerLimited.jsx:1004:        <button style={navStyle("leases")} onClick={() => { setActivePage("leases"); 
+setSelectedTenant(null); }}>العقود</button>
+  src\ViewerLimited.jsx:1005:        <button style={navStyle("payments")} onClick={() => { setActivePage("payments"); 
+setSelectedTenant(null); }}>الدفعات</button>
+
+

@@ -1,0 +1,26 @@
+﻿
+src\ViewerLimited.jsx:378:  const allowedProperties = useMemo(() => {
+src\ViewerLimited.jsx:383:  const allowedPropertyIds = useMemo(() => allowedProperties.map((p) => p.id), 
+[allowedProperties]);
+src\ViewerLimited.jsx:1098:                            ? (allowedProperties.find((p) => p.id === 
+tenantsSelectedProperties[0])?.name || "عقار واحد")
+src\ViewerLimited.jsx:1106:                          <button type="button" onClick={() => 
+setTenantsSelectedProperties(allowedProperties.map((p) => p.id))}
+src\ViewerLimited.jsx:1111:                        {allowedProperties.map((p) => (
+src\ViewerLimited.jsx:1234:                            ? (allowedProperties.find((p) => p.id === 
+leasesSelectedProperties[0])?.name || "عقار واحد")
+src\ViewerLimited.jsx:1242:                          <button type="button" onClick={() => 
+setLeasesSelectedProperties(allowedProperties.map((p) => p.id))}
+src\ViewerLimited.jsx:1247:                        {allowedProperties.map((p) => (
+src\ViewerLimited.jsx:1384:                            ? (allowedProperties.find((p) => p.id === 
+paymentsSelectedProperties[0])?.name || "عقار واحد")
+src\ViewerLimited.jsx:1392:                          <button type="button" onClick={() => 
+setPaymentsSelectedProperties(allowedProperties.map((p) => p.id))}
+src\ViewerLimited.jsx:1397:                        {allowedProperties.map((p) => (
+src\ViewerLimited.jsx:1580:                            ? (allowedProperties.find((p) => p.id === 
+entSelectedProperties[0])?.name || "عقار واحد")
+src\ViewerLimited.jsx:1589:                          <button type="button" onClick={() => 
+setEntSelectedProperties(allowedProperties.map((p) => p.id))}
+src\ViewerLimited.jsx:1598:                        {allowedProperties.map((p) => (
+
+
