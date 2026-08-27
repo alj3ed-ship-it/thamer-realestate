@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import DashboardCharts from "./components/DashboardCharts";
 import { supabase } from "./supabaseClient";
 import { getUnitTypeColor } from "./theme";
 import ExportToolbar from "./components/ExportToolbar";
@@ -1000,6 +1001,7 @@ export default function ViewerLimited() {
       </div>
 
       <div className="no-print" style={{ background: "#fff", padding: "12px 32px", display: "flex", gap: "8px", borderBottom: "1px solid #e0e7ef", flexWrap: "wrap" }}>
+        <button style={navStyle("dashboard")} onClick={() => { setActivePage("dashboard"); setSelectedTenant(null); }}>لوحة التحكم</button>
         <button style={navStyle("tenants")} onClick={() => { setActivePage("tenants"); setSelectedTenant(null); }}>المستأجرون</button>
         <button style={navStyle("leases")} onClick={() => { setActivePage("leases"); setSelectedTenant(null); }}>العقود</button>
         <button style={navStyle("payments")} onClick={() => { setActivePage("payments"); setSelectedTenant(null); }}>الدفعات</button>
@@ -1076,6 +1078,12 @@ export default function ViewerLimited() {
 
         {!selectedTenant && (
           <>
+            {activePage === "dashboard" && (
+              <div>
+                <DashboardCharts restrictToPropertyIds={allowedPropertyIds} />
+              </div>
+            )}
+
             {activePage === "tenants" && (
               <div>
                 {(showTenantsPropDropdown || showTenantsTenantDropdown) && (
