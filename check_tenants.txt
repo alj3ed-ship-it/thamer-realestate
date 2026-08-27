@@ -1,0 +1,5 @@
+﻿
+src\ViewerLimited.jsx:1005:        <button style={navStyle("tenants")} onClick={() => { setActivePage("tenants"); 
+setSelectedTenant(null); }}>المستأجرون</button>
+
+

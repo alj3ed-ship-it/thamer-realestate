@@ -1,0 +1,9 @@
+﻿
+  src\ViewerLimited.jsx:272:  const [bookingsExpensePct, setBookingsExpensePct] = useState(() => {
+> src\ViewerLimited.jsx:273:    const saved = localStorage.getItem("bookings_expense_pct");
+  src\ViewerLimited.jsx:274:    return saved ? Number(saved) : 25;
+  src\ViewerLimited.jsx:2096:                      setBookingsExpensePct(val);
+> src\ViewerLimited.jsx:2097:                      localStorage.setItem("bookings_expense_pct", String(val));
+  src\ViewerLimited.jsx:2098:                    }}
+
+

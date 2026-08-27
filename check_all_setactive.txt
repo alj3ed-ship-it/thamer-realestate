@@ -1,0 +1,18 @@
+﻿
+src\ViewerLimited.jsx:269:  const [activePage, setActivePage] = useState("dashboard");
+src\ViewerLimited.jsx:1004:        <button style={navStyle("dashboard")} onClick={() => { setActivePage("dashboard"); 
+setSelectedTenant(null); }}>لوحة التحكم</button>
+src\ViewerLimited.jsx:1005:        <button style={navStyle("tenants")} onClick={() => { setActivePage("tenants"); 
+setSelectedTenant(null); }}>المستأجرون</button>
+src\ViewerLimited.jsx:1006:        <button style={navStyle("leases")} onClick={() => { setActivePage("leases"); 
+setSelectedTenant(null); }}>العقود</button>
+src\ViewerLimited.jsx:1007:        <button style={navStyle("payments")} onClick={() => { setActivePage("payments"); 
+setSelectedTenant(null); }}>الدفعات</button>
+src\ViewerLimited.jsx:1008:        <button style={navStyle("entitlements")} onClick={() => { 
+setActivePage("entitlements"); setSelectedTenant(null); }}>الاستحقاقات</button>
+src\ViewerLimited.jsx:1009:        <button style={navStyle("projects")} onClick={() => { setActivePage("projects"); 
+setSelectedTenant(null); }}>المشاريع</button>
+src\ViewerLimited.jsx:1010:        <button style={navStyle("bookings")} onClick={() => { setActivePage("bookings"); 
+setSelectedTenant(null); }}>قاعة مذهلة</button>
+
+

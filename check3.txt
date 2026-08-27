@@ -1,0 +1,15 @@
+﻿
+> src\ViewerLimited.jsx:378:  const allowedProperties = useMemo(() => {
+  src\ViewerLimited.jsx:379:    return properties.filter((p) =>
+  src\ViewerLimited.jsx:380:      ALLOWED_PROPERTY_KEYWORDS.some((kw) => (p.name || "").includes(kw))
+  src\ViewerLimited.jsx:381:    );
+  src\ViewerLimited.jsx:382:  }, [properties]);
+  src\ViewerLimited.jsx:383:  const allowedPropertyIds = useMemo(() => allowedProperties.map((p) => p.id), 
+[allowedProperties]);
+  src\ViewerLimited.jsx:384:
+  src\ViewerLimited.jsx:385:  // === فصل الحجوزات المعتمدة عن بانتظار الاعتماد ===
+  src\ViewerLimited.jsx:386:  const approvedBookings = useMemo(
+  src\ViewerLimited.jsx:387:    () => bookings.filter((b) => (b.status || "approved") === "approved"),
+  src\ViewerLimited.jsx:388:    [bookings]
+
+

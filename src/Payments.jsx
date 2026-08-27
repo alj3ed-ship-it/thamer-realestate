@@ -193,7 +193,7 @@ function Payments({ onBack }) {
     setStatus('loading')
     const [pay, lea, ten, pro, uni, lu] = await Promise.all([
       supabase.from('payments').select('*').order('payment_date', { ascending: true }),
-      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id, start_date_hijri, end_date, lease_number, tax_enabled, tax_effective_hijri, amount_includes_vat'),
+      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id, start_date_hijri, end_date, lease_number, tax_enabled, tax_effective_hijri, amount_includes_vat, status'),
       supabase.from('tenants').select('id, name, note'),
       supabase.from('properties').select('id, name').order('name'),
       supabase.from('units').select('id, unit_number, unit_type'),
