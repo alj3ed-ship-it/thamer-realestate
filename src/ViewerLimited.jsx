@@ -266,7 +266,7 @@ export default function ViewerLimited() {
   const [projects, setProjects] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [extraIncome, setExtraIncome] = useState([]);
-  const [activePage, setActivePage] = useState("tenants");
+  const [activePage, setActivePage] = useState("dashboard");
   const [bookingsSelectedYear, setBookingsSelectedYear] = useState("all");
   const [bookingsShowExtraDetails, setBookingsShowExtraDetails] = useState(false);
   const [bookingsExpensePct, setBookingsExpensePct] = useState(() => {
