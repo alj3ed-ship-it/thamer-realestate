@@ -55,11 +55,13 @@ function DashboardCharts({ restrictToPropertyIds = null }) {
 
   useEffect(() => {
     loadProperties();
-  }, []);
+  }, [restrictToPropertyIds]);
 
   useEffect(() => {
+    // تفادي وميض صفري: لا نحمّل البيانات إذا كان القيد لسا فاضي مؤقتاً (قبل اكتمال تحميل العقارات المسموحة)
+    if (restrictToPropertyIds !== null && restrictToPropertyIds.length === 0 && selectedProperties.length === 0) return;
     loadAll();
-  }, [selectedProperties]);
+  }, [selectedProperties, restrictToPropertyIds]);
 
   useEffect(() => {
     function handleClickOutside(e) {
