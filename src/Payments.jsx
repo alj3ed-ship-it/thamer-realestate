@@ -928,14 +928,21 @@ function Payments({ onBack }) {
                       </div>
                     </div>
 
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, tableLayout: 'fixed' }}>
+                      <colgroup>
+                        <col style={{ width: 70 }} />
+                        <col style={{ width: 140 }} />
+                        <col style={{ width: 110 }} />
+                        <col />
+                        {!isReadOnly && <col style={{ width: 100 }} />}
+                      </colgroup>
                       <thead>
                         <tr style={{ background: '#fafafa' }}>
                           <th style={{ padding: '8px 10px', textAlign: 'right', color: '#888', fontWeight: 600, fontSize: 11.5 }}>الدفعة</th>
                           <th style={{ padding: '8px 10px', textAlign: 'right', color: '#888', fontWeight: 600, fontSize: 11.5 }}>المبلغ</th>
                           <th style={{ padding: '8px 10px', textAlign: 'right', color: '#888', fontWeight: 600, fontSize: 11.5 }}>الحالة</th>
                           <th style={{ padding: '8px 10px', textAlign: 'right', color: '#888', fontWeight: 600, fontSize: 11.5 }}>التاريخ</th>
-                          {!isReadOnly && <th style={{ padding: '8px 10px', minWidth: 100, whiteSpace: 'nowrap' }}></th>}
+                          {!isReadOnly && <th style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}></th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -945,25 +952,25 @@ function Payments({ onBack }) {
                           const { hijriText, isEstimated } = getPaymentHijriDisplay(p)
                           return (
                             <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#fbfbfb', borderTop: '1px solid #f0f0f0' }}>
-                              <td style={{ padding: '10px', whiteSpace: 'nowrap' }}>
+                              <td style={{ padding: '10px' }}>
                                 <span style={{ background: '#eff6ff', color: '#1B4D7A', padding: '3px 10px', borderRadius: 16, fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>
                                   {totalInst ? `${index} / ${totalInst}` : `${index}`}
                                 </span>
                               </td>
-                              <td style={{ padding: '10px', minWidth: 130 }}>{amountCell(p)}</td>
+                              <td style={{ padding: '10px' }}>{amountCell(p)}</td>
                               <td style={{ padding: '10px' }}>{statusBadge(p)}</td>
-                              <td style={{ padding: '10px', color: '#6b7280', whiteSpace: 'nowrap' }}>
-                                <div style={{ fontWeight: 600, fontSize: 12 }}>{hijriText ? hijriText + ' هـ' : '—'}</div>
-                                <div style={{ fontSize: 10, color: '#9ca3af' }}>{p.payment_date || (isEstimated ? 'متوقع' : '—')}</div>
+                              <td style={{ padding: '10px', color: '#6b7280' }}>
+                                <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{hijriText ? hijriText + ' هـ' : '—'}</div>
+                                <div style={{ fontSize: 10, color: '#9ca3af', whiteSpace: 'nowrap' }}>{p.payment_date || (isEstimated ? 'متوقع' : '—')}</div>
                                 {p.first_partial_date_hijri && (
-                                  <div style={{ fontSize: 10, color: '#e67e22', marginTop: 2 }} title="تاريخ أول دفعة جزئية">
+                                  <div style={{ fontSize: 10, color: '#e67e22', marginTop: 2, wordBreak: 'break-word' }} title="تاريخ أول دفعة جزئية">
                                     أول دفعة جزئية: {p.first_partial_date_hijri} هـ
                                   </div>
                                 )}
                               </td>
                               {!isReadOnly && (
-                                <td style={{ padding: '8px', minWidth: 100, whiteSpace: 'nowrap' }} className="no-print">
-                                  <div style={{ display: 'flex', gap: 4 }}>
+                                <td style={{ padding: '8px', whiteSpace: 'nowrap' }} className="no-print">
+                                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                                     <button onClick={() => openEdit(p)} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer' }}>تعديل</button>
                                     <button onClick={() => handleDelete(p.id)} disabled={deletingId === p.id} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
                                       {deletingId === p.id ? '...' : 'حذف'}
