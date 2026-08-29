@@ -879,7 +879,7 @@ function Payments({ onBack }) {
             ]}
           />
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(600px, 1fr))', gap: 16 }}>
             {(() => {
               const groups = []
               const groupIndex = {}
