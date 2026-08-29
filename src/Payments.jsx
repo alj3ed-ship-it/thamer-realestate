@@ -170,6 +170,7 @@ function Payments({ onBack }) {
   const [properties, setProperties] = useState([])
   const [units, setUnits] = useState([])
   const [leaseUnits, setLeaseUnits] = useState([])
+  const [paymentHistory, setPaymentHistory] = useState([])
   const [status, setStatus] = useState('loading')
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -191,13 +192,14 @@ function Payments({ onBack }) {
 
   async function fetchAll() {
     setStatus('loading')
-    const [pay, lea, ten, pro, uni, lu] = await Promise.all([
+    const [pay, lea, ten, pro, uni, lu, hist] = await Promise.all([
       supabase.from('payments').select('*').order('payment_date', { ascending: true }),
       supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id, start_date_hijri, end_date, lease_number, tax_enabled, tax_effective_hijri, amount_includes_vat, status'),
       supabase.from('tenants').select('id, name, note'),
       supabase.from('properties').select('id, name').order('name'),
       supabase.from('units').select('id, unit_number, unit_type'),
       supabase.from('lease_units').select('lease_id, unit_id'),
+      supabase.from('payment_installments_history').select('*').order('created_at', { ascending: true }),
     ])
     setPayments(pay.data || [])
     setLeases(lea.data || [])
@@ -205,6 +207,7 @@ function Payments({ onBack }) {
     setProperties(pro.data || [])
     setUnits(uni.data || [])
     setLeaseUnits(lu.data || [])
+    setPaymentHistory(hist.data || [])
     setStatus('success')
   }
 
@@ -335,6 +338,19 @@ function Payments({ onBack }) {
     }
   }
 
+  // مجموع الدفعات المسجّلة فعلياً بسجل payment_installments_history لقسط معيّن
+  function getHistorySum(paymentId) {
+    return paymentHistory
+      .filter(h => h.payment_id === paymentId)
+      .reduce((s, h) => s + Number(h.amount || 0), 0)
+  }
+
+  // المدفوع سابقاً لقسط قيد التعديل: من السجل التراكمي إن وُجد، وإلا من amount_paid القديم (بيانات لم تُرحَّل للسجل بعد)
+  function getPreviousPaid(p) {
+    const histSum = getHistorySum(p.id)
+    return histSum > 0 ? histSum : Number(p.amount_paid || 0)
+  }
+
   function openAdd() {
     setEditingId(null)
     setForm({
@@ -353,7 +369,7 @@ function Payments({ onBack }) {
     setForm({
       lease_id: p.lease_id || '',
       amount: p.amount || '',
-      amount_paid: p.amount_paid || '',
+      amount_paid: '',
       status: p.status || 'مدفوع',
       payment_date: p.payment_date || '',
       payment_date_hijri: p.payment_date_hijri || '',
@@ -394,11 +410,31 @@ function Payments({ onBack }) {
     }
     if (!isUnpaid && !paymentDate) { setFormError('يرجى تحديد تاريخ الدفع'); return }
 
+    const due = Number(form.amount)
+    const existing = editingId ? payments.find(p => p.id === editingId) : null
+    const previousPaid = existing ? getPreviousPaid(existing) : 0
+    // في التعديل: الحقل يمثل دفعة جديدة تُضاف للمدفوع سابقاً. حقل فارغ = ما فيه دفعة جديدة الآن (تعديل بيانات فقط).
+    // في التسجيل الجديد: حقل فارغ = دفعة كاملة (نفس السلوك القديم) حفاظاً على الاختصار المعتاد.
+    const newPaymentAmount = isUnpaid
+      ? 0
+      : editingId
+        ? (form.amount_paid ? Number(form.amount_paid) : 0)
+        : (form.amount_paid ? Number(form.amount_paid) : due)
+    const totalPaid = isUnpaid ? 0 : previousPaid + newPaymentAmount
+
+    if (due > 0 && totalPaid > due) {
+      const over = totalPaid - due
+      const proceed = window.confirm(
+        `تحذير: إجمالي المدفوع (${totalPaid.toLocaleString()}) يتجاوز المستحق لهذا القسط (${due.toLocaleString()}) بمقدار ${over.toLocaleString()} ريال.\nهل تريد المتابعة والحفظ رغم ذلك؟`
+      )
+      if (!proceed) return
+    }
+
     setSaving(true); setFormError('')
     const payload = {
       lease_id: form.lease_id,
-      amount: Number(form.amount),
-      amount_paid: isUnpaid ? 0 : (form.amount_paid ? Number(form.amount_paid) : Number(form.amount)),
+      amount: due,
+      amount_paid: totalPaid,
       status: form.status || 'مدفوع',
       payment_date: isUnpaid ? null : paymentDate,
       payment_date_hijri: isUnpaid ? null : (form.payment_date_hijri || null),
@@ -407,16 +443,47 @@ function Payments({ onBack }) {
     }
 
     // تاريخ أول دفعة جزئية: يُحفظ مرة واحدة فقط ولا يُستبدل لاحقاً عند اكتمال الدفعة
-    const existing = editingId ? payments.find(p => p.id === editingId) : null
     const hasFirstPartialDate = existing && (existing.first_partial_date || existing.first_partial_date_hijri)
     if (isPartial && !hasFirstPartialDate) {
       payload.first_partial_date = payload.payment_date
       payload.first_partial_date_hijri = payload.payment_date_hijri
     }
 
-    let error
-    if (editingId) { const res = await supabase.from('payments').update(payload).eq('id', editingId); error = res.error }
-    else { const res = await supabase.from('payments').insert([payload]); error = res.error }
+    let error, paymentId = editingId
+    if (editingId) {
+      const res = await supabase.from('payments').update(payload).eq('id', editingId)
+      error = res.error
+    } else {
+      const res = await supabase.from('payments').insert([payload]).select('id')
+      error = res.error
+      paymentId = res.data?.[0]?.id || null
+    }
+
+    // تسجيل الدفعة الجديدة بسجل الدفعات التراكمي — لا يُستبدل amount_paid بعد الآن، يُضاف له
+    if (!error && paymentId && newPaymentAmount > 0) {
+      const historyRows = []
+      // إذا القسط ما له سجل تراكمي بعد لكن عليه مبلغ مدفوع سابق (بيانات قديمة لم تُرحَّل) — نرحّله أولاً حتى يبقى مجموع السجل مطابقاً لـ amount_paid
+      if (editingId && previousPaid > 0 && getHistorySum(editingId) === 0) {
+        historyRows.push({
+          payment_id: editingId,
+          amount: previousPaid,
+          payment_date: existing?.payment_date || null,
+          payment_date_hijri: existing?.payment_date_hijri || null,
+          payment_method: existing?.payment_method || null,
+          notes: 'دفعة سابقة (ترحيل تلقائي عند أول تحديث بعد تفعيل السجل التراكمي)'
+        })
+      }
+      historyRows.push({
+        payment_id: paymentId,
+        amount: newPaymentAmount,
+        payment_date: payload.payment_date,
+        payment_date_hijri: payload.payment_date_hijri,
+        payment_method: form.payment_method || null,
+        notes: form.notes || null
+      })
+      const histRes = await supabase.from('payment_installments_history').insert(historyRows)
+      if (histRes.error) error = histRes.error
+    }
     setSaving(false)
     if (error) { setFormError(error.message); return }
     setShowForm(false); fetchAll()
@@ -610,6 +677,14 @@ function Payments({ onBack }) {
             <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>الإجمالي </span>
             <span style={{ color: '#e74c3c' }}>{due.toLocaleString()}</span>
           </span>
+        </div>
+      )
+    } else if (computed === 'paid' && paid > due) {
+      const over = paid - due
+      base = (
+        <div style={{ fontSize: 12, fontWeight: 700 }}>
+          <span style={{ color: amountColor }}>{paid.toLocaleString()} ريال</span>
+          <div style={{ fontSize: 10, fontWeight: 600, color: '#e67e22', marginTop: 1 }}>زيادة {over.toLocaleString()} عن المستحق ({due.toLocaleString()})</div>
         </div>
       )
     } else {
@@ -1014,10 +1089,37 @@ function Payments({ onBack }) {
               placeholder="مثال: 5000"
               style={{ width: '100%', padding: '8px 10px', marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
 
-            <label style={{ fontSize: 13, color: '#444', display: 'block', marginBottom: 4 }}>المبلغ المدفوع (اتركه فارغاً إذا كامل)</label>
-            <input type="number" value={form.amount_paid} onChange={e => setForm(f => ({ ...f, amount_paid: e.target.value }))}
-              placeholder="اتركه فارغاً إذا مدفوع كامل"
-              style={{ width: '100%', padding: '8px 10px', marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+            {(() => {
+              const editingPayment = editingId ? payments.find(p => p.id === editingId) : null
+              const previousPaid = editingPayment ? getPreviousPaid(editingPayment) : 0
+              if (editingId) {
+                return (
+                  <>
+                    <div style={{ background: '#F0F9F4', border: '1px solid #D3EEDE', borderRadius: 8, padding: '8px 10px', marginBottom: 10, fontSize: 12.5, color: '#1b7a4a', fontWeight: 700 }}>
+                      المدفوع سابقاً لهذا القسط: {previousPaid.toLocaleString()} ريال
+                    </div>
+                    <label style={{ fontSize: 13, color: '#444', display: 'block', marginBottom: 4 }}>دفعة جديدة تُضاف الآن (اتركه فارغاً إذا ما فيه دفعة جديدة)</label>
+                    <input type="number" value={form.amount_paid} onChange={e => setForm(f => ({ ...f, amount_paid: e.target.value }))}
+                      placeholder="مثال: 1670"
+                      style={{ width: '100%', padding: '8px 10px', marginBottom: 4, borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+                    {form.amount_paid && (
+                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 15 }}>
+                        الإجمالي بعد هذه الدفعة: {(previousPaid + Number(form.amount_paid || 0)).toLocaleString()} ريال
+                      </div>
+                    )}
+                    {!form.amount_paid && <div style={{ marginBottom: 15 }} />}
+                  </>
+                )
+              }
+              return (
+                <>
+                  <label style={{ fontSize: 13, color: '#444', display: 'block', marginBottom: 4 }}>المبلغ المدفوع (اتركه فارغاً إذا كامل)</label>
+                  <input type="number" value={form.amount_paid} onChange={e => setForm(f => ({ ...f, amount_paid: e.target.value }))}
+                    placeholder="اتركه فارغاً إذا مدفوع كامل"
+                    style={{ width: '100%', padding: '8px 10px', marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+                </>
+              )
+            })()}
 
             <label style={{ fontSize: 13, color: '#444', display: 'block', marginBottom: 4 }}>حالة الدفعة</label>
             <select value={form.status} onChange={e => {
