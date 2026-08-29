@@ -383,6 +383,7 @@ function Payments({ onBack }) {
   async function handleSave() {
     if (!form.lease_id || !form.amount) { setFormError('يرجى ملء الحقول المطلوبة'); return }
     const isUnpaid = form.status === 'unpaid'
+    const isPartial = form.status === 'جزئي'
     const h = form.payment_hijri
     const hijriPartial = !isUnpaid && (h.year || h.month || h.day) && !(h.year && h.month && h.day)
     if (hijriPartial) { setFormError('التاريخ الهجري غير مكتمل — يرجى تحديد السنة والشهر واليوم'); return }
@@ -404,6 +405,15 @@ function Payments({ onBack }) {
       payment_method: form.payment_method || null,
       notes: form.notes || null
     }
+
+    // تاريخ أول دفعة جزئية: يُحفظ مرة واحدة فقط ولا يُستبدل لاحقاً عند اكتمال الدفعة
+    const existing = editingId ? payments.find(p => p.id === editingId) : null
+    const hasFirstPartialDate = existing && (existing.first_partial_date || existing.first_partial_date_hijri)
+    if (isPartial && !hasFirstPartialDate) {
+      payload.first_partial_date = payload.payment_date
+      payload.first_partial_date_hijri = payload.payment_date_hijri
+    }
+
     let error
     if (editingId) { const res = await supabase.from('payments').update(payload).eq('id', editingId); error = res.error }
     else { const res = await supabase.from('payments').insert([payload]); error = res.error }
@@ -587,16 +597,20 @@ function Payments({ onBack }) {
     if (computed === 'partial') {
       const remaining = due - paid
       base = (
-        <span style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap' }}>
-          <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>مدفوع </span>
-          <span style={{ color: '#27ae60' }}>{paid.toLocaleString()}</span>
-          <span style={{ color: '#9ca3af', margin: '0 4px' }}>|</span>
-          <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>متبقي </span>
-          <span style={{ color: '#d4ac0d' }}>{remaining.toLocaleString()}</span>
-          <span style={{ color: '#9ca3af', margin: '0 4px' }}>|</span>
-          <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>الإجمالي </span>
-          <span style={{ color: '#e74c3c' }}>{due.toLocaleString()}</span>
-        </span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 6px', fontSize: 12, fontWeight: 700, maxWidth: 140 }}>
+          <span style={{ whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>مدفوع </span>
+            <span style={{ color: '#27ae60' }}>{paid.toLocaleString()}</span>
+          </span>
+          <span style={{ whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>متبقي </span>
+            <span style={{ color: '#d4ac0d' }}>{remaining.toLocaleString()}</span>
+          </span>
+          <span style={{ whiteSpace: 'nowrap' }}>
+            <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>الإجمالي </span>
+            <span style={{ color: '#e74c3c' }}>{due.toLocaleString()}</span>
+          </span>
+        </div>
       )
     } else {
       base = <span style={{ fontWeight: 700, color: amountColor }}>{due.toLocaleString()} ريال</span>
@@ -921,7 +935,7 @@ function Payments({ onBack }) {
                           <th style={{ padding: '8px 10px', textAlign: 'right', color: '#888', fontWeight: 600, fontSize: 11.5 }}>المبلغ</th>
                           <th style={{ padding: '8px 10px', textAlign: 'right', color: '#888', fontWeight: 600, fontSize: 11.5 }}>الحالة</th>
                           <th style={{ padding: '8px 10px', textAlign: 'right', color: '#888', fontWeight: 600, fontSize: 11.5 }}>التاريخ</th>
-                          {!isReadOnly && <th style={{ padding: '8px 10px' }}></th>}
+                          {!isReadOnly && <th style={{ padding: '8px 10px', minWidth: 100, whiteSpace: 'nowrap' }}></th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -941,9 +955,14 @@ function Payments({ onBack }) {
                               <td style={{ padding: '10px', color: '#6b7280', whiteSpace: 'nowrap' }}>
                                 <div style={{ fontWeight: 600, fontSize: 12 }}>{hijriText ? hijriText + ' هـ' : '—'}</div>
                                 <div style={{ fontSize: 10, color: '#9ca3af' }}>{p.payment_date || (isEstimated ? 'متوقع' : '—')}</div>
+                                {p.first_partial_date_hijri && (
+                                  <div style={{ fontSize: 10, color: '#e67e22', marginTop: 2 }} title="تاريخ أول دفعة جزئية">
+                                    أول دفعة جزئية: {p.first_partial_date_hijri} هـ
+                                  </div>
+                                )}
                               </td>
                               {!isReadOnly && (
-                                <td style={{ padding: '8px' }} className="no-print">
+                                <td style={{ padding: '8px', minWidth: 100, whiteSpace: 'nowrap' }} className="no-print">
                                   <div style={{ display: 'flex', gap: 4 }}>
                                     <button onClick={() => openEdit(p)} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 6, border: '1px solid #c0d0e8', background: '#eef3ff', color: '#1B4D7A', cursor: 'pointer' }}>تعديل</button>
                                     <button onClick={() => handleDelete(p.id)} disabled={deletingId === p.id} style={{ padding: '3px 8px', fontSize: 11, borderRadius: 6, border: '1px solid #fcc', background: '#fee', color: '#c00', cursor: 'pointer' }}>
