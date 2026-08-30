@@ -345,10 +345,11 @@ function Payments({ onBack }) {
       .reduce((s, h) => s + Number(h.amount || 0), 0)
   }
 
-  // المدفوع سابقاً لقسط قيد التعديل: من السجل التراكمي إن وُجد، وإلا من amount_paid القديم (بيانات لم تُرحَّل للسجل بعد)
+  // المدفوع سابقاً لقسط قيد التعديل: amount_paid هو دائماً مصدر الحقيقة الحالي (نفس ما يعرضه الجدول
+  // الرئيسي وكل الشاشات الأخرى) — سجل payment_installments_history تفصيل مساعد فقط، وليس مصدراً بديلاً
+  // للمجموع، حتى لا يعرض النموذج رقماً قديماً لو amount_paid تم تصحيحه مباشرة بقاعدة البيانات دون تحديث السجل.
   function getPreviousPaid(p) {
-    const histSum = getHistorySum(p.id)
-    return histSum > 0 ? histSum : Number(p.amount_paid || 0)
+    return Number(p.amount_paid || 0)
   }
 
   function openAdd() {
