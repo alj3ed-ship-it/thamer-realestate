@@ -161,6 +161,7 @@ function hijriSortKey(hijriText) {
 export default function Entitlements() {
   const [properties, setProperties] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [paymentHistory, setPaymentHistory] = useState([]);
   const [selectedYear, setSelectedYear] = useState("1448");
   const [selectedMonthNum, setSelectedMonthNum] = useState("1");
   const [selectedProperties, setSelectedProperties] = useState([]);
@@ -191,18 +192,23 @@ export default function Entitlements() {
 
   async function fetchData() {
     setLoading(true);
-    const { data: propsData } = await supabase.from("properties").select("id, name, priority").order("priority");
-    const { data: paymentsData } = await supabase.from("payments").select(`
+    const [{ data: propsData }, { data: paymentsData }, { data: historyData }] = await Promise.all([
+      supabase.from("properties").select("id, name, priority").order("priority"),
+      supabase.from("payments").select(`
       id, lease_id, amount_due, amount_paid, payment_date_hijri, payment_date, installment_number, total_installments, status,
+      first_partial_date, first_partial_date_hijri,
     leases (
       id, property_id, start_date_hijri, end_date, lease_number, tax_enabled, tax_effective_hijri, amount_includes_vat,
         properties ( name, priority ),
         tenants ( name, note ),
         lease_units ( units ( unit_number, unit_type ) )
       )
-    `);
+    `),
+      supabase.from("payment_installments_history").select("*").order("created_at", { ascending: true }),
+    ]);
     setProperties(propsData || []);
     setPayments((paymentsData || []).filter((p) => p.leases));
+    setPaymentHistory(historyData || []);
     setLoading(false);
   }
 
@@ -268,7 +274,7 @@ export default function Entitlements() {
 
   function statusToArabic(status, paidState) {
     if (status === "paid") return "مدفوع";
-    if (status === "not_due") return "غير مستحق بعد";
+    if (status === "not_due") return paidState === "partial" ? "مدفوع مقدماً (جزئي)" : "غير مستحق بعد";
     // overdue
     return paidState === "partial" ? "متأخر - متبقي جزء" : "متأخر";
   }
@@ -325,6 +331,7 @@ export default function Entitlements() {
       const paymentDateHijri = row.payment_date_hijri || gregorianToHijri(row.payment_date) || null;
 
       found.push({
+        id: row.id,
         leaseId: lease.id,
         leaseEndDate: lease.end_date,
         leaseNumber: lease.lease_number,
@@ -342,6 +349,8 @@ export default function Entitlements() {
         statusLabel: statusToArabic(status, paidState),
         dueDateHijri,
         paymentDateHijri,
+        firstPartialDateHijri: row.first_partial_date_hijri || null,
+        historyEntries: paymentHistory.filter((h) => h.payment_id === row.id),
         taxApplies,
         taxAmount,
         includesVat,
@@ -388,6 +397,9 @@ export default function Entitlements() {
     if (status === "paid") {
       return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
     }
+    if (status === "not_due" && paidState === "partial") {
+      return <span style={{ background: "#EAF4FB", color: "#2E86C1", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع مقدماً (جزئي) ✓</span>;
+    }
     if (status === "not_due") {
       return <span style={{ background: "#F4F6F7", color: "#7f8c8d", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>غير مستحق بعد ⏳</span>;
     }
@@ -421,13 +433,22 @@ export default function Entitlements() {
     let base;
     if (r.paidState === "partial") {
       const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
+      const remainingColor = r.status === "not_due" ? "#2E86C1" : "#e74c3c";
       base = (
         <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
           <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
           <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
-          <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
+          <span style={{ color: remainingColor, fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
           <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
           <span style={{ color: "#1B4D7A", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
+        </div>
+      );
+    } else if (r.status === "paid" && r.paidAmount > r.amount) {
+      const over = r.paidAmount - r.amount;
+      base = (
+        <div style={{ fontSize: 13 }}>
+          <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
+          <div style={{ fontSize: 10, fontWeight: "bold", color: "#e67e22", marginTop: 1 }}>زيادة {over.toLocaleString()} عن المستحق ({r.amount.toLocaleString()})</div>
         </div>
       );
     } else if (r.status === "paid") {
@@ -440,6 +461,15 @@ export default function Entitlements() {
     return (
       <div>
         {base}
+        {r.historyEntries && r.historyEntries.length > 1 && (
+          <div style={{ fontSize: 10.5, color: "#6b7280", marginTop: 3 }}>
+            {r.historyEntries.map((h, idx) => (
+              <div key={h.id || idx}>
+                • {Number(h.amount || 0).toLocaleString()} ريال{h.payment_date_hijri ? ` — ${h.payment_date_hijri} هـ` : ""}
+              </div>
+            ))}
+          </div>
+        )}
         {r.taxApplies && (
           <div style={{ fontSize: 11, color: "#8e44ad", marginTop: 2, fontWeight: "bold" }}>
             {r.includesVat
@@ -634,8 +664,8 @@ export default function Entitlements() {
 
           <ExportToolbar
             data={filteredResults.map(r => {
-      const amountColor = r.status === "paid" ? "#27ae60" : r.status === "not_due" ? "#7f8c8d" : "#e74c3c";
-      const statusColor = r.status === "paid" ? "#27ae60" : r.status === "not_due" ? "#7f8c8d" : (r.paidState === "partial" ? "#f39c12" : "#e74c3c");
+      const amountColor = r.status === "paid" ? "#27ae60" : r.status === "not_due" ? (r.paidState === "partial" ? "#2E86C1" : "#7f8c8d") : "#e74c3c";
+      const statusColor = r.status === "paid" ? "#27ae60" : r.status === "not_due" ? (r.paidState === "partial" ? "#2E86C1" : "#7f8c8d") : (r.paidState === "partial" ? "#f39c12" : "#e74c3c");
       return {
         ...r,
         dueDateHijri: {
@@ -736,6 +766,11 @@ export default function Entitlements() {
                                     <div style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.dueDateHijri} هـ</div>
                                     {r.paymentDateHijri && (
                                       <div style={{ color: "#27ae60", fontWeight: "bold", marginTop: 3 }}>✓ {r.paymentDateHijri} هـ</div>
+                                    )}
+                                    {r.firstPartialDateHijri && (
+                                      <div style={{ fontSize: 10, color: "#e67e22", marginTop: 3 }} title="تاريخ أول دفعة جزئية">
+                                        أول دفعة جزئية: {r.firstPartialDateHijri} هـ
+                                      </div>
                                     )}
                                   </td>
                     <td style={{ padding: "12px 16px" }}>{amountDisplay(r)}</td>

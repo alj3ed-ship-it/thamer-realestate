@@ -657,6 +657,7 @@ export default function Leases({ onBack }) {
             installment_number: i + 1,
             total_installments: form.installments.length,
             amount_due: Number(inst.amount) || 0,
+            amount: Number(inst.amount) || 0,
             amount_paid: 0,
             due_date_hijri: dueHijriText,
             due_date_gregorian: inst.date,

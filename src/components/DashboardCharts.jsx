@@ -23,8 +23,37 @@ function computeInstallmentHijri(startDateHijri, totalInstallments, installmentN
   return addHijriMonths(start, Math.round(monthsToAdd));
 }
 
+// نفس أسلوب التحويل الهجري→ميلادي المستخدم بباقي الملفات (Payments.jsx/Entitlements.jsx)
+function hijriToGregorian(hy, hm, hd) {
+  try {
+    const fmt = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { year: 'numeric', month: 'numeric', day: 'numeric' });
+    function getHijriParts(d) {
+      const parts = fmt.formatToParts(d);
+      return {
+        y: parseInt(parts.find((p) => p.type === 'year').value),
+        m: parseInt(parts.find((p) => p.type === 'month').value),
+        d: parseInt(parts.find((p) => p.type === 'day').value),
+      };
+    }
+    const epoch = new Date(Date.UTC(622, 6, 19));
+    const approxDays = Math.round((hy - 1) * 354.36667 + (hm - 1) * 29.53 + hd);
+    let guess = new Date(epoch.getTime() + approxDays * 86400000);
+    for (let i = 0; i < 30; i++) {
+      const cur = getHijriParts(guess);
+      if (cur.y === hy && cur.m === hm && cur.d === hd) {
+        return new Date(guess.getFullYear(), guess.getMonth(), guess.getDate());
+      }
+      const diffMonths = (hy - cur.y) * 12 + (hm - cur.m);
+      const diffDays = Math.round(diffMonths * 29.53 + (hd - cur.d));
+      const step = diffDays !== 0 ? diffDays : (hd > cur.d ? 1 : -1);
+      guess = new Date(guess.getTime() + step * 86400000);
+    }
+    return null;
+  } catch { return null; }
+}
+
 const OCC_COLORS = { مؤجرة: '#2563eb', شاغرة: '#f59e0b', صيانة: '#ef4444' };
-const PAY_COLORS = { مدفوع: '#10b981', جزئي: '#f59e0b', متأخر: '#f43f5e', 'لم يستحق بعد': '#9ca3af' };
+const PAY_COLORS = { مدفوع: '#10b981', 'جزئي مبكر': '#2E86C1', جزئي: '#f59e0b', متأخر: '#f43f5e', 'لم يستحق بعد': '#9ca3af' };
 const BAR_PALETTE = ['#2563eb', '#0e7490', '#7c3aed', '#c2410c', '#0f766e', '#be123c', '#4338ca', '#15803d'];
 const BAR_HIGHLIGHT = '#f59e0b';
 const PROPERTY_ORDER = ['عمارة سلمان', 'عمارة أبراهيم', 'عمارة عبدالله الكبيرة', 'عمارة عبدالله الصغيره'];
@@ -115,30 +144,37 @@ function DashboardCharts({ restrictToPropertyIds = null }) {
   };
 
   const loadPayments = async () => {
-    let leaseQuery = supabase.from('leases').select('id, property_id');
+    let leaseQuery = supabase.from('leases').select('id, property_id, start_date_hijri');
     if (filterIds) leaseQuery = leaseQuery.in('property_id', filterIds);
     const { data: leases, error: leaseErr } = await leaseQuery;
     if (leaseErr || !leases) { setPayments([]); return; }
     const leaseIds = leases.map((l) => l.id);
     if (leaseIds.length === 0) { setPayments([]); return; }
-    const { data: pays, error: payErr } = await supabase.from('payments').select('amount, amount_paid, due_date_gregorian, status').in('lease_id', leaseIds);
+    const leaseById = Object.fromEntries(leases.map((l) => [l.id, l]));
+    const { data: pays, error: payErr } = await supabase.from('payments').select('lease_id, amount, amount_paid, status, installment_number, total_installments').in('lease_id', leaseIds);
     if (!payErr && pays) {
       const today = new Date(); today.setHours(0, 0, 0, 0);
-      const counts = { مدفوع: 0, جزئي: 0, متأخر: 0, 'لم يستحق بعد': 0 };
-            pays.forEach((p) => {
+      const counts = { مدفوع: 0, 'جزئي مبكر': 0, جزئي: 0, متأخر: 0, 'لم يستحق بعد': 0 };
+      pays.forEach((p) => {
         if (p.status === "ملغى") return;
         const due = Number(p.amount || 0);
         const paid = Number(p.amount_paid || 0);
-        // نفس منطق حساب الحالة المستخدم في صفحة الاستحقاقات (Entitlements.jsx):
-        // فصل حالة السداد (مدفوع/جزئي/لا شيء) عن الحالة الزمنية (استحق/لم يستحق بعد)
+        // نفس منطق حساب الحالة المستخدم بباقي الملفات (Payments.jsx/Entitlements.jsx):
+        // الاستحقاق يُحسب من تاريخ بداية العقد + رقم القسط، مو من عمود due_date_gregorian (غير مُعبّأ فعلياً).
+        // وحالة "جزئي" تنقسم لمتأخر (فات الاستحقاق) ومبكر (لم يأتِ الاستحقاق بعد ودُفع جزء مقدماً).
+        const lease = leaseById[p.lease_id];
+        const hijri = computeInstallmentHijri(lease?.start_date_hijri, p.total_installments, p.installment_number);
+        let isOverdue = true;
+        if (hijri) {
+          const g = hijriToGregorian(hijri.year, hijri.month, hijri.day);
+          if (g) { g.setHours(0, 0, 0, 0); isOverdue = g <= today; }
+        }
         if (paid > 0 && paid >= due && due > 0) {
           counts['مدفوع']++;
         } else if (paid > 0) {
-          counts['جزئي']++;
+          counts[isOverdue ? 'جزئي' : 'جزئي مبكر']++;
         } else {
-          const dueDate = p.due_date_gregorian ? new Date(p.due_date_gregorian) : null;
-          if (dueDate && dueDate > today) counts['لم يستحق بعد']++;
-          else counts['متأخر']++;
+          counts[isOverdue ? 'متأخر' : 'لم يستحق بعد']++;
         }
       });
       setPayments(Object.entries(counts).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value })));
