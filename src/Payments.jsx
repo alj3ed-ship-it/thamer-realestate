@@ -565,11 +565,15 @@ function Payments({ onBack }) {
     return hijriSortKey(hijriText)
   }
 
+  // 'partial' = جزئي ومتأخر (فات الاستحقاق ولم يكتمل)، 'partial_early' = جزئي مبكر (لم يأتِ الاستحقاق بعد، دُفع جزء مقدماً — حالة إيجابية)
   function computePaymentStatus(p) {
     const due = Number(p.amount || 0)
     const paid = Number(p.amount_paid || 0)
     if (paid > 0 && paid >= due && due > 0) return 'paid'
-    if (paid > 0) return 'partial'
+    if (paid > 0) {
+      const { subStatus } = getUnpaidDueInfo(p)
+      return subStatus === 'overdue' ? 'partial' : 'partial_early'
+    }
     const { subStatus } = getUnpaidDueInfo(p)
     return subStatus
   }
@@ -635,7 +639,8 @@ function Payments({ onBack }) {
 
   function statusToArabic(computed) {
     if (computed === 'paid') return '✓ مدفوع'
-    if (computed === 'partial') return '⚠ جزئي'
+    if (computed === 'partial') return '⚠ جزئي (متأخر)'
+    if (computed === 'partial_early') return '✓ مدفوع مقدماً (جزئي)'
     if (computed === 'not_due') return '⏳ غير مستحق بعد'
     return '⏰ متأخر'
   }
@@ -644,6 +649,7 @@ function Payments({ onBack }) {
     const computed = computePaymentStatus(p)
     if (computed === 'paid') return <span style={{ background: '#EAFAF1', color: '#27ae60', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>مدفوع ✓</span>
     if (computed === 'partial') return <span style={{ background: '#FEF9E7', color: '#f39c12', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>جزئي ⚠</span>
+    if (computed === 'partial_early') return <span style={{ background: '#EAF4FB', color: '#2E86C1', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>مدفوع مقدماً (جزئي) ✓</span>
     if (computed === 'not_due') return <span style={{ background: '#FDF6E3', color: '#b7950b', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>غير مستحق بعد ⏳</span>
     return <span style={{ background: '#FDEDEC', color: '#e74c3c', padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>متأخر ⏰</span>
   }
@@ -659,10 +665,12 @@ function Payments({ onBack }) {
     const amountColor = computed === 'paid' ? '#27ae60'
       : computed === 'overdue' ? '#e74c3c'
       : computed === 'not_due' ? '#7f8c8d'
+      : computed === 'partial_early' ? '#2E86C1'
       : '#d4ac0d'
     let base
-    if (computed === 'partial') {
+    if (computed === 'partial' || computed === 'partial_early') {
       const remaining = due - paid
+      const remainingColor = computed === 'partial_early' ? '#2E86C1' : '#d4ac0d'
       base = (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 6px', fontSize: 12, fontWeight: 700, maxWidth: 140 }}>
           <span style={{ whiteSpace: 'nowrap' }}>
@@ -671,7 +679,7 @@ function Payments({ onBack }) {
           </span>
           <span style={{ whiteSpace: 'nowrap' }}>
             <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>متبقي </span>
-            <span style={{ color: '#d4ac0d' }}>{remaining.toLocaleString()}</span>
+            <span style={{ color: remainingColor }}>{remaining.toLocaleString()}</span>
           </span>
           <span style={{ whiteSpace: 'nowrap' }}>
             <span style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af' }}>الإجمالي </span>
@@ -722,12 +730,12 @@ function Payments({ onBack }) {
       activity: getTenantActivity(p.lease_id),
       unit: getUnitNumbers(p.lease_id),
       installment: total ? `${index} / ${total}` : `${index}`,
-      amount: computed === 'partial'
+      amount: (computed === 'partial' || computed === 'partial_early')
         ? {
             value: `${due.toLocaleString()} ريال`,
-            color: '#d4ac0d',
+            color: computed === 'partial_early' ? '#2E86C1' : '#d4ac0d',
             subtext: `مدفوع ${paid.toLocaleString()} · متبقي ${(due - paid).toLocaleString()}`,
-            subtextColor: '#B42318'
+            subtextColor: computed === 'partial_early' ? '#2E86C1' : '#B42318'
           }
         : {
             value: `${due.toLocaleString()} ريال`,

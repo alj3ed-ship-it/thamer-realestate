@@ -263,6 +263,7 @@ export default function ViewerLimited() {
   const [tenants, setTenants] = useState([]);
   const [leases, setLeases] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [paymentHistory, setPaymentHistory] = useState([]);
   const [projects, setProjects] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [extraIncome, setExtraIncome] = useState([]);
@@ -358,6 +359,7 @@ export default function ViewerLimited() {
     supabase.from("payments").select(`
       id, lease_id, amount_due, amount_paid, installment_number, total_installments,
       payment_date, payment_date_hijri, payment_method, notes,
+      first_partial_date, first_partial_date_hijri,
       leases (
         id, property_id, start_date_hijri, tax_enabled, tax_effective_hijri,
         properties ( name, priority ),
@@ -365,6 +367,8 @@ export default function ViewerLimited() {
         lease_units ( units ( unit_number, unit_type ) )
       )
     `).then(({ data }) => setPayments((data || []).filter((p) => p.leases)));
+    supabase.from("payment_installments_history").select("*").order("created_at", { ascending: true })
+      .then(({ data }) => setPaymentHistory(data || []));
     supabase.from("projects").select("*").then(({ data }) => setProjects(data || []));
     supabase.from("hall_extra_income").select("*").order("created_at", { ascending: false }).then(({ data }) => setExtraIncome(data || []));
     supabase.from("properties").select("id").eq("name", HALL_PROPERTY_NAME).single().then(({ data: hall }) => {
@@ -613,7 +617,7 @@ export default function ViewerLimited() {
 
   function statusToArabic(status, paidState) {
     if (status === "paid") return "مدفوع";
-    if (status === "not_due") return "غير مستحق بعد";
+    if (status === "not_due") return paidState === "partial" ? "مدفوع مقدماً (جزئي)" : "غير مستحق بعد";
     // overdue
     return paidState === "partial" ? "متأخر - متبقي جزء" : "متأخر";
   }
@@ -630,6 +634,9 @@ export default function ViewerLimited() {
     if (status === "paid") {
       return <span style={{ background: "#EAFAF1", color: "#27ae60", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع ✓</span>;
     }
+    if (status === "not_due" && paidState === "partial") {
+      return <span style={{ background: "#EAF4FB", color: "#2E86C1", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>مدفوع مقدماً (جزئي) ✓</span>;
+    }
     if (status === "not_due") {
       return <span style={{ background: "#F4F6F7", color: "#7f8c8d", padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "bold" }}>غير مستحق بعد ⏳</span>;
     }
@@ -644,16 +651,24 @@ export default function ViewerLimited() {
     let base;
     if (r.paidState === "partial") {
       const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
+      const remainingColor = r.status === "not_due" ? "#2E86C1" : "#d4ac0d";
       base = (
         <div style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
           <span style={{ fontSize: 10, fontWeight: 600, color: "#9ca3af" }}>مدفوع </span>
           <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
           <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
           <span style={{ fontSize: 10, fontWeight: 600, color: "#9ca3af" }}>متبقي </span>
-          <span style={{ color: "#d4ac0d", fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
+          <span style={{ color: remainingColor, fontWeight: "bold" }}>{remaining.toLocaleString()}</span>
           <span style={{ margin: "0 8px", color: "#ccc" }}>|</span>
           <span style={{ fontSize: 10, fontWeight: 600, color: "#9ca3af" }}>الإجمالي </span>
           <span style={{ color: "#e74c3c", fontWeight: "bold" }}>{r.amount.toLocaleString()}</span>
+        </div>
+      );
+    } else if (r.status === "paid" && r.paidAmount > r.amount) {
+      base = (
+        <div>
+          <span style={{ color: "#27ae60", fontWeight: "bold" }}>{r.paidAmount.toLocaleString()}</span>
+          <div style={{ fontSize: 10, fontWeight: "bold", color: "#e67e22", marginTop: 1 }}>زيادة {(r.paidAmount - r.amount).toLocaleString()} عن المستحق ({r.amount.toLocaleString()})</div>
         </div>
       );
     } else if (r.status === "paid") {
@@ -666,6 +681,13 @@ export default function ViewerLimited() {
     return (
       <div>
         {base}
+        {r.historyEntries && r.historyEntries.length > 1 && (
+          <div style={{ fontSize: 10.5, color: "#6b7280", marginTop: 3 }}>
+            {r.historyEntries.map((h, idx) => (
+              <div key={h.id || idx}>• {Number(h.amount || 0).toLocaleString()} ريال{h.payment_date_hijri ? ` — ${h.payment_date_hijri} هـ` : ""}</div>
+            ))}
+          </div>
+        )}
         {r.taxApplies && (
           <div style={{ fontSize: 11, color: "#8e44ad", marginTop: 2, fontWeight: "bold" }}>
             + ضريبة 15%: {r.taxAmount.toLocaleString()} = {(r.amount + r.taxAmount).toLocaleString()} ريال
@@ -718,6 +740,7 @@ export default function ViewerLimited() {
       const paymentDateHijri = row.payment_date_hijri || gregorianToHijri(row.payment_date) || null;
 
       found.push({
+        id: row.id,
         tenant: lease.tenants?.name || "",
         activity: lease.tenants?.note || "—",
         property: lease.properties?.name || "",
@@ -731,6 +754,8 @@ export default function ViewerLimited() {
         statusLabel: statusToArabic(status, paidState),
         dueDateHijri,
         paymentDateHijri,
+        firstPartialDateHijri: row.first_partial_date_hijri || null,
+        historyEntries: paymentHistory.filter((h) => h.payment_id === row.id),
         taxApplies,
         taxAmount,
       });
@@ -1499,7 +1524,9 @@ export default function ViewerLimited() {
                     </div>
                   </div>
 
-                  <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
+                  <div style={{ background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
+                  <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", minWidth: 900, borderCollapse: "collapse", background: "#fff" }}>
                     <thead style={{ background: "#1B4D7A", color: "#fff" }}>
                       <tr>
                         <th style={{ padding: "12px" }}>المستأجر</th>
@@ -1536,9 +1563,16 @@ export default function ViewerLimited() {
                                 {p.total_installments ? `${p.installment_number || ""} / ${p.total_installments}` : `${p.installment_number || ""}`}
                               </span>
                             </td>
-                            <td style={{ padding: "12px" }}>{amountDisplay({ status, paidState, amount: due, paidAmount: paid })}</td>
+                            <td style={{ padding: "12px" }}>{amountDisplay({ status, paidState, amount: due, paidAmount: paid, historyEntries: paymentHistory.filter((h) => h.payment_id === p.id) })}</td>
                             <td style={{ padding: "12px" }}>{statusBadge(status, paidState)}</td>
-                            <td style={{ padding: "12px", color: "#6b7280" }}>{p.payment_date_hijri ? `${p.payment_date_hijri} هـ` : "—"}</td>
+                            <td style={{ padding: "12px", color: "#6b7280" }}>
+                              <div>{p.payment_date_hijri ? `${p.payment_date_hijri} هـ` : "—"}</div>
+                              {p.first_partial_date_hijri && (
+                                <div style={{ fontSize: 10, color: "#e67e22", marginTop: 2 }} title="تاريخ أول دفعة جزئية">
+                                  أول دفعة جزئية: {p.first_partial_date_hijri} هـ
+                                </div>
+                              )}
+                            </td>
                             <td style={{ padding: "12px", color: "#6b7280" }}>{p.payment_method || "—"}</td>
                             <td style={{ padding: "12px", color: "#9ca3af", fontSize: "13px" }}>{p.notes || "—"}</td>
                           </tr>
@@ -1546,6 +1580,8 @@ export default function ViewerLimited() {
                       })}
                     </tbody>
                   </table>
+                  </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -1765,7 +1801,9 @@ export default function ViewerLimited() {
                       )}
                     </div>
 
-                    <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
+                    <div style={{ background: "#fff", borderRadius: "12px", overflow: "hidden" }}>
+                    <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", minWidth: 800, borderCollapse: "collapse", background: "#fff" }}>
                       <thead style={{ background: "#1B4D7A", color: "#fff" }}>
                         <tr>
                           <th style={{ padding: "12px" }}>العقار</th>
@@ -1795,6 +1833,11 @@ export default function ViewerLimited() {
                               {r.paymentDateHijri && (
                                 <div style={{ color: "#27ae60", fontWeight: "bold", marginTop: 3 }}>✓ {r.paymentDateHijri} هـ</div>
                               )}
+                              {r.firstPartialDateHijri && (
+                                <div style={{ fontSize: 10, color: "#e67e22", marginTop: 3 }} title="تاريخ أول دفعة جزئية">
+                                  أول دفعة جزئية: {r.firstPartialDateHijri} هـ
+                                </div>
+                              )}
                             </td>
                             <td style={{ padding: "12px" }}>{amountDisplay(r)}</td>
                             <td style={{ padding: "12px" }}>{statusBadge(r.status, r.paidState)}</td>
@@ -1802,6 +1845,8 @@ export default function ViewerLimited() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
+                    </div>
                   </div>
                 )}
 
