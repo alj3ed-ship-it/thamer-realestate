@@ -10,7 +10,6 @@ import Projects from "./Projects";
 import Bookings from "./Bookings";
 import Login from "./Login";
 import ResetPassword from "./ResetPassword";
-import ViewerLayout from "./ViewerLayout";
 import { ReadOnlyProvider } from "./ReadOnlyContext";
 import ViewerLimited from "./ViewerLimited";
 import PropertyDetail from "./PropertyDetail";
