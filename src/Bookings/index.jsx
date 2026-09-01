@@ -1,118 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from './supabaseClient';
-import { useReadOnly } from './ReadOnlyContext';
-import ExportToolbar from './components/ExportToolbar';
+import { supabase } from '../supabaseClient';
+import { useReadOnly } from '../ReadOnlyContext';
+import ExportToolbar from '../components/ExportToolbar';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-} from 'recharts';
-
-const EVENT_TYPES = ['كاملة', 'نساء', 'رجال', 'أخرى'];
-const RECEIVER_STAGE1_OPTIONS = ['أبو أيوب', 'تحويل مباشر', 'نقدي مباشر'];
-const RECEIVER_FINAL_OPTIONS = ['مستلم', 'الوالد', 'لم يستلم'];
-const REMAINING_STATUS_OPTIONS = ['مستلم', 'جزئي', 'غير مستلم'];
-const DEFAULT_STAFF_RATES = { 'كاملة': 1970, 'نساء': 1020, 'رجال': 950, 'أخرى': 0 };
-const DEFAULT_SUPPLIES_RATES = { 'كاملة': 450, 'نساء': 225, 'رجال': 225, 'أخرى': 0 };
-const DEFAULT_ANNUAL_SALARY = 30000;
-const DEFAULT_SALARIES_BY_YEAR = { '1446': 48000, '1447': 48000 };
-const DEFAULT_ABU_AYOUB_RATES = { 'كاملة': 200, 'نساء': 150, 'رجال': 150, 'أخرى': 0 };
-const DEFAULT_ANNUAL_ELECTRICITY = 12000;
-const DEFAULT_WATER_RATE_PER_PAIR = 250;
-const INCOME_TYPES = ['ميز', 'صوتيات', 'مطبخ القصر', 'أخرى'];
-
-const STATUS_COLORS = {
-  'مستلم': { bg: '#EAFAF1', text: '#27ae60', label: 'مستلم ✓' },
-  'جزئي': { bg: '#FEF9E7', text: '#f39c12', label: 'جزئي ⚠' },
-  'غير مستلم': { bg: '#FDEDEC', text: '#e74c3c', label: 'غير مستلم ✗' },
-};
-
-const CANCEL_STATUS_LABELS = {
-  cancelled_kept_deposit: { bg: '#FEF5E7', text: '#B9770E', label: 'ملغي - محتفظ بالعربون' },
-  cancelled_refunded: { bg: '#FDEDEC', text: '#e74c3c', label: 'ملغي - مسترجع العربون' },
-};
-
-function getEffectiveAmounts(b) {
-  const status = b.booking_status || 'active';
-  if (status === 'cancelled_refunded') {
-    return { revenue: 0, remaining: 0, countsForCost: false };
-  }
-  if (status === 'cancelled_kept_deposit') {
-    return { revenue: Number(b.deposit_amount || 0), remaining: 0, countsForCost: false };
-  }
-  return {
-    revenue: Number(b.total_amount || 0),
-    remaining: b.remaining_status !== 'مستلم' ? Number(b.remaining_amount || 0) : 0,
-    countsForCost: true,
-  };
-}
-
-const TYPE_COLORS = {
-  'كاملة': { bg: '#EAF2F8', text: '#1B4D7A', border: '#AED6F1' },
-  'نساء': { bg: '#FDF2F8', text: '#C2185B', border: '#F8BBD0' },
-  'رجال': { bg: '#E8F6F3', text: '#148F77', border: '#A2D9CE' },
-  'أخرى': { bg: '#F4F6F7', text: '#7f8c8d', border: '#D5D8DC' },
-};
-
-const INCOME_TYPE_COLORS = {
-  'ميز': { bg: '#FEF5E7', text: '#B7950B', border: '#F9E79F' },
-  'صوتيات': { bg: '#F4ECF7', text: '#7D3C98', border: '#D2B4DE' },
-  'مطبخ القصر': { bg: '#FDF2E9', text: '#B9770E', border: '#F5CBA7' },
-  'أخرى': { bg: '#F4F6F7', text: '#7f8c8d', border: '#D5D8DC' },
-};
-
-function formatHijriDisplay(dateStr) {
-  if (!dateStr) return '—';
-  const parts = dateStr.split('/');
-  if (parts.length !== 3) return dateStr;
-  return `${parts[2]}/${parts[1]}/${parts[0]}`;
-}
-
-function getHijriYear(dateStr) {
-  if (!dateStr) return null;
-  const parts = dateStr.split('/');
-  if (parts.length !== 3) return null;
-  return parts[2];
-}
-
-function typeBadge(type) {
-  const c = TYPE_COLORS[type] || TYPE_COLORS['أخرى'];
-  return (
-    <span style={{
-      background: c.bg, color: c.text, border: `1px solid ${c.border}`,
-      padding: '4px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap',
-    }}>
-      {type}
-    </span>
-  );
-}
-
-function incomeTypeBadge(type) {
-  const c = INCOME_TYPE_COLORS[type] || INCOME_TYPE_COLORS['أخرى'];
-  return (
-    <span style={{
-      background: c.bg, color: c.text, border: `1px solid ${c.border}`,
-      padding: '4px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap',
-    }}>
-      {type}
-    </span>
-  );
-}
-
-function clientBadge(name) {
-  return (
-    <span style={{
-      background: '#FEF9E7', color: '#9A7D0A', border: '1px solid #F7DC6F',
-      padding: '4px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap',
-    }}>
-      {name}
-    </span>
-  );
-}
-
-function receiverColor(value) {
-  if (value === 'مستلم') return '#27ae60';
-  if (value === 'لم يستلم') return '#e74c3c';
-  return '#1B4D7A';
-}
+  EVENT_TYPES, RECEIVER_STAGE1_OPTIONS, RECEIVER_FINAL_OPTIONS, REMAINING_STATUS_OPTIONS,
+  DEFAULT_STAFF_RATES, DEFAULT_SUPPLIES_RATES, DEFAULT_ANNUAL_SALARY, DEFAULT_SALARIES_BY_YEAR,
+  DEFAULT_ABU_AYOUB_RATES, DEFAULT_ANNUAL_ELECTRICITY, DEFAULT_WATER_RATE_PER_PAIR, INCOME_TYPES,
+  CANCEL_STATUS_LABELS, getEffectiveAmounts, formatHijriDisplay, getHijriYear,
+  SummaryCard, yearTabStyle, typeTabStyle, label, input, overlayStyle, modalStyle, actionBtn,
+} from './bookingsHelpers';
+import PendingApprovals from './PendingApprovals';
+import ExpenseSettings from './ExpenseSettings';
+import YearlyChart from './YearlyChart';
+import BookingsTable from './BookingsTable';
+import ExtraIncomeSection from './ExtraIncomeSection';
 
 export default function Bookings() {
   const isReadOnly = useReadOnly();
@@ -741,51 +642,11 @@ export default function Bookings() {
 
       {/* ==== قسم بانتظار الاعتماد — تعديلات/حجوزات المحاسب ==== */}
       {!isReadOnly && pendingBookings.length > 0 && (
-        <div style={{
-          background: '#FFFBF3', border: '2px solid #F5CBA7', borderRadius: '12px',
-          padding: '18px 20px', marginBottom: '24px',
-        }}>
-          <h3 style={{ margin: '0 0 14px', color: '#B9770E', fontSize: '16px' }}>
-            ⏳ بانتظار الاعتماد ({pendingBookings.length})
-          </h3>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px', background: '#fff', borderRadius: '8px', overflow: 'hidden' }}>
-              <thead>
-                <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #e9ecef', textAlign: 'right' }}>
-                  <th style={th}>النوع</th>
-                  <th style={th}>التاريخ الهجري</th>
-                  <th style={th}>العميل</th>
-                  <th style={th}>الإجمالي</th>
-                  <th style={th}>مقدّم من</th>
-                  <th style={th}>إجراءات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingBookings.map((b, idx) => (
-                  <tr key={b.id} style={{ borderBottom: '1px solid #f0f0f0', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                    <td style={td}>
-                      <span style={{
-                        background: b.previous_data ? '#EAF2F8' : '#EAFAF1',
-                        color: b.previous_data ? '#1B4D7A' : '#27ae60',
-                        padding: '4px 10px', borderRadius: '12px', fontSize: '12px', fontWeight: 'bold',
-                      }}>
-                        {b.previous_data ? 'تعديل على حجز' : 'حجز جديد'}
-                      </span>
-                    </td>
-                    <td style={td}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
-                    <td style={td}>{clientBadge(b.client_name)}</td>
-                    <td style={{ ...td, fontWeight: 'bold', color: '#1B4D7A' }}>{Number(b.total_amount || 0).toLocaleString()} ر.س</td>
-                    <td style={td}>{b.submitted_by || 'المحاسب'}</td>
-                    <td style={td}>
-                      <button onClick={() => handleApproveBooking(b)} style={actionBtn('#27ae60')}>✅ اعتماد</button>
-                      <button onClick={() => handleRejectBooking(b)} style={actionBtn('#e74c3c')}>❌ رفض</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <PendingApprovals
+          pendingBookings={pendingBookings}
+          onApprove={handleApproveBooking}
+          onReject={handleRejectBooking}
+        />
       )}
 
       <ExportToolbar
@@ -883,276 +744,42 @@ export default function Bookings() {
       </div>
 
       {/* إعدادات المصاريف: أجور المباشرين/المباشرات + قهوة وشاهي + الراتب السنوي */}
-      <div style={{
-        background: '#fff', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-        padding: '16px 20px', marginBottom: '20px',
-      }}>
-        <h4 style={{ margin: '0 0 12px', color: '#555', fontSize: '14px' }}>⚙️ إعدادات المصاريف (لكل حفلة حسب نوعها)</h4>
-        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '14px' }}>
-          {EVENT_TYPES.map((t) => (
-            <div key={t} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 'bold', color: (TYPE_COLORS[t] || {}).text || '#555' }}>{t}</span>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', color: '#888', whiteSpace: 'nowrap' }}>مباشرين</span>
-                <input
-                  type="number"
-                  value={staffRates[t] ?? 0}
-                  onChange={(e) => setStaffRate(t, Number(e.target.value) || 0)}
-                  style={{ width: '70px', padding: '4px 6px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', color: '#888', whiteSpace: 'nowrap' }}>قهوة وشاهي</span>
-                <input
-                  type="number"
-                  value={suppliesRates[t] ?? 0}
-                  onChange={(e) => setSuppliesRate(t, Number(e.target.value) || 0)}
-                  style={{ width: '70px', padding: '4px 6px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', color: '#888', whiteSpace: 'nowrap' }}>عمولة أبو أيوب</span>
-                <input
-                  type="number"
-                  value={abuAyoubRates[t] ?? 0}
-                  onChange={(e) => setAbuAyoubRate(t, Number(e.target.value) || 0)}
-                  style={{ width: '70px', padding: '4px 6px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ borderTop: '1px solid #eee', paddingTop: '12px' }}>
-          {selectedYear === 'all' ? (
-            <span style={{ fontSize: '13px', color: '#888' }}>
-              اختر سنة معينة من الأعلى لتعديل راتبها السنوي وكهرباءها (الافتراضي: راتب {DEFAULT_ANNUAL_SALARY.toLocaleString()} ر.س، كهرباء {DEFAULT_ANNUAL_ELECTRICITY.toLocaleString()} ر.س)
-            </span>
-          ) : (
-            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <label style={{ fontSize: '13px', color: '#555', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-                  الراتب السنوي {selectedYear} هـ (ر.س)
-                </label>
-                <input
-                  type="number"
-                  value={getAnnualSalary(selectedYear)}
-                  onChange={(e) => setAnnualSalaryForYear(selectedYear, Number(e.target.value) || 0)}
-                  style={{ width: '100px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                <label style={{ fontSize: '13px', color: '#555', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-                  الكهرباء السنوية {selectedYear} هـ (ر.س)
-                </label>
-                <input
-                  type="number"
-                  value={getElectricity(selectedYear)}
-                  onChange={(e) => setElectricityForYear(selectedYear, Number(e.target.value) || 0)}
-                  style={{ width: '100px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
-                />
-              </div>
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '12px' }}>
-            <label style={{ fontSize: '13px', color: '#555', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-              الماء (ر.س لكل حفلتين)
-            </label>
-            <input
-              type="number"
-              value={waterRatePerPair}
-              onChange={(e) => setWaterRatePerPairAndSave(Number(e.target.value) || 0)}
-              style={{ width: '100px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
-            />
-          </div>
-        </div>
-      </div>
+      <ExpenseSettings
+        staffRates={staffRates} setStaffRate={setStaffRate}
+        suppliesRates={suppliesRates} setSuppliesRate={setSuppliesRate}
+        abuAyoubRates={abuAyoubRates} setAbuAyoubRate={setAbuAyoubRate}
+        selectedYear={selectedYear}
+        getAnnualSalary={getAnnualSalary} setAnnualSalaryForYear={setAnnualSalaryForYear}
+        getElectricity={getElectricity} setElectricityForYear={setElectricityForYear}
+        waterRatePerPair={waterRatePerPair} setWaterRatePerPairAndSave={setWaterRatePerPairAndSave}
+      />
 
       {/* الرسم البياني المقارن بين السنين */}
-      {yearlyStats.length > 1 && (
-        <div style={{
-          background: '#fff', borderRadius: '12px', boxShadow: '0 2px 12px rgba(0,0,0,0.07)',
-          padding: '20px', marginBottom: '24px',
-        }}>
-          <h3 style={{ margin: '0 0 16px', color: '#1B4D7A', fontSize: '16px' }}>مقارنة الدخل والصافي بين السنين</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={yearlyStats}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="year" tick={{ fontFamily: 'Cairo, sans-serif', fontSize: 13 }} />
-              <YAxis tick={{ fontFamily: 'Cairo, sans-serif', fontSize: 12 }} />
-              <Tooltip
-                contentStyle={{ fontFamily: 'Cairo, sans-serif', direction: 'rtl' }}
-                formatter={(value) => `${Number(value).toLocaleString()} ر.س`}
-              />
-              <Legend wrapperStyle={{ fontFamily: 'Cairo, sans-serif' }} />
-              <Bar dataKey="revenue" name="إجمالي الدخل" fill="#1B4D7A" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="net" name="الصافي (بعد خصم المصاريف)" fill="#27ae60" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-
-          <div style={{ display: 'flex', gap: '24px', marginTop: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
-            {yearlyStats.map((y) => (
-              <div key={y.year} style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '13px', color: '#666' }}>{y.year} هـ</div>
-                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1B4D7A' }}>{y.count} حجز</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <YearlyChart yearlyStats={yearlyStats} />
 
       {error && <div style={{ color: '#e74c3c', marginBottom: '10px' }}>{error}</div>}
       {loading ? (
         <div>جاري التحميل...</div>
       ) : (
-        <>
-          <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 2px 12px rgba(0,0,0,0.07)', overflow: 'hidden', marginBottom: '24px' }}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-                <thead>
-                  <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #e9ecef', textAlign: 'right' }}>
-                    <th style={th}>التاريخ الهجري</th>
-                    <th style={th}>النوع</th>
-                    <th style={th}>العميل</th>
-                    <th style={th}>الإجمالي</th>
-                    <th style={th}>العربون</th>
-                    <th style={th}>الباقي</th>
-                    <th style={th}>حالة الباقي</th>
-                    <th style={th}>الاستلام النهائي (باقي)</th>
-                    <th style={th}>حالة الحجز</th>
-                    {!isReadOnly && <th style={th}>إجراءات</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredBookings.map((b, idx) => {
-                    const statusStyle = STATUS_COLORS[b.remaining_status] || STATUS_COLORS['جزئي'];
-                    return (
-                      <tr key={b.id} style={{ borderBottom: '1px solid #f0f0f0', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                        <td style={td}>{formatHijriDisplay(b.event_date_hijri)} هـ</td>
-                        <td style={td}>{typeBadge(b.event_type)}</td>
-                        <td style={td}>{clientBadge(b.client_name)}</td>
-                        <td style={{ ...td, fontWeight: 'bold', color: '#1B4D7A' }}>{Number(b.total_amount).toLocaleString()} ر.س</td>
-                        <td style={{ ...td, fontWeight: 'bold', color: '#148F77' }}>{Number(b.deposit_amount).toLocaleString()} ر.س</td>
-                        <td style={{ ...td, fontWeight: 'bold', color: '#e74c3c' }}>{Number(b.remaining_amount).toLocaleString()} ر.س</td>
-                        <td style={td}>
-                          <span
-                            style={{
-                              background: statusStyle.bg,
-                              color: statusStyle.text,
-                              padding: '4px 12px',
-                              borderRadius: '20px',
-                              fontSize: '12px',
-                              fontWeight: 'bold',
-                            }}
-                          >
-                            {statusStyle.label}
-                          </span>
-                        </td>
-                        <td style={{ ...td, fontWeight: 'bold', color: receiverColor(b.remaining_receiver_final) }}>
-                          {b.remaining_receiver_final || '—'}
-                        </td>
-                        <td style={td}>
-                          {b.booking_status && b.booking_status !== 'active' ? (
-                            <span style={{
-                              background: (CANCEL_STATUS_LABELS[b.booking_status] || {}).bg,
-                              color: (CANCEL_STATUS_LABELS[b.booking_status] || {}).text,
-                              padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold',
-                            }}>
-                              {(CANCEL_STATUS_LABELS[b.booking_status] || {}).label}
-                            </span>
-                          ) : (
-                            <span style={{ color: '#27ae60', fontSize: '12px', fontWeight: 'bold' }}>نشط ✓</span>
-                          )}
-                        </td>
-                        {!isReadOnly && (
-                        <td style={td}>
-                          {lockedYears.has(getHijriYear(b.event_date_hijri)) ? (
-                            <span style={{ color: '#7f8c8d', fontSize: '12px', fontWeight: 'bold' }}>🔒 سنة مقفلة</span>
-                          ) : (
-                            <>
-                              <button onClick={() => openEditForm(b)} style={actionBtn('#1B4D7A')}>تعديل</button>
-                              {b.booking_status && b.booking_status !== 'active' ? (
-                                <button onClick={() => handleReactivateBooking(b)} style={actionBtn('#27ae60')}>إعادة تفعيل</button>
-                              ) : (
-                                <button onClick={() => handleCancelBooking(b)} style={actionBtn('#f39c12')}>إلغاء</button>
-                              )}
-                              <button onClick={() => handleDelete(b.id)} style={actionBtn('#e74c3c')}>حذف</button>
-                            </>
-                          )}
-                        </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                  {filteredBookings.length === 0 && (
-                    <tr>
-                      <td colSpan={10} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                        لا يوجد حجوزات لهذه السنة
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
+        <BookingsTable
+          filteredBookings={filteredBookings}
+          isReadOnly={isReadOnly}
+          lockedYears={lockedYears}
+          openEditForm={openEditForm}
+          handleCancelBooking={handleCancelBooking}
+          handleReactivateBooking={handleReactivateBooking}
+          handleDelete={handleDelete}
+        />
       )}
 
-      {/* نافذة تفاصيل الدخل الإضافي (تُفتح بالضغط على بطاقة "دخل إضافي") */}
-      {showExtraDetails && (
-        <div style={overlayStyle} onClick={() => setShowExtraDetails(false)}>
-          <div style={wideModalStyle} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, color: '#148F77' }}>💰 تفاصيل الدخل الإضافي</h3>
-              <button onClick={() => setShowExtraDetails(false)} style={{ ...actionBtn('#999'), padding: '8px 16px' }}>
-                إغلاق ✕
-              </button>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-                <thead>
-                  <tr style={{ background: '#f8f9fa', borderBottom: '2px solid #e9ecef', textAlign: 'right' }}>
-                    <th style={th}>التاريخ</th>
-                    <th style={th}>النوع</th>
-                    <th style={th}>مرتبط بحجز</th>
-                    <th style={th}>العميل</th>
-                    <th style={th}>المبلغ</th>
-                    <th style={th}>ملاحظات</th>
-                    {!isReadOnly && <th style={th}>إجراءات</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredExtraIncome.map((e, idx) => {
-                    const linkedBooking = bookings.find((b) => b.id === e.booking_id);
-                    return (
-                      <tr key={e.id} style={{ borderBottom: '1px solid #f0f0f0', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                        <td style={td}>{e.date_hijri ? `${formatHijriDisplay(e.date_hijri)} هـ` : '—'}</td>
-                        <td style={td}>{incomeTypeBadge(e.income_type)}</td>
-                        <td style={td}>{linkedBooking ? clientBadge(linkedBooking.client_name) : '— مستقل —'}</td>
-                        <td style={td}>{e.client_name || '—'}</td>
-                        <td style={{ ...td, fontWeight: 'bold', color: '#148F77' }}>{Number(e.amount).toLocaleString()} ر.س</td>
-                        <td style={td}>{e.notes || '—'}</td>
-                        {!isReadOnly && (
-                        <td style={td}>
-                          <button onClick={() => openEditExtraForm(e)} style={actionBtn('#1B4D7A')}>تعديل</button>
-                          <button onClick={() => handleDeleteExtra(e.id)} style={actionBtn('#e74c3c')}>حذف</button>
-                        </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                  {filteredExtraIncome.length === 0 && (
-                    <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
-                        لا يوجد دخل إضافي مسجّل
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
+      <ExtraIncomeSection
+        showExtraDetails={showExtraDetails} setShowExtraDetails={setShowExtraDetails}
+        filteredExtraIncome={filteredExtraIncome} bookings={bookings} isReadOnly={isReadOnly}
+        openEditExtraForm={openEditExtraForm} handleDeleteExtra={handleDeleteExtra}
+        showExtraForm={showExtraForm} setShowExtraForm={setShowExtraForm}
+        extraForm={extraForm} setExtraForm={setExtraForm} editingExtraId={editingExtraId}
+        handleSaveExtra={handleSaveExtra} bookingLabel={bookingLabel}
+      />
 
       {/* فورم الإضافة/التعديل - الحجوزات */}
       {showForm && (
@@ -1279,156 +906,6 @@ export default function Bookings() {
           </div>
         </div>
       )}
-
-      {/* فورم الإضافة/التعديل - الدخل الإضافي */}
-      {showExtraForm && (
-        <div style={overlayStyle}>
-          <div style={modalStyle}>
-            <h3>{editingExtraId ? 'تعديل دخل إضافي' : 'إضافة دخل إضافي'}</h3>
-
-            <label style={label}>نوع الدخل</label>
-            <select
-              value={extraForm.income_type}
-              onChange={(e) => setExtraForm({ ...extraForm, income_type: e.target.value })}
-              style={input}
-            >
-              {INCOME_TYPES.map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-
-            <label style={label}>مرتبط بحجز (اختياري)</label>
-            <select
-              value={extraForm.booking_id}
-              onChange={(e) => setExtraForm({ ...extraForm, booking_id: e.target.value })}
-              style={input}
-            >
-              <option value="">— دخل مستقل (غير مرتبط) —</option>
-              {bookings.map((b) => (
-                <option key={b.id} value={b.id}>{bookingLabel(b)}</option>
-              ))}
-            </select>
-
-            <label style={label}>المبلغ</label>
-            <input
-              type="number"
-              value={extraForm.amount}
-              onChange={(e) => setExtraForm({ ...extraForm, amount: e.target.value })}
-              style={input}
-            />
-
-            <label style={label}>التاريخ (هجري - يوم/شهر/سنة) - اختياري</label>
-            <input
-              type="text"
-              placeholder="مثال: 24/1/1448"
-              value={extraForm.date_hijri}
-              onChange={(e) => setExtraForm({ ...extraForm, date_hijri: e.target.value })}
-              style={input}
-            />
-
-            <label style={label}>اسم العميل (اختياري)</label>
-            <input
-              type="text"
-              value={extraForm.client_name}
-              onChange={(e) => setExtraForm({ ...extraForm, client_name: e.target.value })}
-              style={input}
-            />
-
-            <label style={label}>ملاحظات</label>
-            <textarea
-              value={extraForm.notes}
-              onChange={(e) => setExtraForm({ ...extraForm, notes: e.target.value })}
-              style={{ ...input, minHeight: '60px' }}
-            />
-
-            <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-              <button onClick={handleSaveExtra} style={{ ...actionBtn('#148F77'), flex: 1, padding: '10px' }}>
-                حفظ
-              </button>
-              <button onClick={() => setShowExtraForm(false)} style={{ ...actionBtn('#999'), flex: 1, padding: '10px' }}>
-                إلغاء
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
-}
-
-function SummaryCard({ label, value, color, onClick }) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        background: '#fff', border: `2px solid ${color}`, borderRadius: '10px', padding: '14px 20px', minWidth: '180px',
-        cursor: onClick ? 'pointer' : 'default', transition: 'transform 0.15s',
-      }}
-      onMouseEnter={(e) => { if (onClick) e.currentTarget.style.transform = 'translateY(-2px)'; }}
-      onMouseLeave={(e) => { if (onClick) e.currentTarget.style.transform = 'translateY(0)'; }}
-    >
-      <div style={{ fontSize: '13px', color: '#666' }}>{label}</div>
-      <div style={{ fontSize: '20px', fontWeight: 'bold', color }}>{value}</div>
-      {onClick && <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>اضغط للتفاصيل ◂</div>}
-    </div>
-  );
-}
-
-function yearTabStyle(active) {
-  return {
-    padding: '8px 20px',
-    borderRadius: '8px',
-    border: active ? 'none' : '1px solid #ddd',
-    background: active ? '#1B4D7A' : '#fff',
-    color: active ? '#fff' : '#555',
-    fontWeight: 'bold',
-    fontSize: '14px',
-    fontFamily: 'Cairo, sans-serif',
-    cursor: 'pointer',
-  };
-}
-
-function typeTabStyle(type, active) {
-  const c = TYPE_COLORS[type] || { text: '#1B4D7A', border: '#ddd' };
-  return {
-    padding: '8px 20px',
-    borderRadius: '8px',
-    border: active ? 'none' : `1px solid ${c.border}`,
-    background: active ? c.text : '#fff',
-    color: active ? '#fff' : c.text,
-    fontWeight: 'bold',
-    fontSize: '14px',
-    fontFamily: 'Cairo, sans-serif',
-    cursor: 'pointer',
-  };
-}
-
-const th = { padding: '12px 16px', fontWeight: 'bold', color: '#555' };
-const td = { padding: '12px 16px' };
-const label = { display: 'block', marginTop: '10px', marginBottom: '4px', fontSize: '13px', color: '#555' };
-const input = {
-  width: '100%',
-  padding: '8px',
-  borderRadius: '6px',
-  border: '1px solid #ccc',
-  fontFamily: 'Cairo, sans-serif',
-  boxSizing: 'border-box',
-};
-const overlayStyle = {
-  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-  background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
-};
-const modalStyle = {
-  background: '#fff', borderRadius: '12px', padding: '24px', width: '420px', maxHeight: '90vh', overflowY: 'auto',
-  direction: 'rtl', fontFamily: 'Cairo, sans-serif',
-};
-const wideModalStyle = {
-  background: '#fff', borderRadius: '12px', padding: '24px', width: '90%', maxWidth: '900px', maxHeight: '85vh', overflowY: 'auto',
-  direction: 'rtl', fontFamily: 'Cairo, sans-serif',
-};
-function actionBtn(color) {
-  return {
-    background: color, color: '#fff', border: 'none', padding: '6px 12px',
-    borderRadius: '6px', cursor: 'pointer', marginLeft: '6px', fontSize: '13px', fontFamily: 'Cairo, sans-serif',
-  };
 }
