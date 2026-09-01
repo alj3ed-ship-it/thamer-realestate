@@ -155,11 +155,21 @@ export default function Bookings() {
   });
 
   function setStaffRate(type, value) {
-    setStaffRates((prev) => ({ ...prev, [type]: value }));
+    setStaffRates((prev) => {
+      const next = { ...prev, [type]: value };
+      supabase.from('hall_settings').upsert({ key: 'bookings_staff_rates', value: next, updated_at: new Date().toISOString() })
+        .then(({ error }) => { if (error) console.error('فشل حفظ أسعار المباشرين:', error); });
+      return next;
+    });
   }
 
   function setSuppliesRate(type, value) {
-    setSuppliesRates((prev) => ({ ...prev, [type]: value }));
+    setSuppliesRates((prev) => {
+      const next = { ...prev, [type]: value };
+      supabase.from('hall_settings').upsert({ key: 'bookings_supplies_rates', value: next, updated_at: new Date().toISOString() })
+        .then(({ error }) => { if (error) console.error('فشل حفظ أسعار القهوة والشاهي:', error); });
+      return next;
+    });
   }
 
   function getAnnualSalary(year) {
@@ -167,7 +177,12 @@ export default function Bookings() {
   }
 
   function setAnnualSalaryForYear(year, value) {
-    setAnnualSalaries((prev) => ({ ...prev, [year]: value }));
+    setAnnualSalaries((prev) => {
+      const next = { ...prev, [year]: value };
+      supabase.from('hall_settings').upsert({ key: 'bookings_annual_salaries', value: next, updated_at: new Date().toISOString() })
+        .then(({ error }) => { if (error) console.error('فشل حفظ الرواتب السنوية:', error); });
+      return next;
+    });
   }
 
   const [abuAyoubRates, setAbuAyoubRates] = useState(() => {
@@ -192,7 +207,12 @@ export default function Bookings() {
   });
 
   function setAbuAyoubRate(type, value) {
-    setAbuAyoubRates((prev) => ({ ...prev, [type]: value }));
+    setAbuAyoubRates((prev) => {
+      const next = { ...prev, [type]: value };
+      supabase.from('hall_settings').upsert({ key: 'bookings_abu_ayoub_rates', value: next, updated_at: new Date().toISOString() })
+        .then(({ error }) => { if (error) console.error('فشل حفظ عمولة أبو أيوب:', error); });
+      return next;
+    });
   }
 
   function getElectricity(year) {
@@ -200,7 +220,18 @@ export default function Bookings() {
   }
 
   function setElectricityForYear(year, value) {
-    setElectricityByYear((prev) => ({ ...prev, [year]: value }));
+    setElectricityByYear((prev) => {
+      const next = { ...prev, [year]: value };
+      supabase.from('hall_settings').upsert({ key: 'bookings_electricity_by_year', value: next, updated_at: new Date().toISOString() })
+        .then(({ error }) => { if (error) console.error('فشل حفظ الكهرباء:', error); });
+      return next;
+    });
+  }
+
+  function setWaterRatePerPairAndSave(value) {
+    setWaterRatePerPair(value);
+    supabase.from('hall_settings').upsert({ key: 'bookings_water_rate_per_pair', value, updated_at: new Date().toISOString() })
+      .then(({ error }) => { if (error) console.error('فشل حفظ سعر الماء:', error); });
   }
 
   const emptyForm = {
@@ -233,29 +264,7 @@ export default function Bookings() {
     loadHallAndBookings();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('bookings_staff_rates', JSON.stringify(staffRates));
-  }, [staffRates]);
-
-  useEffect(() => {
-    localStorage.setItem('bookings_supplies_rates', JSON.stringify(suppliesRates));
-  }, [suppliesRates]);
-
-  useEffect(() => {
-    localStorage.setItem('bookings_annual_salaries', JSON.stringify(annualSalaries));
-  }, [annualSalaries]);
-
-  useEffect(() => {
-    localStorage.setItem('bookings_abu_ayoub_rates', JSON.stringify(abuAyoubRates));
-  }, [abuAyoubRates]);
-
-  useEffect(() => {
-    localStorage.setItem('bookings_electricity_by_year', JSON.stringify(electricityByYear));
-  }, [electricityByYear]);
-
-  useEffect(() => {
-    localStorage.setItem('bookings_water_rate_per_pair', String(waterRatePerPair));
-  }, [waterRatePerPair]);
+  // إعدادات القاعة تُحفظ مباشرة في Supabase (hall_settings) داخل كل دالة تعديل أدناه
 
   async function loadHallAndBookings() {
     setLoading(true);
@@ -303,6 +312,24 @@ export default function Bookings() {
 
       if (lockErr) throw lockErr;
       setLockedYears(new Set((lockData || []).map((l) => l.year)));
+
+      const { data: settingsData, error: settingsErr } = await supabase
+        .from('hall_settings')
+        .select('key, value');
+
+      if (settingsErr) throw settingsErr;
+      const settingsMap = {};
+      (settingsData || []).forEach((s) => { settingsMap[s.key] = s.value; });
+      setStaffRates(settingsMap.bookings_staff_rates || DEFAULT_STAFF_RATES);
+      setSuppliesRates(settingsMap.bookings_supplies_rates || DEFAULT_SUPPLIES_RATES);
+      setAnnualSalaries(settingsMap.bookings_annual_salaries || DEFAULT_SALARIES_BY_YEAR);
+      setAbuAyoubRates(settingsMap.bookings_abu_ayoub_rates || DEFAULT_ABU_AYOUB_RATES);
+      setElectricityByYear(settingsMap.bookings_electricity_by_year || {});
+      setWaterRatePerPair(
+        settingsMap.bookings_water_rate_per_pair !== undefined
+          ? settingsMap.bookings_water_rate_per_pair
+          : DEFAULT_WATER_RATE_PER_PAIR
+      );
     } catch (err) {
       console.error(err);
       setError('حدث خطأ أثناء تحميل الحجوزات: ' + err.message);
@@ -933,7 +960,7 @@ export default function Bookings() {
             <input
               type="number"
               value={waterRatePerPair}
-              onChange={(e) => setWaterRatePerPair(Number(e.target.value) || 0)}
+              onChange={(e) => setWaterRatePerPairAndSave(Number(e.target.value) || 0)}
               style={{ width: '100px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'Cairo, sans-serif' }}
             />
           </div>
