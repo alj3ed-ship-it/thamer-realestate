@@ -488,7 +488,7 @@ export default function Entitlements() {
       <div>
         {base}
         {r.historyEntries && r.historyEntries.length > 1 && (
-          <div style={{ fontSize: 10.5, color: "#6b7280", marginTop: 3 }}>
+          <div style={{ fontSize: 10.5, color: "#f39c12", marginTop: 3, fontWeight: "bold" }}>
             {r.historyEntries.map((h, idx) => (
               <div key={h.id || idx}>
                 • {Number(h.amount || 0).toLocaleString()} ريال{h.payment_date_hijri ? ` — ${h.payment_date_hijri} هـ` : ""}
@@ -705,15 +705,22 @@ export default function Entitlements() {
             data={filteredResults.map(r => {
       const amountColor = r.status === "paid" ? "#27ae60" : r.status === "not_due" ? (r.paidState === "partial" ? "#2E86C1" : "#7f8c8d") : "#e74c3c";
       const statusColor = r.status === "paid" ? "#27ae60" : r.status === "not_due" ? (r.paidState === "partial" ? "#2E86C1" : "#7f8c8d") : (r.paidState === "partial" ? "#f39c12" : "#e74c3c");
+      const remaining = Math.max((r.amount || 0) - (r.paidAmount || 0), 0);
+      const lastHistoryEntry = r.historyEntries && r.historyEntries.length > 0 ? r.historyEntries[r.historyEntries.length - 1] : null;
+      const lastPaymentLabel = lastHistoryEntry
+        ? `${lastHistoryEntry.payment_date_hijri ? lastHistoryEntry.payment_date_hijri + " هـ" : "—"}${r.historyEntries.length > 1 ? ` (${r.historyEntries.length} دفعات)` : ""}`
+        : (r.paymentDateHijri ? `${r.paymentDateHijri} هـ` : (r.firstPartialDateHijri ? `${r.firstPartialDateHijri} هـ` : "—"));
       return {
         ...r,
         dueDateHijri: {
           value: `${r.dueDateHijri} هـ`,
-          color: "#e74c3c",
           subtext: r.paymentDateHijri ? `✓ ${r.paymentDateHijri} هـ` : null,
           subtextColor: "#27ae60",
         },
         amountDisplay: { value: `${r.amount.toLocaleString()} ريال`, color: amountColor },
+        paidAmount: `${r.paidAmount.toLocaleString()} ريال`,
+        remainingAmount: remaining > 0 ? { value: `${remaining.toLocaleString()} ريال`, color: "#e74c3c" } : `${remaining.toLocaleString()} ريال`,
+        lastPaymentDate: lastPaymentLabel,
         statusLabel: { value: r.statusLabel, color: statusColor },
         taxLabel: r.taxApplies ? `${r.taxAmount.toLocaleString()} ريال` : "—",
         totalWithTax: r.taxApplies ? `${(r.grossTotal ?? (r.amount + r.taxAmount)).toLocaleString()} ريال` : `${r.amount.toLocaleString()} ريال`,
@@ -725,8 +732,9 @@ export default function Entitlements() {
               { key: "activity", label: "النشاط" },
               { key: "unit", label: "الوحدة" },
               { key: "dueDateHijri", label: "تاريخ الاستحقاق" },
-              { key: "amountDisplay", label: "المبلغ المستحق" },
               { key: "paidAmount", label: "المبلغ المدفوع" },
+              { key: "remainingAmount", label: "المبلغ المتبقي" },
+              { key: "lastPaymentDate", label: "تاريخ آخر دفعة" },
               { key: "taxLabel", label: "الضريبة" },
               { key: "totalWithTax", label: "الإجمالي شامل الضريبة" },
               { key: "statusLabel", label: "الحالة" },
@@ -736,10 +744,11 @@ export default function Entitlements() {
             stats={[
               { label: "إجمالي المحصّل", value: `${totalCollected.toLocaleString()} ريال`, color: "#27ae60" },
               { label: "إجمالي المتبقي", value: `${totalRemaining.toLocaleString()} ريال`, color: "#e74c3c" },
-              { label: "إجمالي المستحق", value: `${totalAmount.toLocaleString()} ريال`, color: "#1B4D7A" },
-              { label: "إجمالي الضريبة", value: `${totalTax.toLocaleString()} ريال`, color: "#8e44ad" },
               { label: "الإجمالي شامل الضريبة", value: `${totalWithTax.toLocaleString()} ريال`, color: "#1B4D7A" },
-              { label: "الصافي بدون ضريبة", value: `${totalNet.toLocaleString()} ريال`, color: "#16a085" },
+              ...(totalTax > 0 ? [
+                { label: "إجمالي الضريبة", value: `${totalTax.toLocaleString()} ريال`, color: "#8e44ad" },
+                { label: "الصافي بدون ضريبة", value: `${totalNet.toLocaleString()} ريال`, color: "#16a085" },
+              ] : []),
             ]}
           />
 
