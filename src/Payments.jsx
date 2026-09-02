@@ -734,14 +734,10 @@ function Payments({ onBack }) {
       amount: (computed === 'partial' || computed === 'partial_early')
         ? {
             value: `${due.toLocaleString()} ريال`,
-            color: computed === 'partial_early' ? '#2E86C1' : '#d4ac0d',
             subtext: `مدفوع ${paid.toLocaleString()} · متبقي ${(due - paid).toLocaleString()}`,
-            subtextColor: computed === 'partial_early' ? '#2E86C1' : '#B42318'
+            subtextColor: '#e74c3c'
           }
-        : {
-            value: `${due.toLocaleString()} ريال`,
-            color: computed === 'paid' ? '#27ae60' : computed === 'overdue' ? '#e74c3c' : '#7f8c8d'
-          },
+        : `${due.toLocaleString()} ريال`,
       tax: taxApplies ? `${getTaxAmount(p).toLocaleString()} ريال` : '—',
       totalWithTax: taxApplies ? `${getTotalWithTax(p).toLocaleString()} ريال` : `${due.toLocaleString()} ريال`,
       vatType: taxApplies ? (isAmountVatInclusive(p) ? 'شامل الضريبة' : 'الضريبة على المالك') : '—',
