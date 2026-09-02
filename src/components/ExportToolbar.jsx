@@ -128,15 +128,20 @@ export default function ExportToolbar({
   // تلوين ثابت حسب نوع العمود (تفضيل المستخدم): الإيراد الأساسي أزرق،
   // الضريبة أحمر — يُطبّق بالإكسل وبالطباعة/PDF على حد سواء.
   const amountFontColor = (col) => {
+    // ألوان صريحة حسب مفتاح العمود (جدول الاستحقاقات) — تُفحص أولاً
+    // لتفادي التصادم مع النمط النصي القديم أدناه
+    if (col.key === "remainingAmount") return "#e74c3c";
+    // نمط قديم (تقارير أخرى تستخدم هذا المكوّن، مثل VatReturns)
     if (col.label.includes("الأساسي")) return "#1B4D7A";
-    if (col.label.includes("الضريبة")) return "#B42318";
-    if (col.label.includes("المستحق")) return "#e74c3c";
+    if (col.label === "الضريبة") return "#B42318";
+    if (col.label === "المبلغ المستحق") return "#e74c3c";
     return null;
   };
   const amountFontColorArgb = (col) => {
+    if (col.key === "remainingAmount") return "FFE74C3C";
     if (col.label.includes("الأساسي")) return "FF1B4D7A";
-    if (col.label.includes("الضريبة")) return "FFB42318";
-    if (col.label.includes("المستحق")) return "FFE74C3C";
+    if (col.label === "الضريبة") return "FFB42318";
+    if (col.label === "المبلغ المستحق") return "FFE74C3C";
     return null;
   };
 
@@ -582,13 +587,17 @@ export default function ExportToolbar({
                   });
 
                   group.rows.forEach((row, ri) => {
+                    const statusValRow = statusCol ? String(row[statusCol.key] ?? "") : "";
+                    const isPartialRow = statusValRow.includes("جزئي");
+                    const rowBg = isPartialRow ? "#F5EFE0" : ri % 2 === 0 ? "#ffffff" : "#f5f7fa";
                     elements.push(
-                      <tr key={`row-${gi}-${ri}`} style={{ background: ri % 2 === 0 ? "#ffffff" : "#f5f7fa" }}>
+                      <tr key={`row-${gi}-${ri}`} style={{ background: rowBg }}>
                         {displayCols.map((col) => {
                           const cell = row[col.key];
                           const isRich = cell && typeof cell === "object" && "value" in cell;
                           const cellValue = isRich ? cell.value : cell ?? "—";
-                          let tdStyle = styles.td;
+                          const cellColor = isRich ? cell.color : undefined;
+                          let tdStyle = cellColor ? { ...styles.td, color: cellColor, fontWeight: "bold" } : styles.td;
                           if (numericKeys.has(col.key)) {
                             const num = parseRiyalNumber(cellValue);
                             if (num !== null) subtotal[col.key] += num;
