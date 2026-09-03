@@ -14,6 +14,13 @@ function addHijriMonths(date, months) {
   return { year: Math.floor(totalMonths / 12), month: (totalMonths % 12) + 1, day: date.day };
 }
 
+function reverseDateOrder(text) {
+  if (!text) return text;
+  const parts = text.split('/');
+  if (parts.length !== 3) return text;
+  return [parts[2], parts[1], parts[0]].join('/');
+}
+
 function computeInstallmentHijri(startDateHijri, totalInstallments, installmentNumber) {
   const start = parseHijriParts(startDateHijri);
   if (!start || !totalInstallments) return null;
@@ -150,8 +157,8 @@ export default function LeaseDetailsModal({ leaseId, onClose }) {
                 <div><span style={{ color: "#6b7280" }}>النشاط: </span><strong>{l.tenants?.note || "—"}</strong></div>
                 <div><span style={{ color: "#6b7280" }}>العقار: </span><strong>{l.properties?.name || "—"}</strong></div>
                 <div><span style={{ color: "#6b7280" }}>الوحدات: </span><strong>{units.map(u => `${u.unit_type} ${u.unit_number}`).join(" + ") || "—"}</strong></div>
-                <div><span style={{ color: "#6b7280" }}>تاريخ البداية: </span><strong>{l.start_date || "—"}{l.start_date_hijri ? ` (${l.start_date_hijri} هـ)` : ""}</strong></div>
-                <div><span style={{ color: "#6b7280" }}>تاريخ النهاية: </span><strong>{l.end_date || "—"}{l.end_date_hijri ? ` (${l.end_date_hijri} هـ)` : ""}</strong></div>
+                <div><span style={{ color: "#6b7280" }}>تاريخ البداية: </span><strong>{l.start_date || "—"}{l.start_date_hijri ? ` (${reverseDateOrder(l.start_date_hijri)} هـ)` : ""}</strong></div>
+                <div><span style={{ color: "#6b7280" }}>تاريخ النهاية: </span><strong>{l.end_date || "—"}{l.end_date_hijri ? ` (${reverseDateOrder(l.end_date_hijri)} هـ)` : ""}</strong></div>
                 <div><span style={{ color: "#6b7280" }}>الإجمالي: </span><strong>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</strong></div>
                 <div><span style={{ color: "#6b7280" }}>نوع الدفع: </span><strong>{l.payment_type || "—"}</strong></div>
               </div>
@@ -200,16 +207,16 @@ export default function LeaseDetailsModal({ leaseId, onClose }) {
                               {history.length > 1 && (
                                 <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 400, marginTop: 2 }}>
                                   {history.map((h, hi) => (
-                                    <div key={h.id || hi}>• {Number(h.amount || 0).toLocaleString()}{h.payment_date_hijri ? ` — ${h.payment_date_hijri} هـ` : ""}</div>
+                                    <div key={h.id || hi}>• {Number(h.amount || 0).toLocaleString()}{h.payment_date_hijri ? ` — ${reverseDateOrder(h.payment_date_hijri)} هـ` : ""}</div>
                                   ))}
                                 </div>
                               )}
                             </td>
                             <td style={{ padding: 8 }}>
-                              <div>{p.payment_date_hijri || p.payment_date || "—"}</div>
+                              <div>{reverseDateOrder(p.payment_date_hijri) || p.payment_date || "—"}</div>
                               {p.first_partial_date_hijri && (
                                 <div style={{ fontSize: 10, color: "#e67e22", marginTop: 2 }} title="تاريخ أول دفعة جزئية">
-                                  أول جزئية: {p.first_partial_date_hijri} هـ
+                                  أول جزئية: {reverseDateOrder(p.first_partial_date_hijri)} هـ
                                 </div>
                               )}
                             </td>
