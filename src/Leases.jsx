@@ -119,6 +119,13 @@ function hijriSortKey(hijriText) {
 }
 
 // إضافة عدد أشهر هجرية على تاريخ هجري (لتوليد تواريخ الدفعات المقترحة)
+function reverseDateOrder(text) {
+  if (!text) return text;
+  const parts = text.split('/');
+  if (parts.length !== 3) return text;
+  return [parts[2], parts[1], parts[0]].join('/');
+}
+
 function addHijriMonths(hijri, monthsToAdd) {
   if (!hijri.year || !hijri.month || !hijri.day) return { year: "", month: "", day: "" };
   const totalMonths = (hijri.month - 1) + monthsToAdd;
@@ -360,7 +367,8 @@ export default function Leases({ onBack }) {
   function getInstallmentDate(leaseId, num) {
     const row = payments.find(p => p.lease_id === leaseId && p.installment_number === num);
     if (!row) return "—";
-    return row.due_date_hijri || row.due_date_gregorian || "—";
+    const raw = row.due_date_hijri || row.due_date_gregorian || "—";
+    return reverseDateOrder(raw);
   }
 
   function getExtraInstallmentsCount(leaseId) {
@@ -1094,7 +1102,7 @@ export default function Leases({ onBack }) {
                               {l.payment_type || "—"}
                             </span>
                           </td>
-                          <td style={{ padding: "12px", fontWeight: 600 }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</td>
+                          <td style={{ padding: "12px", fontWeight: 600, color: "#e74c3c" }}>{l.rent_amount ? Number(l.rent_amount).toLocaleString() + " ريال" : "—"}</td>
                           <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 1)}</td>
                           <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 2)}</td>
                           <td style={{ padding: "12px", color: "#059669", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{getInstallmentDate(l.id, 3)}</td>

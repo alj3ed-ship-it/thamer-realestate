@@ -177,6 +177,7 @@ function Payments({ onBack }) {
   const [deletingId, setDeletingId] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [viewingLeaseId, setViewingLeaseId] = useState(null)
+  const [expandedLeases, setExpandedLeases] = useState([])
   const [filterProperty, setFilterProperty] = useState('الكل')
   const [filterTenants, setFilterTenants] = useState([])
   const [showTenantDropdown, setShowTenantDropdown] = useState(false)
@@ -589,11 +590,16 @@ function Payments({ onBack }) {
     const overdueCount = propPayments.filter(p => computePaymentStatus(p) === 'overdue').length
     return { id: prop.id, name: prop.name, total, paid, remaining, tax, count: propPayments.length, overdueCount }
   }).sort((a, b) => {
-    const priority = ['عمارة سلمان', 'عمارة إبراهيم', 'عمارة عبدالله الكبيرة', 'عمارة عبدالله الصغيرة']
-    const aIdx = priority.indexOf(a.name)
-    const bIdx = priority.indexOf(b.name)
-    const aRank = aIdx === -1 ? 999 : aIdx
-    const bRank = bIdx === -1 ? 999 : bIdx
+    function rankOf(name) {
+      const n = name || ''
+      if (n.includes('سلمان')) return 1
+      if (n.includes('إبراهيم') || n.includes('أبراهيم') || n.includes('ابراهيم')) return 2
+      if (n.includes('الكبيرة')) return 3
+      if (n.includes('الصغيرة') || n.includes('الصغيره')) return 4
+      return 99
+    }
+    const aRank = rankOf(a.name)
+    const bRank = rankOf(b.name)
     if (aRank !== bRank) return aRank - bRank
     return (a.name || '').localeCompare(b.name || '', 'ar')
   })
@@ -731,13 +737,22 @@ function Payments({ onBack }) {
       activity: getTenantActivity(p.lease_id),
       unit: getUnitNumbers(p.lease_id),
       installment: total ? `${index} / ${total}` : `${index}`,
-      amount: (computed === 'partial' || computed === 'partial_early')
-        ? {
+      amount: (() => {
+        const amountColor = computed === 'paid' ? '#27ae60'
+          : computed === 'overdue' ? '#e74c3c'
+          : computed === 'not_due' ? '#7f8c8d'
+          : computed === 'partial_early' ? '#2E86C1'
+          : '#d4ac0d'
+        if (computed === 'partial' || computed === 'partial_early') {
+          return {
             value: `${due.toLocaleString()} ريال`,
+            color: amountColor,
             subtext: `مدفوع ${paid.toLocaleString()} · متبقي ${(due - paid).toLocaleString()}`,
-            subtextColor: '#e74c3c'
+            subtextColor: amountColor
           }
-        : `${due.toLocaleString()} ريال`,
+        }
+        return { value: `${due.toLocaleString()} ريال`, color: amountColor }
+      })(),
       tax: taxApplies ? `${getTaxAmount(p).toLocaleString()} ريال` : '—',
       totalWithTax: taxApplies ? `${getTotalWithTax(p).toLocaleString()} ريال` : `${due.toLocaleString()} ريال`,
       vatType: taxApplies ? (isAmountVatInclusive(p) ? 'شامل الضريبة' : 'الضريبة على المالك') : '—',
@@ -977,6 +992,8 @@ function Payments({ onBack }) {
                 const total = pays.reduce((s, p) => s + Number(p.amount || 0), 0)
                 const paid = pays.reduce((s, p) => s + Number(p.amount_paid || 0), 0)
                 const remaining = Math.max(total - paid, 0)
+                const isExpanded = expandedLeases.includes(leaseId)
+                const visiblePays = isExpanded ? pays : pays.slice(0, 4)
 
                 return (
                   <div key={leaseId} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, boxShadow: '0 2px 10px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
@@ -1027,7 +1044,7 @@ function Payments({ onBack }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {pays.map((p, idx) => {
+                        {visiblePays.map((p, idx) => {
                           const totalInst = p.total_installments || getTotalInstallments(p.lease_id)
                           const index = p.installment_number || getPaymentIndex(p)
                           const { hijriText, isEstimated } = getPaymentHijriDisplay(p)
@@ -1065,6 +1082,14 @@ function Payments({ onBack }) {
                       </tbody>
                     </table>
                     </div>
+                    {pays.length > 4 && (
+                      <div style={{ textAlign: 'center', padding: '8px', borderTop: '1px solid #f0f0f0' }}>
+                        <button type="button" onClick={() => setExpandedLeases(prev => isExpanded ? prev.filter(id => id !== leaseId) : [...prev, leaseId])}
+                          style={{ border: 'none', background: 'none', color: '#1B4D7A', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+                          {isExpanded ? '▲ عرض أقل' : `▼ عرض ${pays.length - 4} دفعات أخرى`}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )
               })

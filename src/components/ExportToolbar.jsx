@@ -145,6 +145,16 @@ export default function ExportToolbar({
     return null;
   };
 
+  // تلوين خلية الحالة بتقارير الطباعة/PDF حسب النص (نفس ألوان شارات الشاشة)
+  const getStatusExportStyle = (val) => {
+    if (val.includes("مقدماً") || val.includes("مقدَّم")) return { bg: "#EAF4FB", color: "#2E86C1" };
+    if (val.includes("جزئي") || val.includes("⚠")) return { bg: "#FEF9E7", color: "#f39c12" };
+    if (val.includes("✓")) return { bg: "#EAFAF1", color: "#27ae60" };
+    if (val.includes("غير مستحق") || val.includes("⏳")) return { bg: "#FDF6E3", color: "#b7950b" };
+    if (val.includes("متأخر") || val.includes("⏰")) return { bg: "#FDEDEC", color: "#e74c3c" };
+    return null;
+  };
+
   const handlePrint = () => {
     const node = buildPrintNode();
     if (!node) return;
@@ -711,8 +721,15 @@ export default function ExportToolbar({
                       const cellColor = isRich ? cell.color : undefined;
                       const cellSubtext = isRich ? cell.subtext : null;
                       const cellSubColor = isRich ? cell.subtextColor : undefined;
+                      let tdStyle = { ...styles.td, color: cellColor || styles.td.color, fontWeight: cellColor ? "bold" : "normal" };
+                      if (statusCol && col.key === statusCol.key) {
+                        const statusStyle = getStatusExportStyle(String(cellValue || ""));
+                        if (statusStyle) {
+                          tdStyle = { ...tdStyle, background: statusStyle.bg, color: statusStyle.color, fontWeight: "bold" };
+                        }
+                      }
                       return (
-                        <td key={col.key} style={{ ...styles.td, color: cellColor || styles.td.color, fontWeight: cellColor ? "bold" : "normal" }}>
+                        <td key={col.key} style={tdStyle}>
                           <div>{cellValue}</div>
                           {cellSubtext && (
                             <div style={{ fontSize: "11px", marginTop: "3px", color: cellSubColor || "#27ae60", fontWeight: "bold" }}>
