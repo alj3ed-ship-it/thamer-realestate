@@ -602,25 +602,63 @@ export default function Leases({ onBack }) {
     return { annual: amount, installment, count: type?.multiplier || 1 };
   }
 
-  async function syncUnpaidInstallments(leaseId, newRentAmount) {
+  async function syncUnpaidInstallments(leaseId, newRentAmount, newPaymentType, startDate) {
     const { data: existingPayments, error } = await supabase
       .from("payments")
       .select("id, total_installments, amount_paid")
       .eq("lease_id", leaseId);
 
-    if (error || !existingPayments || existingPayments.length === 0) return;
+    if (error || !existingPayments || existingPayments.length === 0) return null;
 
-    const totalInstallments = existingPayments[0].total_installments || existingPayments.length;
-    const newInstallmentAmount = Math.round(Number(newRentAmount) / totalInstallments);
+    const oldTotalInstallments = existingPayments[0].total_installments || existingPayments.length;
+    const plan = getInstallmentPlan(newPaymentType);
+    const newCount = plan.count;
+    const hasAnyPaid = existingPayments.some(p => Number(p.amount_paid) > 0);
 
+    if (newCount !== oldTotalInstallments) {
+      if (hasAnyPaid) {
+        const newInstallmentAmount = Math.round(Number(newRentAmount) / oldTotalInstallments);
+        for (const p of existingPayments) {
+          if (Number(p.amount_paid) === 0) {
+            await supabase.from("payments")
+              .update({ amount_due: newInstallmentAmount, amount: newInstallmentAmount })
+              .eq("id", p.id);
+          }
+        }
+        return { blockedDueToPaid: true, oldCount: oldTotalInstallments };
+      }
+      if (startDate) {
+        await supabase.from("payments").delete().eq("lease_id", leaseId);
+        const amountPer = Math.round(Number(newRentAmount) / newCount);
+        const newRows = Array.from({ length: newCount }, (_, i) => {
+          const gDate = addGregorianMonths(startDate, i * plan.stepMonths);
+          const hijriText = gregorianToHijriText(gDate);
+          return {
+            lease_id: leaseId,
+            installment_number: i + 1,
+            total_installments: newCount,
+            amount_due: amountPer,
+            amount: amountPer,
+            amount_paid: 0,
+            due_date_hijri: hijriText,
+            due_date_gregorian: gDate,
+            status: "لم يُسدَّد",
+          };
+        });
+        await supabase.from("payments").insert(newRows);
+        return { rebuilt: true, newCount };
+      }
+    }
+
+    const newInstallmentAmount = Math.round(Number(newRentAmount) / oldTotalInstallments);
     for (const p of existingPayments) {
       if (Number(p.amount_paid) === 0) {
-        await supabase
-          .from("payments")
+        await supabase.from("payments")
           .update({ amount_due: newInstallmentAmount, amount: newInstallmentAmount })
           .eq("id", p.id);
       }
     }
+    return { unchangedCount: true };
   }
 
   async function handleSave() {
@@ -653,7 +691,10 @@ export default function Leases({ onBack }) {
       for (const uid of oldUnitIds) await supabase.from("units").update({ status: "شاغرة" }).eq("id", uid);
       await supabase.from("lease_units").delete().eq("lease_id", editingId);
       await supabase.from("leases").update(payload).eq("id", editingId);
-      await syncUnpaidInstallments(editingId, form.rent_amount);
+      const syncResult = await syncUnpaidInstallments(editingId, form.rent_amount, form.payment_type, form.start_date);
+      if (syncResult?.blockedDueToPaid) {
+        window.alert("تنبيه: عدد الدفعات لم يتغيّر فعلياً لوجود دفعة/دفعات مسددة مسبقاً على هذا العقد. تم فقط تحديث مبلغ الدفعات غير المسددة على نفس العدد القديم (" + syncResult.oldCount + "). لتغيير عدد الدفعات يلزم التعامل مع الدفعات المسددة يدوياً أولاً.");
+      }
     } else {
       const { data } = await supabase.from("leases").insert([payload]).select("id");
       leaseId = data?.[0]?.id;

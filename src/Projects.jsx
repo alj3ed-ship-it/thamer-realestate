@@ -2,6 +2,23 @@ import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import { useReadOnly } from './ReadOnlyContext';
 import ExportToolbar from './components/ExportToolbar';
+import ProjectDetailsModal from './ProjectDetailsModal';
+
+const HIJRI_MONTHS = ["محرم","صفر","ربيع الأول","ربيع الثاني","جمادى الأولى","جمادى الثانية","رجب","شعبان","رمضان","شوال","ذو القعدة","ذو الحجة"];
+const HIJRI_YEARS = Array.from({ length: 21 }, (_, i) => 1445 + i);
+const HIJRI_DAYS = Array.from({ length: 30 }, (_, i) => i + 1);
+
+function parseDMY(text) {
+  if (!text) return { day: '', month: '', year: '' };
+  const parts = String(text).split('/');
+  if (parts.length !== 3) return { day: '', month: '', year: '' };
+  return { day: Number(parts[0]) || '', month: Number(parts[1]) || '', year: Number(parts[2]) || '' };
+}
+
+function composeDMY({ day, month, year }) {
+  if (!day || !month || !year) return '';
+  return `${day}/${month}/${year}`;
+}
 
 const STATUS_COLORS = {
   'جاري': { bg: '#dbeafe', text: '#0c4a6e', border: '#0284c7' },
@@ -22,6 +39,7 @@ function Projects() {
   const [expandedDesc, setExpandedDesc] = useState(new Set());
   const [expandedNotes, setExpandedNotes] = useState(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewingProjectId, setViewingProjectId] = useState(null);
   const emptyFormState = {
     name: '',
     description: '',
@@ -245,14 +263,33 @@ function Projects() {
                 </div>
 
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>التاريخ الهجري (يوم/شهر/سنة)</label>
-                  <input
-                    type="text"
-                    value={formData.date_created}
-                    onChange={(e) => handleInputChange('date_created', e.target.value)}
-                    style={styles.input}
-                    placeholder="مثال: 16/1/1448"
-                  />
+                  <label style={styles.label}>التاريخ الهجري</label>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select
+                      value={parseDMY(formData.date_created).year || ''}
+                      onChange={(e) => handleInputChange('date_created', composeDMY({ ...parseDMY(formData.date_created), year: e.target.value }))}
+                      style={{ ...styles.input, flex: 2 }}
+                    >
+                      <option value="">السنة</option>
+                      {HIJRI_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                    <select
+                      value={parseDMY(formData.date_created).month || ''}
+                      onChange={(e) => handleInputChange('date_created', composeDMY({ ...parseDMY(formData.date_created), month: e.target.value }))}
+                      style={{ ...styles.input, flex: 3 }}
+                    >
+                      <option value="">الشهر</option>
+                      {HIJRI_MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+                    </select>
+                    <select
+                      value={parseDMY(formData.date_created).day || ''}
+                      onChange={(e) => handleInputChange('date_created', composeDMY({ ...parseDMY(formData.date_created), day: e.target.value }))}
+                      style={{ ...styles.input, flex: 2 }}
+                    >
+                      <option value="">اليوم</option>
+                      {HIJRI_DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
                 </div>
 
                 <div style={styles.formGroup}>
@@ -410,7 +447,11 @@ function Projects() {
                     const hasLongNotes = project.notes && project.notes.length > 30;
                     return (
                       <tr key={project.id} style={{ background: idx % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #e5e7eb' }}>
-                        <td style={{ ...styles.td, fontWeight: 600, color: '#1B4D7A' }}>{project.name}</td>
+                        <td
+                          onClick={() => setViewingProjectId(project.id)}
+                          style={{ ...styles.td, fontWeight: 600, color: '#1B4D7A', cursor: 'pointer', textDecoration: 'underline' }}
+                          title="اضغط لعرض تفاصيل المشروع"
+                        >{project.name}</td>
                         <td style={styles.td}>
                           <span style={{ ...styles.badge, backgroundColor: typeInfo.bg, color: typeInfo.text, border: `1px solid ${typeInfo.border}` }}>
                             {project.project_type || 'مصروف'}
@@ -499,6 +540,14 @@ function Projects() {
           </div>
         </>
       )}
+
+      <ProjectDetailsModal
+        project={projects.find(p => p.id === viewingProjectId)}
+        onClose={() => setViewingProjectId(null)}
+        onEdit={(project) => { setViewingProjectId(null); startEdit(project); }}
+        onDelete={(id) => { deleteProject(id); setViewingProjectId(null); }}
+        isReadOnly={isReadOnly}
+      />
     </div>
   );
 }
