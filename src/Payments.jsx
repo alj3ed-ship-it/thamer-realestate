@@ -436,6 +436,7 @@ function Payments({ onBack }) {
     const payload = {
       lease_id: form.lease_id,
       amount: due,
+      amount_due: due,
       amount_paid: totalPaid,
       status: form.status || 'مدفوع',
       payment_date: isUnpaid ? null : paymentDate,

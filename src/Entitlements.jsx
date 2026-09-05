@@ -362,6 +362,7 @@ export default function Entitlements() {
           sortNum = n;
         }
       });
+      const dueSortKey = hijri.year * 10000 + hijri.month * 100 + hijri.day;
 
       const { status, paidState } = computeStatus(row, hijri);
       const dueDateHijri = hijri
@@ -387,7 +388,7 @@ export default function Entitlements() {
         propertyPriority: lease.properties?.priority ?? 99,
         unit: units.map((u) => `${u.unit_type} ${u.unit_number}`).join(" + ") || "—",
         units,
-        sortType, sortNum,
+        sortType, sortNum, dueSortKey,
         amount: Number(row.amount_due || 0),
         paidAmount: Number(row.amount_paid || 0),
         status,
@@ -408,6 +409,7 @@ export default function Entitlements() {
 
     found.sort((a, b) => {
       if (a.propertyPriority !== b.propertyPriority) return a.propertyPriority - b.propertyPriority;
+      if (a.dueSortKey !== b.dueSortKey) return a.dueSortKey - b.dueSortKey;
       if (a.sortType !== b.sortType) return a.sortType - b.sortType;
       return a.sortNum - b.sortNum;
     });
