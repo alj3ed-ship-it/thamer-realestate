@@ -641,9 +641,9 @@ function Payments({ onBack }) {
     (t.name || '').toLowerCase().includes(tenantSearchText.toLowerCase())
   )
 
-  const totalFiltered = filteredPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
+  const totalFiltered = filteredPayments.reduce((s, p) => s + Math.round(getBaseAmount(p)), 0)
   const totalTax = filteredPayments.reduce((s, p) => s + getTaxAmount(p), 0)
-  const totalWithTax = filteredPayments.reduce((s, p) => s + getTotalWithTax(p), 0)
+  const totalWithTax = filteredPayments.reduce((s, p) => s + (isTaxApplicable(p) ? Math.round(getBaseAmount(p) + getTaxAmount(p)) : Number(p.amount || 0)), 0)
 
   function statusToArabic(computed) {
     if (computed === 'paid') return '✓ مدفوع'
@@ -738,24 +738,25 @@ function Payments({ onBack }) {
       activity: getTenantActivity(p.lease_id),
       unit: getUnitNumbers(p.lease_id),
       installment: total ? `${index} / ${total}` : `${index}`,
-      amount: (() => {
+      amount: `${Math.round(getBaseAmount(p)).toLocaleString()} ريال`,
+      tax: taxApplies ? `${getTaxAmount(p).toLocaleString()} ريال` : '—',
+      totalWithTax: (() => {
         const amountColor = computed === 'paid' ? '#27ae60'
           : computed === 'overdue' ? '#e74c3c'
           : computed === 'not_due' ? '#7f8c8d'
           : computed === 'partial_early' ? '#2E86C1'
           : '#d4ac0d'
+        const gross = taxApplies ? Math.round(getBaseAmount(p) + getTaxAmount(p)) : due
         if (computed === 'partial' || computed === 'partial_early') {
           return {
-            value: `${due.toLocaleString()} ريال`,
+            value: `${gross.toLocaleString()} ريال`,
             color: amountColor,
             subtext: `مدفوع ${paid.toLocaleString()} · متبقي ${(due - paid).toLocaleString()}`,
             subtextColor: amountColor
           }
         }
-        return { value: `${due.toLocaleString()} ريال`, color: amountColor }
+        return { value: `${gross.toLocaleString()} ريال`, color: amountColor }
       })(),
-      tax: taxApplies ? `${getTaxAmount(p).toLocaleString()} ريال` : '—',
-      totalWithTax: taxApplies ? `${getTotalWithTax(p).toLocaleString()} ريال` : `${due.toLocaleString()} ريال`,
       vatType: taxApplies ? (isAmountVatInclusive(p) ? 'شامل الضريبة' : 'الضريبة على المالك') : '—',
       statusLabel: statusToArabic(computed),
       date: hijriText ? hijriText + ' هـ' : '—',
@@ -900,12 +901,12 @@ function Payments({ onBack }) {
 
         {!isOverview && (
           <div style={{ background: '#e8f5e9', padding: '8px 16px', borderRadius: 8, fontWeight: 700, color: '#27ae60', fontSize: 15 }}>
-            المجموع: {totalFiltered.toLocaleString()} ريال
+            الصافي: {totalFiltered.toLocaleString()} ريال
           </div>
         )}
         {!isOverview && totalTax > 0 && (
           <div style={{ background: '#F4ECF7', padding: '8px 16px', borderRadius: 8, fontWeight: 700, color: '#8e44ad', fontSize: 15 }}>
-            الضريبة: {totalTax.toLocaleString()} ريال — الإجمالي الفعلي المستلم: {totalWithTax.toLocaleString()} ريال
+            الضريبة: {totalTax.toLocaleString()} ريال — الإجمالي: {totalWithTax.toLocaleString()} ريال
           </div>
         )}
       </div>
@@ -961,7 +962,7 @@ function Payments({ onBack }) {
               { key: 'installment', label: 'الدفعة' },
               { key: 'amount', label: 'المبلغ' },
               { key: 'tax', label: 'الضريبة' },
-              { key: 'totalWithTax', label: 'الإجمالي الفعلي' },
+              { key: 'totalWithTax', label: 'الإجمالي' },
               { key: 'statusLabel', label: 'الحالة' },
               { key: 'date', label: 'التاريخ' },
               { key: 'method', label: 'طريقة الدفع' },
@@ -969,9 +970,9 @@ function Payments({ onBack }) {
             ]}
             filename={`payments_${filterProperty === 'الكل' ? 'all' : filterProperty}`}
             stats={[
-              { label: 'المجموع', value: `${totalFiltered.toLocaleString()} ريال`, color: '#27ae60' },
+              { label: 'الصافي', value: `${totalFiltered.toLocaleString()} ريال`, color: '#27ae60' },
               { label: 'الضريبة', value: `${totalTax.toLocaleString()} ريال`, color: '#8e44ad' },
-              { label: 'الإجمالي الفعلي', value: `${totalWithTax.toLocaleString()} ريال`, color: '#1B4D7A' },
+              { label: 'الإجمالي', value: `${totalWithTax.toLocaleString()} ريال`, color: '#1B4D7A' },
             ]}
           />
 
