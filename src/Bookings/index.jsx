@@ -29,6 +29,7 @@ export default function Bookings() {
   const [hallId, setHallId] = useState(null);
   const [selectedYear, setSelectedYear] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
+  const [clientExportSearch, setClientExportSearch] = useState('');
   const [lockedYears, setLockedYears] = useState(new Set());
   const [staffRates, setStaffRates] = useState(() => {
     const saved = localStorage.getItem('bookings_staff_rates');
@@ -649,9 +650,38 @@ export default function Bookings() {
         />
       )}
 
+      <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input
+          type="text"
+          list="hall-client-names"
+          placeholder="اختر عميلاً لتصدير حجوزاته فقط..."
+          value={clientExportSearch}
+          onChange={(e) => setClientExportSearch(e.target.value)}
+          style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', width: 280, fontFamily: 'Cairo, sans-serif', fontSize: 13 }}
+        />
+        <datalist id="hall-client-names">
+          {[...new Set(filteredBookings.map((b) => b.client_name).filter(Boolean))]
+            .sort((a, b) => a.localeCompare(b, 'ar'))
+            .map((name) => (
+              <option key={name} value={name} />
+            ))}
+        </datalist>
+        {clientExportSearch.trim() && (
+          <button
+            type="button"
+            onClick={() => setClientExportSearch('')}
+            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#f9fafb', cursor: 'pointer', fontFamily: 'Cairo, sans-serif', fontSize: 13 }}
+          >
+            إلغاء البحث
+          </button>
+        )}
+      </div>
+
       <ExportToolbar
-        title={`حجوزات قاعة مذهلة${selectedYear !== 'all' ? ' - سنة ' + selectedYear + ' هـ' : ' - كل السنين'}${selectedType !== 'all' ? ' - ' + selectedType : ''}`}
-        data={filteredBookings.map((b) => ({
+        title={`حجوزات قاعة مذهلة${selectedYear !== 'all' ? ' - سنة ' + selectedYear + ' هـ' : ' - كل السنين'}${selectedType !== 'all' ? ' - ' + selectedType : ''}${clientExportSearch.trim() ? ' - العميل: ' + clientExportSearch.trim() : ''}`}
+        data={filteredBookings
+          .filter((b) => !clientExportSearch.trim() || (b.client_name || '').includes(clientExportSearch.trim()))
+          .map((b) => ({
           ...b,
           event_date_hijri: formatHijriDisplay(b.event_date_hijri),
           booking_status_label: (CANCEL_STATUS_LABELS[b.booking_status] || {}).label || 'نشط',
@@ -666,7 +696,7 @@ export default function Bookings() {
           { key: 'remaining_status', label: 'حالة الباقي' },
           { key: 'booking_status_label', label: 'حالة الحجز' },
         ]}
-        stats={[
+        stats={clientExportSearch.trim() ? null : [
           { label: 'عدد الحجوزات النشطة', value: activeFilteredBookings.length, color: '#1B4D7A' },
           { label: 'عدد الحجوزات الملغاة', value: filteredBookings.length - activeFilteredBookings.length, color: '#f39c12' },
           { label: 'إجمالي قيمة الحجوزات', value: `${totalRevenue.toLocaleString()} ر.س`, color: '#1B4D7A' },
