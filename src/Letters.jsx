@@ -37,6 +37,12 @@ const LETTER_TYPES = [
       `المكرم / ${tenant || "..........."}\n\nالسلام عليكم ورحمة الله وبركاته،\n\nيسرنا إفادتكم بأنه قد تم إبرام عقد الإيجار الخاص بالوحدة (${unit || "..........."}) الكائنة ضمن ${property || "..........."}، وذلك بقيمة إجمالية قدرها (${amount || "..........."} ريال)، وفقاً للشروط والأحكام المتفق عليها بين الطرفين.\n\nنتمنى لكم إقامة موفقة، ونؤكد حرصنا على التعاون البنّاء معكم طوال مدة العقد.\n\nولكم منا خالص الشكر والتقدير.`,
   },
   {
+    key: "tax_certificate_request",
+    label: "طلب شهادة ضريبية",
+    buildBody: ({ tenant, property, unit, contractNumber }) =>
+      `المكرم / ${tenant || "..........."}\n\nالسلام عليكم ورحمة الله وبركاته، وبعد:\n\nإشارةً إلى عقد الإيجار رقم ${contractNumber || "..........."} بخصوص الوحدة (${unit || "..........."}) الكائنة ضمن ${property || "..........."}، ونظراً لالتزام مكتبنا بإصدار الفواتير الضريبية وفق الأنظمة والتعليمات الصادرة عن هيئة الزكاة والضريبة والجمارك (ZATCA)، فإننا نأمل موافاتنا بنسخة من الشهادة الضريبية الخاصة بكم، وذلك لاستكمال متطلبات إصدار الفاتورة الضريبية المتعلقة بالعقد المذكور.\n\nيرجى التكرم بإرسال الشهادة الضريبية عبر واتساب المكتب في أقرب وقت ممكن، تسهيلاً لإجراءات الفوترة من جانبنا.\n\nشاكرين لكم حسن تعاونكم، ودمتم بخير.`,
+  },
+  {
     key: "other",
     label: "أخرى",
     buildBody: () => "",
@@ -68,6 +74,7 @@ export default function Letters({ onBack, prefillData, onPrefillConsumed }) {
   const [propertyName, setPropertyName] = useState("");
   const [unitText, setUnitText] = useState("");
   const [amount, setAmount] = useState("");
+  const [contractNumber, setContractNumber] = useState("");
   const [dateHijri, setDateHijri] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [isCapturing, setIsCapturing] = useState(false);
@@ -185,6 +192,7 @@ useEffect(() => {
     setLoading(true);
     const { data, error } = await supabase.from("leases").select(`
       id,
+      lease_number,
       tenants ( name, phone ),
       properties ( name ),
       lease_units ( units ( unit_number, unit_type ) )
@@ -193,6 +201,7 @@ useEffect(() => {
       // في حال عمود phone غير موجود بجدول tenants، أعد المحاولة بدونه
       const retry = await supabase.from("leases").select(`
         id,
+        lease_number,
         tenants ( name ),
         properties ( name ),
         lease_units ( units ( unit_number, unit_type ) )
@@ -211,6 +220,7 @@ useEffect(() => {
         id: l.id,
         tenant: l.tenants?.name || "",
         phone: l.tenants?.phone || "",
+        contractNumber: l.lease_number || "",
         property: l.properties?.name || "",
         unit: (l.lease_units || [])
           .map((lu) => lu.units && `${lu.units.unit_type} ${lu.units.unit_number}`)
@@ -238,6 +248,7 @@ useEffect(() => {
       property: overrides.property ?? propertyName,
       unit: overrides.unit ?? unitText,
       amount: overrides.amount ?? amount,
+      contractNumber: overrides.contractNumber ?? contractNumber,
     };
     setBodyText(type.buildBody(ctx));
   }
@@ -249,12 +260,14 @@ useEffect(() => {
       setTenantName(found.tenant);
       setPropertyName(found.property);
       setUnitText(found.unit);
+      setContractNumber(found.contractNumber);
       setLeaseSearch(`${found.tenant} — ${found.property} (${found.unit || "بدون وحدة"})`);
       applyTemplate(letterTypeKey, {
         tenant: found.tenant,
         property: found.property,
         unit: found.unit,
         amount,
+        contractNumber: found.contractNumber,
       });
     }
     setShowLeaseDropdown(false);
