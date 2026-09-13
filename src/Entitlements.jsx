@@ -242,6 +242,7 @@ export default function Entitlements() {
       supabase.from("properties").select("id, name, priority").order("priority"),
       supabase.from("payments").select(`
       id, lease_id, amount_due, amount_paid, payment_date_hijri, payment_date, installment_number, total_installments, status,
+      due_date_hijri, due_date_gregorian,
       first_partial_date, first_partial_date_hijri,
     leases (
       id, property_id, start_date_hijri, end_date, lease_number, tax_enabled, tax_effective_hijri, amount_includes_vat,
@@ -346,7 +347,12 @@ export default function Entitlements() {
       if (selectedProperties.length > 0 && !selectedProperties.includes(lease.property_id)) continue;
       if (selectedTenants.length > 0 && !selectedTenants.includes(lease.tenants?.name)) continue;
 
-      const hijri = computeInstallmentHijri(lease.start_date_hijri, row.total_installments, row.installment_number);
+      // الأولوية دائمًا لتاريخ الاستحقاق المخزّن فعليًا بجدول الدفعات (يعكس تاريخ الإصدار الصحيح من العقد،
+      // شامل أي تصحيح يدوي) — بدل إعادة حسابه دائمًا من معادلة "بداية العقد + فترة ثابتة"، لأن هذي المعادلة
+      // تعطي نتيجة غلط للعقود اللي نافذة تتبعها بالبرنامج لا تبدأ من أول قسط حقيقي بالعقد (مثال: عقود أراضي طويلة الأجل)
+      const hijri = parseHijri(row.due_date_hijri)
+        || parseHijri(gregorianToHijri(row.due_date_gregorian))
+        || computeInstallmentHijri(lease.start_date_hijri, row.total_installments, row.installment_number);
       if (!hijri || hijri.year !== filterYear) continue;
       if (selectedMonths.length > 0 && !selectedMonths.includes(hijri.month)) continue;
 

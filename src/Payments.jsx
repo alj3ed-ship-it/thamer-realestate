@@ -322,10 +322,15 @@ function Payments({ onBack }) {
 
   function getUnpaidDueInfo(p) {
     const lease = getLease(p.lease_id)
-    if (!lease || !lease.start_date_hijri) return { hijriText: null, subStatus: 'overdue' }
-    const total = p.total_installments || getTotalInstallments(p.lease_id)
-    const instNum = p.installment_number || getPaymentIndex(p)
-    const hijri = computeInstallmentHijri(lease.start_date_hijri, total, instNum)
+    // الأولوية دائمًا لتاريخ الاستحقاق المخزّن فعليًا بصف الدفعة نفسه (يعكس تاريخ الإصدار الصحيح من العقد،
+    // شامل أي تصحيح يدوي) — بدل إعادة حسابه دائمًا من معادلة "بداية العقد + فترة ثابتة"
+    let hijri = parseHijriParts(p.due_date_hijri) || (p.due_date_gregorian ? parseHijriParts(gregorianToHijri(p.due_date_gregorian)) : null)
+    if (!hijri) {
+      if (!lease || !lease.start_date_hijri) return { hijriText: null, subStatus: 'overdue' }
+      const total = p.total_installments || getTotalInstallments(p.lease_id)
+      const instNum = p.installment_number || getPaymentIndex(p)
+      hijri = computeInstallmentHijri(lease.start_date_hijri, total, instNum)
+    }
     if (!hijri) return { hijriText: null, subStatus: 'overdue' }
     const g = hijriToGregorian(hijri.year, hijri.month, hijri.day)
     if (!g) return { hijriText: hijriPartsToText(hijri.year, hijri.month, hijri.day), subStatus: 'overdue' }
