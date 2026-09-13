@@ -188,25 +188,27 @@ export default function VatReturns({ onBack }) {
     return tenants.find(t => t.id === id)?.name || '—'
   }
 
-  // تاريخ الاستحقاق المحسوب لأي دفعة (نفس منطق صفحة الدفعات) — الأساس الصحيح لتجميع الأرباع
+  // تاريخ الاستحقاق المحسوب لأي دفعة — الأساس الصحيح لتجميع الأرباع هو تاريخ الاستحقاق
+  // التعاقدي (due_date)، وليس تاريخ الاستلام الفعلي (payment_date). دفعة قد تُستلم متأخرة
+  // أو مبكرة عن موعدها، لكنها تبقى مستحقة ضريبيًا في ربعها الأصلي حسب العقد.
   function getPaymentDueInfo(p) {
-    // الأولوية دائمًا لتاريخ مخزّن فعليًا بالصف نفسه (سواء payment_date_hijri أو payment_date) —
-    // لأنه غالبًا أدق من الحساب التلقائي (خصوصًا قرب حدود الأرباع)، ولأنه يعكس تواريخ أُدخلت يدويًا وتحققت سابقًا
-    if (p.payment_date_hijri) {
-      const gDate = new Date(p.payment_date || p.payment_date_hijri)
-      if (p.payment_date && !isNaN(new Date(p.payment_date).getTime())) {
-        return { hijriText: p.payment_date_hijri, gDate: new Date(p.payment_date) }
-      }
-    }
-    if (p.payment_date) {
-      const gDate = new Date(p.payment_date)
+    // الأولوية لتاريخ الاستحقاق المخزّن مباشرة على صف الدفعة نفسها
+    if (p.due_date_gregorian) {
+      const gDate = new Date(p.due_date_gregorian)
       if (!isNaN(gDate.getTime())) {
-        const hijriText = gregorianToHijriText(p.payment_date)
+        const hijriText = p.due_date_hijri || gregorianToHijriText(p.due_date_gregorian)
         return { hijriText, gDate }
       }
     }
+    if (p.due_date_hijri) {
+      const parsed = parseHijriDate(p.due_date_hijri)
+      if (parsed) {
+        const gDate = hijriToGregorianDate(parsed.year, parsed.month, parsed.day)
+        if (gDate) return { hijriText: p.due_date_hijri, gDate }
+      }
+    }
 
-    // ما فيه تاريخ مخزّن (قسط مستقبلي لسا ما تحدد له تاريخ يدوي) — نحسبه تلقائيًا من بداية العقد
+    // ما فيه تاريخ استحقاق مخزّن على الصف (حالة قديمة) — نحسبه تلقائيًا من بداية العقد
     const lease = getLease(p.lease_id)
     if (!lease || !lease.start_date_hijri) return null
     const total = p.total_installments || FREQUENCY_MAP[lease.payment_type] || FREQUENCY_MAP[lease.payment_frequency] || 1
