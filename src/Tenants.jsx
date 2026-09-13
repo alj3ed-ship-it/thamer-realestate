@@ -51,6 +51,18 @@ function TenantDetail({ tenant, onBack }) {
         {tenant.email && <span>✉️ {tenant.email}</span>}
         {tenant.note && <span>📝 {tenant.note}</span>}
       </div>
+      {(tenant.vat_number || tenant.official_name || tenant.cr_number || tenant.address) && (
+        <div style={{ background: '#f0f9f4', border: '1px solid #bfe3cc', borderRadius: 10, padding: '14px 18px', marginBottom: 24 }}>
+          <div style={{ fontWeight: 700, color: '#166534', marginBottom: 8, fontSize: 14 }}>🏢 بيانات ضريبية</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 24px', fontSize: 13, color: '#374151' }}>
+            {tenant.official_name && <span>الاسم الرسمي: {tenant.official_name}</span>}
+            {tenant.vat_number && <span>الرقم الضريبي: {tenant.vat_number}</span>}
+            {tenant.cr_number && <span>السجل التجاري: {tenant.cr_number}</span>}
+            {tenant.tax_period && <span>الفترة الضريبية: {tenant.tax_period}</span>}
+            {tenant.address && <span>العنوان: {tenant.address}</span>}
+          </div>
+        </div>
+      )}
       <h3 style={{ color: '#1B4D7A', marginBottom: 12 }}>العقود ({leases.length})</h3>
       {loading && <p>جاري التحميل...</p>}
       {!loading && leases.length === 0 && (
@@ -123,6 +135,11 @@ function Tenants({ onBack }) {
   const [formPhone, setFormPhone] = useState('')
   const [formNote, setFormNote] = useState('')
   const [formPropertyId, setFormPropertyId] = useState('')
+  const [formOfficialName, setFormOfficialName] = useState('')
+  const [formVatNumber, setFormVatNumber] = useState('')
+  const [formCrNumber, setFormCrNumber] = useState('')
+  const [formAddress, setFormAddress] = useState('')
+  const [formTaxPeriod, setFormTaxPeriod] = useState('')
   const [formError, setFormError] = useState('')
 
   async function fetchAll() {
@@ -158,18 +175,27 @@ function Tenants({ onBack }) {
 
   function openAddForm() {
     setEditingId(null); setFormName(''); setFormPhone(''); setFormNote('')
-    setFormPropertyId(selectedPropertyId || ''); setFormError(''); setShowForm(true)
+    setFormPropertyId(selectedPropertyId || '')
+    setFormOfficialName(''); setFormVatNumber(''); setFormCrNumber(''); setFormAddress(''); setFormTaxPeriod('')
+    setFormError(''); setShowForm(true)
   }
 
   function openEditForm(tenant) {
     setEditingId(tenant.id); setFormName(tenant.name || ''); setFormPhone(tenant.phone || '')
-    setFormNote(tenant.note || ''); setFormPropertyId(tenant.property_id || ''); setFormError(''); setShowForm(true)
+    setFormNote(tenant.note || ''); setFormPropertyId(tenant.property_id || '')
+    setFormOfficialName(tenant.official_name || ''); setFormVatNumber(tenant.vat_number || '')
+    setFormCrNumber(tenant.cr_number || ''); setFormAddress(tenant.address || ''); setFormTaxPeriod(tenant.tax_period || '')
+    setFormError(''); setShowForm(true)
   }
 
   async function handleSave() {
     if (!formName.trim()) { setFormError('اسم المستأجر مطلوب'); return }
     setSaving(true); setFormError('')
-    const payload = { name: formName.trim(), phone: formPhone.trim() || null, note: formNote.trim() || null, property_id: formPropertyId || null }
+    const payload = {
+      name: formName.trim(), phone: formPhone.trim() || null, note: formNote.trim() || null, property_id: formPropertyId || null,
+      official_name: formOfficialName.trim() || null, vat_number: formVatNumber.trim() || null,
+      cr_number: formCrNumber.trim() || null, address: formAddress.trim() || null, tax_period: formTaxPeriod.trim() || null,
+    }
     let error
     if (editingId) { const res = await supabase.from('tenants').update(payload).eq('id', editingId); error = res.error }
     else { const res = await supabase.from('tenants').insert([payload]); error = res.error }
@@ -539,6 +565,26 @@ function Tenants({ onBack }) {
             <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 13 }}>ملاحظات (اختياري)</label>
             <textarea value={formNote} onChange={e => setFormNote(e.target.value)} rows={3}
               style={{ width: '100%', padding: 10, marginBottom: 15, borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box', resize: 'vertical', fontSize: 14 }} placeholder="أي معلومة إضافية..." />
+            <details style={{ marginBottom: 15 }}>
+              <summary style={{ cursor: 'pointer', color: '#166534', fontSize: 13, fontWeight: 700, marginBottom: 10 }}>🏢 بيانات ضريبية (اختياري)</summary>
+              <div style={{ marginTop: 10 }}>
+                <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 13 }}>الاسم الرسمي</label>
+                <input type="text" value={formOfficialName} onChange={e => setFormOfficialName(e.target.value)}
+                  style={{ width: '100%', padding: 10, marginBottom: 12, borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box', fontSize: 14 }} placeholder="الاسم الرسمي بالسجل التجاري" />
+                <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 13 }}>الرقم الضريبي (VAT)</label>
+                <input type="text" value={formVatNumber} onChange={e => setFormVatNumber(e.target.value)}
+                  style={{ width: '100%', padding: 10, marginBottom: 12, borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box', fontSize: 14 }} placeholder="3xxxxxxxxxxxxx" />
+                <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 13 }}>السجل التجاري/العقد</label>
+                <input type="text" value={formCrNumber} onChange={e => setFormCrNumber(e.target.value)}
+                  style={{ width: '100%', padding: 10, marginBottom: 12, borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box', fontSize: 14 }} />
+                <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 13 }}>الفترة الضريبية</label>
+                <input type="text" value={formTaxPeriod} onChange={e => setFormTaxPeriod(e.target.value)}
+                  style={{ width: '100%', padding: 10, marginBottom: 12, borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box', fontSize: 14 }} placeholder="شهري / ربع سنوي" />
+                <label style={{ display: 'block', marginBottom: 6, color: '#444', fontSize: 13 }}>العنوان</label>
+                <input type="text" value={formAddress} onChange={e => setFormAddress(e.target.value)}
+                  style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid #e5e7eb', boxSizing: 'border-box', fontSize: 14 }} />
+              </div>
+            </details>
             {formError && <div style={{ color: '#c00', marginBottom: 15, fontSize: 14 }}>{formError}</div>}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={() => setShowForm(false)} disabled={saving} style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>إلغاء</button>
