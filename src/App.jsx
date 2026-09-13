@@ -18,6 +18,8 @@ import Letters from "./Letters";
 import VatReturns from "./VatReturns";
 import DataAudit from "./DataAudit";
 import DashboardCharts from "./components/DashboardCharts";
+import LeaseContracts from "./LeaseContracts";
+import LeaseContractView from "./LeaseContractView";
 
 const T = {
   dashboard: "لوحة التحكم",
@@ -34,6 +36,7 @@ const T = {
   letters: "الخطابات",
   vatReturns: "الإقرارات الضريبية",
   dataAudit: "تدقيق البيانات",
+  leaseContracts: "عقود الإيجار",
   logout: "خروج",
 };
 
@@ -42,6 +45,7 @@ const NAV_ITEMS = [
   { key: "properties", label: T.properties, icon: "🏢" },
   { key: "tenants", label: T.tenants, icon: "👤" },
   { key: "leases", label: T.leases, icon: "📄" },
+  { key: "leaseContracts", label: T.leaseContracts, icon: "📑" },
   { key: "payments", label: T.payments, icon: "💰" },
   { key: "entitlements", label: T.entitlements, icon: "📅" },
   { key: "vatReturns", label: T.vatReturns, icon: "🧾" },
@@ -58,6 +62,7 @@ export default function App() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [activePage, setActivePage] = useState("dashboard");
   const [selectedPropertyId, setSelectedPropertyId] = useState(null);
+  const [selectedLeaseContractId, setSelectedLeaseContractId] = useState(null);
    const [letterPrefill, setLetterPrefill] = useState(null);
   const [stats, setStats] = useState({ properties: 0, units: 0, tenants: 0, leases: 0, payments: 0 });
 
@@ -122,6 +127,7 @@ export default function App() {
   function goBack() {
     setActivePage("dashboard");
     setSelectedPropertyId(null);
+    setSelectedLeaseContractId(null);
     fetchStats();
   }
 
@@ -163,8 +169,8 @@ export default function App() {
           <img src="/thamer-logo.svg" alt="logo" style={{ width: "100%" }} />
         </div>
         <nav style={{ flex: 1, padding: "16px 0" }}>
-          {NAV_ITEMS.filter(item => !(role === "viewer" && item.key === "letters")).map(item => (
-            <button key={item.key} onClick={() => { setActivePage(item.key); setSelectedPropertyId(null); }} style={{
+          {NAV_ITEMS.filter(item => !(role === "viewer" && item.key === "letters") && !(item.key === "leaseContracts" && role !== "admin")).map(item => (
+            <button key={item.key} onClick={() => { setActivePage(item.key); setSelectedPropertyId(null); setSelectedLeaseContractId(null); }} style={{
               display: "block", width: "100%", padding: "12px 20px", textAlign: "right",
               background: activePage === item.key ? "#2E6394" : "transparent",
               color: item.key === "defaulters" ? "#fca5a5" : "#fff",
@@ -217,6 +223,12 @@ export default function App() {
         )}
         {activePage === "tenants" && <Tenants onBack={goBack} />}
         {activePage === "leases" && <Leases onBack={goBack} />}
+        {activePage === "leaseContracts" && !selectedLeaseContractId && (
+          <LeaseContracts onBack={goBack} onSelectLease={(id) => setSelectedLeaseContractId(id)} />
+        )}
+        {activePage === "leaseContracts" && selectedLeaseContractId && (
+          <LeaseContractView leaseId={selectedLeaseContractId} onBack={() => setSelectedLeaseContractId(null)} />
+        )}
         {activePage === "payments" && <Payments onBack={goBack} />}
         {activePage === "entitlements" && <Entitlements onBack={goBack} />}
         {activePage === "vatReturns" && <VatReturns onBack={goBack} />}
