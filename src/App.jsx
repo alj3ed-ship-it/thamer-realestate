@@ -8,6 +8,7 @@ import Reports from "./Reports";
 import Defaulters from "./Defaulters";
 import Projects from "./Projects";
 import Bookings from "./Bookings";
+import Invoices from "./Invoices";
 import Login from "./Login";
 import ResetPassword from "./ResetPassword";
 import { ReadOnlyProvider } from "./ReadOnlyContext";
@@ -33,6 +34,7 @@ const T = {
   entitlements: "الاستحقاقات",
   projects: "المشاريع",
   bookings: "قاعة مذهلة",
+  invoices: "الفواتير الإلكترونية",
   letters: "الخطابات",
   vatReturns: "الإقرارات الضريبية",
   dataAudit: "تدقيق البيانات",
@@ -54,6 +56,7 @@ const NAV_ITEMS = [
   { key: "defaulters", label: T.defaulters, icon: "⚠️" },
   { key: "projects", label: T.projects, icon: "🛠️" },
   { key: "bookings", label: T.bookings, icon: "🎉" },
+  { key: "invoices", label: T.invoices, icon: "🧾" },
   { key: "letters", label: T.letters, icon: "✉️" },
 ];
 
@@ -236,6 +239,7 @@ export default function App() {
         {activePage === "letters" && (
           <Letters onBack={goBack} prefillData={letterPrefill} onPrefillConsumed={() => setLetterPrefill(null)} />
         )}
+        {activePage === "invoices" && <Invoices onBack={goBack} />}
         {activePage === "reports" && <Reports onBack={goBack} />}
         {activePage === "defaulters" && (
           <Defaulters
