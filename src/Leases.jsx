@@ -260,6 +260,8 @@ export default function Leases({ onBack }) {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [uploadingId, setUploadingId] = useState(null);
+  const fileInputRefs = useRef({});
   const [viewingLeaseId, setViewingLeaseId] = useState(null);
   const [filterProperty, setFilterProperty] = useState("الكل");
   const [filterTenants, setFilterTenants] = useState([]);
@@ -738,6 +740,27 @@ export default function Leases({ onBack }) {
     fetchAll();
   }
 
+  // رفع ملف عقد الإيجار (PDF/صورة) — يُخزَّن برابط عام مباشر بـ Supabase Storage
+  // (bucket: lease-contracts) عشان الرجوع له بأي لحظة، خصوصاً للعقود الخاضعة للضريبة
+  async function handleContractFileUpload(lease, file) {
+    if (!file) return;
+    setUploadingId(lease.id);
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `${lease.id}/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("lease-contracts").upload(path, file, { upsert: true });
+      if (upErr) {
+        alert("فشل رفع الملف: " + upErr.message);
+        return;
+      }
+      const { data: pub } = supabase.storage.from("lease-contracts").getPublicUrl(path);
+      await supabase.from("leases").update({ contract_file_url: pub.publicUrl }).eq("id", lease.id);
+      fetchAll();
+    } finally {
+      setUploadingId(null);
+    }
+  }
+
   const uniqueUnitTypes = useMemo(() => {
     const set = new Set();
     leases.forEach(l => {
@@ -1157,9 +1180,34 @@ export default function Leases({ onBack }) {
                           </td>
                           <td style={{ padding: "12px" }}>
                             {l.tax_enabled ? (
-                              <span style={{ background: "#F4ECF7", color: "#8e44ad", padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", display: "inline-block" }}>
-                                {getTaxSummary(l)}
-                              </span>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+                                <span style={{ background: "#F4ECF7", color: "#8e44ad", padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", display: "inline-block" }}>
+                                  {getTaxSummary(l)}
+                                </span>
+                                {!isReadOnly && (
+                                  <>
+                                    <input
+                                      type="file"
+                                      accept="application/pdf,image/*"
+                                      style={{ display: "none" }}
+                                      ref={el => (fileInputRefs.current[l.id] = el)}
+                                      onChange={e => handleContractFileUpload(l, e.target.files[0])}
+                                    />
+                                    {l.contract_file_url ? (
+                                      <div className="no-print" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                        <a href={l.contract_file_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#1B4D7A", fontWeight: 700 }}>📄 عرض العقد</a>
+                                        <button onClick={() => fileInputRefs.current[l.id]?.click()} disabled={uploadingId === l.id} style={{ fontSize: 11, border: "none", background: "none", color: "#6b7280", cursor: "pointer", textDecoration: "underline" }}>
+                                          {uploadingId === l.id ? "..." : "تغيير"}
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button className="no-print" onClick={() => fileInputRefs.current[l.id]?.click()} disabled={uploadingId === l.id} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 5, border: "1px dashed #8e44ad", background: "#fff", color: "#8e44ad", cursor: "pointer" }}>
+                                        {uploadingId === l.id ? "جارِ الرفع..." : "📎 رفع العقد"}
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
                             ) : (
                               <span style={{ color: "#9ca3af", fontSize: 12 }}>—</span>
                             )}

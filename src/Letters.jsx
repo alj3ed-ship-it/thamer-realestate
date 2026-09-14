@@ -510,7 +510,7 @@ useEffect(() => {
                     }}
                   >
                     <div style={{ fontWeight: "bold", color: "#1B4D7A" }}>{l.tenant}</div>
-                    <div style={{ color: "#6b7280", fontSize: "12px" }}>{l.property} ({l.unit || "بدون وحدة"})</div>
+                    <div style={{ color: "#6b7280", fontSize: "12px" }}>{l.property} ({l.unit || "بدون وحدة"}) — عقد {l.contractNumber || "بدون رقم"}</div>
                   </div>
                 ))}
               </div>

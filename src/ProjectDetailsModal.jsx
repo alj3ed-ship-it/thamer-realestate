@@ -78,8 +78,8 @@ export default function ProjectDetailsModal({ project, onClose, onEdit, onDelete
                 <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontWeight: 700 }}>المجموع =</span>
                   <span style={{
-                    display: 'inline-block', background: '#e74c3c', color: '#fff',
-                    borderRadius: '50%', width: 90, height: 90, display: 'flex',
+                    display: 'flex', background: '#e74c3c', color: '#fff',
+                    borderRadius: '50%', width: 90, height: 90,
                     alignItems: 'center', justifyContent: 'center', fontWeight: 700,
                     fontSize: 15, textAlign: 'center', lineHeight: 1.2
                   }}>
