@@ -8,9 +8,14 @@
 // exist in a browser bundle, and the sandbox credentials must not ship to
 // the client.
 
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import axios from 'axios'
 import { EGS, ZATCASimplifiedTaxInvoice } from 'zatca-xml-js'
-import credentials from '../../zatca_sandbox_credentials.json' with { type: 'json' }
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const CREDENTIALS_FILE = path.join(__dirname, '../../zatca_sandbox_credentials.json')
 
 const SANDBOX_BASEURL = 'https://gw-fatoora.zatca.gov.sa/e-invoicing/developer-portal'
 
@@ -33,16 +38,47 @@ function getAuthHeaders(certificate, secret) {
   return { Authorization: `Basic ${basic}` }
 }
 
-function assertCredentials() {
+// PEM fields pasted into Vercel's env var UI sometimes lose real newlines
+// (single-line paste with literal "\n"). Unescape them; a value that already
+// has real newlines is left untouched since it has no literal "\n" to match.
+function unescapeNewlines(value) {
+  return typeof value === 'string' ? value.replace(/\\n/g, '\n') : value
+}
+
+// Credentials come from Vercel env vars in production (the sandbox JSON file
+// is gitignored and never deployed). Locally, when those env vars aren't
+// set, fall back to reading the JSON file so `vercel dev` keeps working
+// exactly as before.
+function loadCredentials() {
+  if (process.env.ZATCA_PRIVATE_KEY && process.env.ZATCA_COMPLIANCE_CERTIFICATE) {
+    return {
+      egs_uuid: process.env.ZATCA_EGS_UUID,
+      private_key: unescapeNewlines(process.env.ZATCA_PRIVATE_KEY),
+      csr: unescapeNewlines(process.env.ZATCA_CSR),
+      compliance_certificate: unescapeNewlines(process.env.ZATCA_COMPLIANCE_CERTIFICATE),
+      compliance_api_secret: process.env.ZATCA_COMPLIANCE_API_SECRET,
+    }
+  }
+
+  if (fs.existsSync(CREDENTIALS_FILE)) {
+    return JSON.parse(fs.readFileSync(CREDENTIALS_FILE, 'utf8'))
+  }
+
+  throw new Error(
+    'بيانات اعتماد ZATCA غير موجودة: لا متغيرات بيئة (ZATCA_PRIVATE_KEY...) ولا ملف zatca_sandbox_credentials.json محليًا'
+  )
+}
+
+function assertCredentials(credentials) {
   if (!credentials.private_key || !credentials.csr) {
-    throw new Error('بيانات zatca_sandbox_credentials.json غير مكتملة: private_key/csr مفقودة')
+    throw new Error('بيانات اعتماد ZATCA غير مكتملة: private_key/csr مفقودة')
   }
   if (!credentials.compliance_certificate || !credentials.compliance_api_secret) {
-    throw new Error('بيانات zatca_sandbox_credentials.json غير مكتملة: compliance_certificate/compliance_api_secret مفقودة')
+    throw new Error('بيانات اعتماد ZATCA غير مكتملة: compliance_certificate/compliance_api_secret مفقودة')
   }
 }
 
-function buildEgsUnit(organization) {
+function buildEgsUnit(credentials, organization) {
   return {
     uuid: credentials.egs_uuid,
     custom_id: 'THAMER-SANDBOX-EGS-1',
@@ -91,9 +127,10 @@ function toLineItems(items) {
  * @returns {Promise<{ invoice_hash: string, qr: string, compliance: object }>}
  */
 export async function runZatcaComplianceCheck({ organization, invoice, items }) {
-  assertCredentials()
+  const credentials = loadCredentials()
+  assertCredentials(credentials)
 
-  const egsUnit = buildEgsUnit(organization)
+  const egsUnit = buildEgsUnit(credentials, organization)
   const egs = new EGS(egsUnit)
 
   const issue_date = invoice?.issue_date || new Date().toISOString().slice(0, 10)
@@ -144,8 +181,9 @@ export async function runZatcaComplianceCheck({ organization, invoice, items }) 
   )
 
   const validation = response.data?.validationResults
-  const status = validation?.status || (response.status === 200 ? 'UNKNOWN' : 'ERROR')
-  const passed = response.status === 200 && (status === 'PASS' || status === 'WARNING')
+  const ok = response.status >= 200 && response.status < 300
+  const status = validation?.status || (ok ? 'UNKNOWN' : 'ERROR')
+  const passed = ok && (status === 'PASS' || status === 'WARNING')
 
   return {
     invoice_hash,
