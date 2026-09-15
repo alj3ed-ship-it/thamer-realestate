@@ -1,0 +1,13 @@
+diff --git a/node_modules/zatca-xml-js/lib/zatca/api/index.js b/node_modules/zatca-xml-js/lib/zatca/api/index.js
+index d96efcf..1e58f98 100644
+--- a/node_modules/zatca-xml-js/lib/zatca/api/index.js
++++ b/node_modules/zatca-xml-js/lib/zatca/api/index.js
+@@ -7,7 +7,7 @@ const axios_1 = __importDefault(require("axios"));
+ const signing_1 = require("../signing");
+ const settings = {
+     API_VERSION: "V2",
+-    SANDBOX_BASEURL: "https://gw-apic-gov.gazt.gov.sa/e-invoicing/developer-portal",
++    SANDBOX_BASEURL: "https://gw-fatoora.zatca.gov.sa/e-invoicing/developer-portal",
+     PRODUCTION_BASEURL: "TODO"
+ };
+ class API {

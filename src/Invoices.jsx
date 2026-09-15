@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import QRCode from 'qrcode'
+import html2canvas from 'html2canvas'
+import jsPDF from 'jspdf'
 import { supabase } from './supabaseClient'
 import { useReadOnly } from './ReadOnlyContext'
 
@@ -18,7 +20,11 @@ function emptyForm() {
     due_date: '',
     customer_name: '',
     customer_vat_number: '',
+    customer_cr_number: '',
+    customer_city: '',
     customer_address: '',
+    customer_id_number: '',
+    lease_id: '',
     items: [emptyItem()],
   }
 }
@@ -34,6 +40,12 @@ function lineAmounts(item) {
 function Invoices({ onBack }) {
   const isReadOnly = useReadOnly()
   const [organizations, setOrganizations] = useState([])
+  const [tenants, setTenants] = useState([])
+  const [tenantSearchText, setTenantSearchText] = useState('')
+  const [leases, setLeases] = useState([])
+  const [selectedTenantId, setSelectedTenantId] = useState('')
+  const [printingInvoice, setPrintingInvoice] = useState(null)
+  const printAreaRef = useRef(null)
   const [invoices, setInvoices] = useState([])
   const [status, setStatus] = useState('loading')
   const [saving, setSaving] = useState(false)
@@ -43,20 +55,102 @@ function Invoices({ onBack }) {
   const [editingInvoiceId, setEditingInvoiceId] = useState(null)
   const [editingInvoiceNumber, setEditingInvoiceNumber] = useState('')
   const [zatcaChecks, setZatcaChecks] = useState({})
+  const [noteForm, setNoteForm] = useState(null) // { invoice, noteType, reason, items }
+  const [noteSaving, setNoteSaving] = useState(false)
+  const [noteError, setNoteError] = useState('')
+  const [noteResult, setNoteResult] = useState(null)
+  const [zatcaEnvironment, setZatcaEnvironment] = useState(null) // 'sandbox' | 'simulation' | 'production' | null (loading/unknown)
+  const [prodSubmissions, setProdSubmissions] = useState({}) // { [invoiceId]: { loading, error, result } }
+  const [prodConfirm, setProdConfirm] = useState(null) // { invoice, submissionType, confirmText }
+  const [prodConfirmSubmitting, setProdConfirmSubmitting] = useState(false)
 
   async function fetchAll() {
     setStatus('loading')
-    const [org, inv] = await Promise.all([
+    const [org, inv, ten, lea] = await Promise.all([
       supabase.from('organizations').select('id, name, vat_number, cr_number, address').order('name'),
       supabase.from('invoices').select('*').order('created_at', { ascending: false }).limit(20),
+      supabase.from('tenants').select('id, full_name, name, official_name, vat_number, cr_number, address, id_number').order('full_name'),
+      supabase.from('leases').select('id, tenant_id, lease_number, status'),
     ])
     setOrganizations(org.data || [])
     setInvoices(inv.data || [])
+    setTenants(ten.data || [])
+    setLeases(lea.data || [])
     setForm(f => ({ ...f, organization_id: f.organization_id || org.data?.[0]?.id || '' }))
     setStatus('success')
   }
 
   useEffect(() => { fetchAll() }, [])
+
+  useEffect(() => {
+    fetch('/api/zatca-environment')
+      .then(r => r.json())
+      .then(d => setZatcaEnvironment(d.environment || 'sandbox'))
+      .catch(() => setZatcaEnvironment('sandbox'))
+  }, [])
+
+  useEffect(() => {
+    function handleAfterPrint() { setPrintingInvoice(null) }
+    window.addEventListener('afterprint', handleAfterPrint)
+    return () => window.removeEventListener('afterprint', handleAfterPrint)
+  }, [])
+
+  useEffect(() => {
+    if (!printingInvoice) return
+
+    if (printingInvoice.mode === 'print') {
+      const t = setTimeout(() => window.print(), 200)
+      return () => clearTimeout(t)
+    }
+
+    if (printingInvoice.mode === 'pdf') {
+      let cancelled = false
+      ;(async () => {
+        const node = printAreaRef.current
+        if (!node) { setPrintingInvoice(null); return }
+        // ننتظر جاهزية الخطوط فعلياً (لا مجرد تأخير ثابت) قبل الالتقاط — هذا هو
+        // سبب تشابك/انعكاس النص العربي: html2canvas كان يلتقط قبل ما يخلص تحميل
+        // خط Cairo، فيرجع يستخدم خط بديل بترتيب حروف غلط لحظة الالتقاط
+        window.scrollTo(0, 0)
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+        if (document.fonts && document.fonts.ready) {
+          await document.fonts.ready
+        }
+        await new Promise(r => setTimeout(r, 150))
+        if (cancelled) { setPrintingInvoice(null); return }
+        try {
+          const canvas = await html2canvas(node, {
+            scale: 2, useCORS: true, backgroundColor: '#ffffff', foreignObjectRendering: false,
+          })
+          const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+          const pageWidth = pdf.internal.pageSize.getWidth()
+          const pageHeight = pdf.internal.pageSize.getHeight()
+          const margin = 10
+          const usableWidth = pageWidth - margin * 2
+          const usableHeight = pageHeight - margin * 2
+          const imgHeight = (canvas.height * usableWidth) / canvas.width
+          const imgData = canvas.toDataURL('image/png')
+
+          let heightLeft = imgHeight
+          let position = margin
+          pdf.addImage(imgData, 'PNG', margin, position, usableWidth, imgHeight)
+          heightLeft -= usableHeight
+          while (heightLeft > 0) {
+            pdf.addPage()
+            position = margin - (imgHeight - heightLeft)
+            pdf.addImage(imgData, 'PNG', margin, position, usableWidth, imgHeight)
+            heightLeft -= usableHeight
+          }
+          pdf.save(`${printingInvoice.invoice.invoice_number}.pdf`)
+        } catch (err) {
+          alert('فشل توليد PDF: ' + err.message)
+        } finally {
+          if (!cancelled) setPrintingInvoice(null)
+        }
+      })()
+      return () => { cancelled = true }
+    }
+  }, [printingInvoice])
 
   function updateItem(key, field, value) {
     setForm(f => ({
@@ -73,9 +167,29 @@ function Invoices({ onBack }) {
     setForm(f => ({ ...f, items: f.items.length > 1 ? f.items.filter(it => it.key !== key) : f.items }))
   }
 
+  function handleSelectTenant(tenantId) {
+    if (!tenantId) return
+    const t = tenants.find(x => x.id === tenantId)
+    if (!t) return
+    setSelectedTenantId(tenantId)
+    setForm(f => ({
+      ...f,
+      customer_name: t.official_name || t.full_name || t.name || '',
+      customer_vat_number: t.vat_number || '',
+      customer_cr_number: t.cr_number || '',
+      customer_address: t.address || '',
+      customer_id_number: t.id_number || '',
+      lease_id: '',
+    }))
+  }
+
   const subtotal = form.items.reduce((s, it) => s + lineAmounts(it).lineTotal, 0)
   const vatTotal = form.items.reduce((s, it) => s + lineAmounts(it).vatAmount, 0)
   const grandTotal = subtotal + vatTotal
+  // Standard (B2B) invoices are picked automatically whenever the customer
+  // has a VAT number on file — mirrors the same rule used server-side in
+  // zatcaCompliance.js.
+    const willBeStandardInvoice = Boolean(form.customer_vat_number.trim() || form.customer_cr_number.trim())
 
   function generateInvoiceNumber() {
     const now = new Date()
@@ -102,7 +216,11 @@ function Invoices({ onBack }) {
       due_date: form.due_date || null,
       customer_name: form.customer_name || null,
       customer_vat_number: form.customer_vat_number || null,
+      customer_cr_number: form.customer_cr_number || null,
+      customer_city: form.customer_city || null,
       customer_address: form.customer_address || null,
+      customer_id_number: form.customer_id_number || null,
+      lease_id: form.lease_id || null,
       subtotal: Math.round(subtotal * 100) / 100,
       vat_amount: Math.round(vatTotal * 100) / 100,
       total_amount: Math.round(grandTotal * 100) / 100,
@@ -131,6 +249,7 @@ function Invoices({ onBack }) {
 
     setFormSuccess('تم حفظ الفاتورة كمسودة بنجاح')
     setForm(f => ({ ...emptyForm(), organization_id: f.organization_id }))
+    setTenantSearchText('')
     fetchAll()
   }
 
@@ -149,7 +268,11 @@ function Invoices({ onBack }) {
       due_date: form.due_date || null,
       customer_name: form.customer_name || null,
       customer_vat_number: form.customer_vat_number || null,
+      customer_cr_number: form.customer_cr_number || null,
+      customer_city: form.customer_city || null,
       customer_address: form.customer_address || null,
+      customer_id_number: form.customer_id_number || null,
+      lease_id: form.lease_id || null,
       subtotal: Math.round(subtotal * 100) / 100,
       vat_amount: Math.round(vatTotal * 100) / 100,
       total_amount: Math.round(grandTotal * 100) / 100,
@@ -182,6 +305,7 @@ function Invoices({ onBack }) {
     setEditingInvoiceId(null)
     setEditingInvoiceNumber('')
     setForm(f => ({ ...emptyForm(), organization_id: f.organization_id }))
+    setTenantSearchText('')
     fetchAll()
   }
 
@@ -202,7 +326,11 @@ function Invoices({ onBack }) {
       due_date: inv.due_date || '',
       customer_name: inv.customer_name || '',
       customer_vat_number: inv.customer_vat_number || '',
+      customer_cr_number: inv.customer_cr_number || '',
+      customer_city: inv.customer_city || '',
       customer_address: inv.customer_address || '',
+      customer_id_number: inv.customer_id_number || '',
+      lease_id: inv.lease_id || '',
       items: (items && items.length > 0)
         ? items.map(it => ({
             key: Math.random().toString(36).slice(2),
@@ -212,8 +340,11 @@ function Invoices({ onBack }) {
           }))
         : [emptyItem()],
     })
+    const linkedLease = leases.find(l => l.id === inv.lease_id)
+    setSelectedTenantId(linkedLease?.tenant_id || '')
     setEditingInvoiceId(inv.id)
     setEditingInvoiceNumber(inv.invoice_number)
+    setTenantSearchText('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -222,6 +353,149 @@ function Invoices({ onBack }) {
     setEditingInvoiceId(null)
     setEditingInvoiceNumber('')
     setForm(f => ({ ...emptyForm(), organization_id: f.organization_id }))
+    setTenantSearchText('')
+    setSelectedTenantId('')
+  }
+
+  async function handleDeleteDraft(inv) {
+    if (inv.status !== 'draft' || isReadOnly) return
+    const confirmed = window.confirm(`هل أنت متأكد من حذف المسودة رقم ${inv.invoice_number}؟ هذا الإجراء لا يمكن التراجع عنه.`)
+    if (!confirmed) return
+
+    setFormError(''); setFormSuccess('')
+    const { error: itemsError } = await supabase.from('invoice_items').delete().eq('invoice_id', inv.id)
+    if (itemsError) { setFormError(itemsError.message); return }
+
+    const { error: invError } = await supabase.from('invoices').delete().eq('id', inv.id)
+    if (invError) { setFormError(invError.message); return }
+
+    if (editingInvoiceId === inv.id) {
+      setEditingInvoiceId(null)
+      setEditingInvoiceNumber('')
+      setForm(f => ({ ...emptyForm(), organization_id: f.organization_id }))
+      setTenantSearchText('')
+    }
+    setFormSuccess('تم حذف المسودة بنجاح')
+    fetchAll()
+  }
+
+  async function handlePrintInvoice(inv, mode = 'print') {
+    const { data: items } = await supabase
+      .from('invoice_items')
+      .select('*')
+      .eq('invoice_id', inv.id)
+      .order('sort_order')
+    let qrDataUrl = null
+    if (inv.qr_code) {
+      try { qrDataUrl = await QRCode.toDataURL(inv.qr_code, { width: 160 }) } catch {}
+    }
+    const organization = organizations.find(o => o.id === inv.organization_id) || null
+    setPrintingInvoice({ invoice: inv, items: items || [], qrDataUrl, organization, mode })
+  }
+
+  async function handleOpenNoteForm(inv, noteType) {
+    setNoteError(''); setNoteResult(null)
+    const { data: items, error } = await supabase
+      .from('invoice_items')
+      .select('*')
+      .eq('invoice_id', inv.id)
+      .order('sort_order')
+    if (error) { setNoteError(error.message); return }
+    setNoteForm({
+      invoice: inv,
+      noteType,
+      reason: '',
+      items: (items || []).map(it => ({
+        key: Math.random().toString(36).slice(2),
+        description: it.description || '',
+        quantity: String(it.quantity ?? '1'),
+        unit_price: String(it.unit_price ?? ''),
+      })),
+    })
+  }
+
+  function updateNoteItem(key, field, value) {
+    setNoteForm(f => ({
+      ...f,
+      items: f.items.map(it => it.key === key ? { ...it, [field]: value } : it)
+    }))
+  }
+
+  function removeNoteItem(key) {
+    setNoteForm(f => ({ ...f, items: f.items.length > 1 ? f.items.filter(it => it.key !== key) : f.items }))
+  }
+
+  async function handleSubmitNote() {
+    if (!noteForm) return
+    setNoteError(''); setNoteResult(null)
+    const validItems = noteForm.items.filter(it => it.description.trim() && Number(it.unit_price) > 0)
+    if (validItems.length === 0) { setNoteError('يرجى إبقاء بند واحد على الأقل ببيان وسعر صحيحين'); return }
+    if (!noteForm.reason.trim()) { setNoteError('يرجى كتابة سبب الإشعار'); return }
+
+    setNoteSaving(true)
+    try {
+      const inv = noteForm.invoice
+      const organization = organizations.find(o => o.id === inv.organization_id) || null
+      const response = await fetch('/api/zatca-credit-debit-note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization,
+          originalInvoice: {
+            invoice_number: inv.invoice_number,
+            customer_name: inv.customer_name,
+            customer_vat_number: inv.customer_vat_number,
+            customer_cr_number: inv.customer_cr_number,
+            customer_city: inv.customer_city,
+            customer_address: inv.customer_address,
+          },
+          noteType: noteForm.noteType,
+          reason: noteForm.reason,
+          items: validItems.map(it => ({
+            description: it.description,
+            quantity: it.quantity,
+            unit_price: it.unit_price,
+            vat_rate: VAT_RATE,
+          })),
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'فشل إصدار الإشعار')
+
+      const qrDataUrl = await QRCode.toDataURL(data.qr, { width: 220 })
+      setNoteResult({ ...data, qrDataUrl })
+
+      if (data.compliance.passed) {
+        const subtotal = validItems.reduce((s, it) => s + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0)
+        const vatAmount = subtotal * (VAT_RATE / 100)
+        await supabase.from('invoices').insert([{
+          organization_id: inv.organization_id || null,
+          invoice_number: `${noteForm.noteType === 'debit_note' ? 'DN' : 'CN'}-${Date.now()}`,
+          invoice_type: inv.invoice_type,
+          document_type: noteForm.noteType,
+          parent_invoice_id: inv.id,
+          status: 'cleared',
+          compliance_status: data.compliance.status,
+          qr_code: data.qr,
+          invoice_hash: data.invoice_hash,
+          issue_date: new Date().toISOString().slice(0, 10),
+          customer_name: inv.customer_name,
+          customer_vat_number: inv.customer_vat_number,
+          customer_cr_number: inv.customer_cr_number,
+          customer_city: inv.customer_city,
+          customer_address: inv.customer_address,
+          customer_id_number: inv.customer_id_number,
+          subtotal: Math.round(subtotal * 100) / 100,
+          vat_amount: Math.round(vatAmount * 100) / 100,
+          total_amount: Math.round((subtotal + vatAmount) * 100) / 100,
+        }])
+        fetchAll()
+      }
+    } catch (err) {
+      setNoteError(err.message)
+    } finally {
+      setNoteSaving(false)
+    }
   }
 
   async function handleZatcaCheck(inv) {
@@ -246,6 +520,10 @@ function Invoices({ onBack }) {
             invoice_number: inv.invoice_number,
             issue_date: inv.issue_date,
             customer_name: inv.customer_name,
+            customer_vat_number: inv.customer_vat_number,
+            customer_cr_number: inv.customer_cr_number,
+            customer_city: inv.customer_city,
+            customer_address: inv.customer_address,
           },
           items: items.map(it => ({
             description: it.description,
@@ -265,10 +543,11 @@ function Invoices({ onBack }) {
         [inv.id]: { loading: false, error: '', result: { ...data, qrDataUrl } },
       }))
 
-      await supabase.from('invoices').update({
+            await supabase.from('invoices').update({
         qr_code: data.qr,
         invoice_hash: data.invoice_hash,
         compliance_status: data.compliance.status,
+        status: data.compliance.passed ? 'ready' : 'draft',
       }).eq('id', inv.id)
       fetchAll()
     } catch (err) {
@@ -276,22 +555,317 @@ function Invoices({ onBack }) {
     }
   }
 
+  // Standard (B2B) invoices are legally required to go through Clearance;
+  // Simplified (B2C) go through Reporting — same rule used server-side.
+  function submissionTypeFor(inv) {
+    const standard = Boolean((inv.customer_vat_number || '').trim() || (inv.customer_cr_number || '').trim())
+    return standard ? 'clearance' : 'reporting'
+  }
+
+  async function doProductionSubmit(inv, submissionType) {
+    setProdSubmissions(s => ({ ...s, [inv.id]: { loading: true, error: '', result: null } }))
+    try {
+      const response = await fetch('/api/zatca-production-invoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceId: inv.id, submissionType }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'فشل الإرسال الفعلي للهيئة')
+
+      const qrDataUrl = await QRCode.toDataURL(data.qr, { width: 220 })
+      setProdSubmissions(s => ({ ...s, [inv.id]: { loading: false, error: '', result: { ...data, qrDataUrl } } }))
+      fetchAll()
+    } catch (err) {
+      setProdSubmissions(s => ({ ...s, [inv.id]: { loading: false, error: err.message, result: null } }))
+    }
+  }
+
+  function handleSendToZatca(inv) {
+    if (isReadOnly) return
+    const submissionType = submissionTypeFor(inv)
+    if (zatcaEnvironment === 'production') {
+      setProdConfirm({ invoice: inv, submissionType, confirmText: '' })
+      return
+    }
+    doProductionSubmit(inv, submissionType)
+  }
+
+  async function handleConfirmProductionSubmit() {
+    if (!prodConfirm || prodConfirm.confirmText !== 'تأكيد') return
+    setProdConfirmSubmitting(true)
+    await doProductionSubmit(prodConfirm.invoice, prodConfirm.submissionType)
+    setProdConfirmSubmitting(false)
+    setProdConfirm(null)
+  }
+
   const inputStyle = { width: '100%', boxSizing: 'border-box', padding: '9px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 14, fontFamily: 'Cairo, sans-serif' }
   const labelStyle = { fontSize: 13, color: '#6b7280', display: 'block', marginBottom: 4 }
 
   function statusBadge(s) {
-    const map = {
-      draft: { bg: '#FEF9E7', color: '#b7950b', label: 'مسودة' },
-      pending_review: { bg: '#EAF4FB', color: '#2E86C1', label: 'قيد المراجعة' },
-      submitted: { bg: '#EAFAF1', color: '#27ae60', label: 'مُرسلة' },
-      failed: { bg: '#FDEDEC', color: '#e74c3c', label: 'فشلت' },
-    }
-    const cfg = map[s] || { bg: '#f3f4f6', color: '#6b7280', label: s || '—' }
-    return <span style={{ background: cfg.bg, color: cfg.color, padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>{cfg.label}</span>
+  const map = {
+    draft: { bg: '#FEF9E7', color: '#b7950b', label: 'مسودة' },
+    ready: { bg: '#EAF4FB', color: '#2E86C1', label: 'جاهزة للإرسال' },
+    pending_clearance: { bg: '#FDF2E3', color: '#d68910', label: 'قيد الاعتماد ⏳' },
+    paused: { bg: '#F4F6F6', color: '#7f8c8d', label: 'متوقفة مؤقتاً ⏸️' },
+    cleared: { bg: '#EAFAF1', color: '#27ae60', label: 'معتمدة 🔒' },
+    submitted: { bg: '#EAFAF1', color: '#27ae60', label: 'مُرسلة (Reporting) 🔒' },
+    rejected: { bg: '#FDEDEC', color: '#e74c3c', label: 'مرفوضة (يمكن إعادة الإرسال)' },
   }
+  const cfg = map[s] || { bg: '#f3f4f6', color: '#6b7280', label: s || '—' }
+  return <span style={{ background: cfg.bg, color: cfg.color, padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 700 }}>{cfg.label}</span>
+}
 
   return (
     <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px 24px', maxWidth: '1200px', margin: '0 auto' }}>
+      {zatcaEnvironment && (
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 9998, textAlign: 'center', padding: '8px 12px',
+          borderRadius: 8, marginBottom: 18, fontWeight: 700, fontSize: 13,
+          background: zatcaEnvironment === 'production' ? '#e74c3c' : '#eafaf1',
+          color: zatcaEnvironment === 'production' ? '#fff' : '#27ae60',
+          border: zatcaEnvironment === 'production' ? '2px solid #c0392b' : '1px solid #27ae60',
+        }}>
+          {zatcaEnvironment === 'production'
+            ? '🔴 بيئة إنتاج حقيقية — كل إرسال ملزم رسمياً لهيئة الزكاة والضريبة'
+            : `🧪 بيئة اختبار (${zatcaEnvironment === 'simulation' ? 'Simulation' : 'Sandbox'}) — لا يوجد أي إلزام رسمي على الإرسالات هنا`}
+        </div>
+      )}
+
+      {prodConfirm && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 10001,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 480, width: '100%', border: '2px solid #e74c3c' }}>
+            <h3 style={{ margin: '0 0 12px', color: '#e74c3c' }}>🔴 تأكيد إرسال فعلي لهيئة الزكاة والضريبة</h3>
+            <div style={{ fontSize: 13, lineHeight: 2, background: '#fdedec', padding: 12, borderRadius: 8, marginBottom: 14 }}>
+              <div><strong>العميل:</strong> {prodConfirm.invoice.customer_name || '—'}</div>
+              <div><strong>رقم الفاتورة:</strong> {prodConfirm.invoice.invoice_number}</div>
+              <div><strong>الإجمالي:</strong> {Number(prodConfirm.invoice.total_amount || 0).toLocaleString()} ريال</div>
+              <div><strong>نوع الإرسال:</strong> {prodConfirm.submissionType === 'clearance' ? 'Clearance (قياسية/B2B)' : 'Reporting (مبسّطة/B2C)'}</div>
+            </div>
+            <p style={{ color: '#e74c3c', fontWeight: 700, fontSize: 13, margin: '0 0 14px' }}>
+              هذا إرسال حقيقي وملزم لهيئة الزكاة والضريبة ولا يمكن التراجع عنه بعد نجاحه.
+            </p>
+            <label style={labelStyle}>اكتب كلمة "تأكيد" لتفعيل زر الإرسال</label>
+            <input
+              type="text"
+              value={prodConfirm.confirmText}
+              onChange={e => setProdConfirm(c => ({ ...c, confirmText: e.target.value }))}
+              style={{ ...inputStyle, marginBottom: 16 }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setProdConfirm(null)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmProductionSubmit}
+                disabled={prodConfirm.confirmText !== 'تأكيد' || prodConfirmSubmitting}
+                style={{
+                  padding: '8px 20px', borderRadius: 8, border: 'none', fontWeight: 700, color: '#fff',
+                  background: '#e74c3c',
+                  cursor: (prodConfirm.confirmText !== 'تأكيد' || prodConfirmSubmitting) ? 'default' : 'pointer',
+                  opacity: (prodConfirm.confirmText !== 'تأكيد' || prodConfirmSubmitting) ? 0.5 : 1,
+                }}>
+                {prodConfirmSubmitting ? 'جاري الإرسال...' : '📤 إرسال فعلي الآن'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {noteForm && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 12, padding: 24, maxWidth: 640, width: '100%',
+            maxHeight: '85vh', overflowY: 'auto',
+          }}>
+            <h3 style={{ margin: '0 0 4px', color: noteForm.noteType === 'debit_note' ? '#d68910' : '#8e44ad' }}>
+              {noteForm.noteType === 'debit_note' ? 'إشعار مدين' : 'إشعار دائن'} — فاتورة {noteForm.invoice.invoice_number}
+            </h3>
+            <p style={{ color: '#6b7280', fontSize: 13, margin: '0 0 16px' }}>
+              البنود معبأة تلقائياً من الفاتورة الأصلية — عدّل أي بند أو احذفه حسب الحاجة قبل الإصدار
+            </p>
+
+            <label style={labelStyle}>سبب الإشعار *</label>
+            <input
+              type="text"
+              value={noteForm.reason}
+              onChange={e => setNoteForm(f => ({ ...f, reason: e.target.value }))}
+              placeholder="مثال: إلغاء جزء من الفاتورة، خصم متفق عليه..."
+              style={{ ...inputStyle, marginBottom: 16 }}
+            />
+
+            <div style={{ overflowX: 'auto', marginBottom: 12 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>
+                <thead>
+                  <tr style={{ background: '#f9fafb', textAlign: 'right' }}>
+                    <th style={{ padding: '6px 8px', fontSize: 12, color: '#6b7280' }}>البيان</th>
+                    <th style={{ padding: '6px 8px', fontSize: 12, color: '#6b7280', width: 80 }}>الكمية</th>
+                    <th style={{ padding: '6px 8px', fontSize: 12, color: '#6b7280', width: 110 }}>سعر الوحدة</th>
+                    <th style={{ width: 36 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {noteForm.items.map(it => (
+                    <tr key={it.key}>
+                      <td style={{ padding: '4px 6px' }}>
+                        <input type="text" value={it.description} onChange={e => updateNoteItem(it.key, 'description', e.target.value)} style={inputStyle} />
+                      </td>
+                      <td style={{ padding: '4px 6px' }}>
+                        <input type="number" min="0" value={it.quantity} onChange={e => updateNoteItem(it.key, 'quantity', e.target.value)} style={inputStyle} />
+                      </td>
+                      <td style={{ padding: '4px 6px' }}>
+                        <input type="number" min="0" value={it.unit_price} onChange={e => updateNoteItem(it.key, 'unit_price', e.target.value)} style={inputStyle} />
+                      </td>
+                      <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                        <button type="button" onClick={() => removeNoteItem(it.key)} style={{ border: 'none', background: 'none', color: '#e74c3c', cursor: 'pointer' }}>✕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {noteError && <p style={{ color: '#e74c3c', fontWeight: 700 }}>{noteError}</p>}
+
+            {noteResult && (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#f9fafb', padding: 10, borderRadius: 8, marginBottom: 12 }}>
+                <img src={noteResult.qrDataUrl} alt="ZATCA QR" width={90} height={90} style={{ borderRadius: 4, border: '1px solid #e5e7eb' }} />
+                <div style={{ fontSize: 12 }}>
+                  <span style={{
+                    background: noteResult.compliance.passed ? '#EAFAF1' : '#FDEDEC',
+                    color: noteResult.compliance.passed ? '#27ae60' : '#e74c3c',
+                    padding: '2px 8px', borderRadius: 10, fontWeight: 700, display: 'inline-block',
+                  }}>
+                    {noteResult.compliance.passed ? 'PASS ✓' : 'FAIL ✕'} ({noteResult.compliance.status})
+                  </span>
+                  <div style={{ marginTop: 4, color: '#6b7280' }}>{noteResult.invoice_type} — تم حفظه كفاتورة معتمدة مرتبطة</div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => { setNoteForm(null); setNoteResult(null); setNoteError('') }}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>
+                {noteResult?.compliance?.passed ? 'إغلاق' : 'إلغاء'}
+              </button>
+              {!noteResult?.compliance?.passed && (
+                <button
+                  type="button"
+                  onClick={handleSubmitNote}
+                  disabled={noteSaving}
+                  style={{
+                    padding: '8px 20px', borderRadius: 8, border: 'none', fontWeight: 700, color: '#fff',
+                    background: noteForm.noteType === 'debit_note' ? '#d68910' : '#8e44ad',
+                    cursor: noteSaving ? 'default' : 'pointer', opacity: noteSaving ? 0.6 : 1,
+                  }}>
+                  {noteSaving ? 'جاري الإصدار...' : 'إصدار الإشعار'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          .inv-print-area, .inv-print-area * { visibility: visible; }
+          .inv-print-area { position: fixed; inset: 0; }
+          .inv-hide-print { display: none !important; }
+        }
+      `}</style>
+
+      {printingInvoice && (
+        <div ref={printAreaRef} className="inv-print-area" style={{
+          position: 'fixed', top: 0, left: 0, width: 794, maxWidth: '100%',
+          background: '#fff', zIndex: 9999, padding: 40,
+          fontFamily: 'Cairo, sans-serif', direction: 'rtl',
+          textAlign: 'right', wordSpacing: 'normal', letterSpacing: 'normal', textJustify: 'none',
+        }}>
+          <button className="inv-hide-print" onClick={() => setPrintingInvoice(null)}
+            style={{ position: 'absolute', top: 16, left: 16, padding: '6px 14px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>
+            ✕ إغلاق
+          </button>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #1B4D7A', paddingBottom: 16, marginBottom: 20 }}>
+            <div>
+              <h2 style={{ margin: 0, color: '#1B4D7A' }}>{printingInvoice.organization?.name || 'فاتورة ضريبية'}</h2>
+              {printingInvoice.organization?.vat_number && <div style={{ fontSize: 13, color: '#6b7280' }}>الرقم الضريبي: {printingInvoice.organization.vat_number}</div>}
+              {printingInvoice.organization?.cr_number && <div style={{ fontSize: 13, color: '#6b7280' }}>السجل التجاري: {printingInvoice.organization.cr_number}</div>}
+              {printingInvoice.organization?.address && <div style={{ fontSize: 13, color: '#6b7280' }}>{printingInvoice.organization.address}</div>}
+            </div>
+            <div style={{ textAlign: 'left' }}>
+              <h3 style={{ margin: 0 }}>{printingInvoice.invoice.invoice_type}</h3>
+              <div style={{ fontSize: 13, color: '#6b7280' }}>رقم الفاتورة: {printingInvoice.invoice.invoice_number}</div>
+              <div style={{ fontSize: 13, color: '#6b7280' }}>تاريخ الإصدار: {printingInvoice.invoice.issue_date || '—'}</div>
+              {printingInvoice.invoice.due_date && <div style={{ fontSize: 13, color: '#6b7280' }}>تاريخ الاستحقاق: {printingInvoice.invoice.due_date}</div>}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <h4 style={{ margin: '0 0 8px', color: '#1B4D7A' }}>بيانات العميل</h4>
+            <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+              <div><strong>{printingInvoice.invoice.customer_name}</strong></div>
+              {printingInvoice.invoice.customer_vat_number && <div>الرقم الضريبي: {printingInvoice.invoice.customer_vat_number}</div>}
+              {printingInvoice.invoice.customer_cr_number && <div>السجل التجاري: {printingInvoice.invoice.customer_cr_number}</div>}
+              {printingInvoice.invoice.customer_id_number && <div>رقم الهوية/الإقامة: {printingInvoice.invoice.customer_id_number}</div>}
+              {printingInvoice.invoice.customer_city && <div>المدينة: {printingInvoice.invoice.customer_city}</div>}
+              {printingInvoice.invoice.customer_address && <div>العنوان: {printingInvoice.invoice.customer_address}</div>}
+            </div>
+          </div>
+
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20 }}>
+            <thead>
+              <tr style={{ background: '#f9fafb', textAlign: 'right' }}>
+                <th style={{ padding: 8, border: '1px solid #e5e7eb' }}>البيان</th>
+                <th style={{ padding: 8, border: '1px solid #e5e7eb' }}>الكمية</th>
+                <th style={{ padding: 8, border: '1px solid #e5e7eb' }}>سعر الوحدة</th>
+                <th style={{ padding: 8, border: '1px solid #e5e7eb' }}>الإجمالي قبل الضريبة</th>
+                <th style={{ padding: 8, border: '1px solid #e5e7eb' }}>الضريبة 15%</th>
+                <th style={{ padding: 8, border: '1px solid #e5e7eb' }}>الإجمالي شامل</th>
+              </tr>
+            </thead>
+            <tbody>
+              {printingInvoice.items.map(it => (
+                <tr key={it.id}>
+                  <td style={{ padding: 8, border: '1px solid #e5e7eb' }}>{it.description}</td>
+                  <td style={{ padding: 8, border: '1px solid #e5e7eb' }}>{it.quantity}</td>
+                  <td style={{ padding: 8, border: '1px solid #e5e7eb' }}>{Number(it.unit_price).toLocaleString()}</td>
+                  <td style={{ padding: 8, border: '1px solid #e5e7eb' }}>{Number(it.line_total).toLocaleString()}</td>
+                  <td style={{ padding: 8, border: '1px solid #e5e7eb' }}>{Number(it.vat_amount).toLocaleString()}</td>
+                  <td style={{ padding: 8, border: '1px solid #e5e7eb' }}>{(Number(it.line_total) + Number(it.vat_amount)).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <div>
+              {printingInvoice.qrDataUrl && (
+                <img src={printingInvoice.qrDataUrl} alt="ZATCA QR" width={140} height={140} />
+              )}
+            </div>
+            <div style={{ textAlign: 'left', fontSize: 14 }}>
+              <div>الإجمالي قبل الضريبة: {Number(printingInvoice.invoice.subtotal || 0).toLocaleString()} ريال</div>
+              <div>ضريبة القيمة المضافة (15%): {Number(printingInvoice.invoice.vat_amount || 0).toLocaleString()} ريال</div>
+              <div style={{ fontWeight: 700, fontSize: 16, marginTop: 6 }}>الإجمالي شامل الضريبة: {Number(printingInvoice.invoice.total_amount || 0).toLocaleString()} ريال</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <button
         onClick={onBack}
         style={{ padding: '8px 16px', marginBottom: '20px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb' }}>
@@ -341,7 +915,50 @@ function Invoices({ onBack }) {
               </div>
             </div>
 
-            <h3 style={{ fontSize: 15, color: '#1B4D7A', margin: '0 0 10px' }}>بيانات العميل</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 10px' }}>
+              <h3 style={{ fontSize: 15, color: '#1B4D7A', margin: 0 }}>بيانات العميل</h3>
+              <span style={{
+                background: willBeStandardInvoice ? '#EAF4FB' : '#FEF9E7',
+                color: willBeStandardInvoice ? '#2E86C1' : '#b7950b',
+                padding: '2px 10px', borderRadius: 12, fontSize: 11, fontWeight: 700,
+              }}>
+                فاتورة {willBeStandardInvoice ? 'قياسية (B2B)' : 'مبسّطة (B2C)'} عند فحص ZATCA
+              </span>
+            </div>
+            <div style={{ marginBottom: 14, maxWidth: 340 }}>
+              <label style={labelStyle}>اختيار مستأجر (اكتب للبحث)</label>
+              <input
+                type="text"
+                list="tenant-options"
+                value={tenantSearchText}
+                onChange={e => {
+                  const val = e.target.value
+                  setTenantSearchText(val)
+                  const match = tenants.find(t => (t.official_name || t.full_name || t.name || '') === val)
+                  if (match) handleSelectTenant(match.id)
+                }}
+                placeholder="اكتب اسم المستأجر..."
+                style={inputStyle}
+              />
+              <datalist id="tenant-options">
+                {tenants.map(t => (
+                  <option key={t.id} value={t.official_name || t.full_name || t.name || '(بدون اسم)'} />
+                ))}
+              </datalist>
+            </div>
+            <div style={{ marginBottom: 14, maxWidth: 340 }}>
+              <label style={labelStyle}>اختيار العقد (اختياري — لربط الفاتورة بربعها بصفحة الإقرارات)</label>
+              <select
+                value={form.lease_id}
+                onChange={e => setForm(f => ({ ...f, lease_id: e.target.value }))}
+                disabled={!selectedTenantId}
+                style={inputStyle}>
+                <option value="">{selectedTenantId ? '— بدون عقد —' : 'اختر مستأجر أولاً'}</option>
+                {leases.filter(l => l.tenant_id === selectedTenantId).map(l => (
+                  <option key={l.id} value={l.id}>{l.lease_number || '(بدون رقم عقد)'}</option>
+                ))}
+              </select>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 22 }}>
               <div>
                 <label style={labelStyle}>اسم العميل *</label>
@@ -352,8 +969,20 @@ function Invoices({ onBack }) {
                 <input type="text" value={form.customer_vat_number} onChange={e => setForm(f => ({ ...f, customer_vat_number: e.target.value }))} style={inputStyle} />
               </div>
               <div>
+                <label style={labelStyle}>السجل التجاري للعميل (CR)</label>
+                <input type="text" value={form.customer_cr_number} onChange={e => setForm(f => ({ ...f, customer_cr_number: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>مدينة العميل</label>
+                <input type="text" value={form.customer_city} onChange={e => setForm(f => ({ ...f, customer_city: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
                 <label style={labelStyle}>عنوان العميل</label>
                 <input type="text" value={form.customer_address} onChange={e => setForm(f => ({ ...f, customer_address: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>رقم الهوية / الإقامة</label>
+                <input type="text" value={form.customer_id_number} onChange={e => setForm(f => ({ ...f, customer_id_number: e.target.value }))} style={inputStyle} />
               </div>
             </div>
 
@@ -438,6 +1067,7 @@ function Invoices({ onBack }) {
                   <th style={{ padding: '10px 12px', fontSize: 13, color: '#6b7280' }}>الإجمالي</th>
                   <th style={{ padding: '10px 12px', fontSize: 13, color: '#6b7280' }}>الحالة</th>
                   <th style={{ padding: '10px 12px', fontSize: 13, color: '#6b7280' }}>فحص ZATCA (تجريبي)</th>
+                  <th style={{ padding: '10px 12px', fontSize: 13, color: '#6b7280' }}>طباعة</th>
                 </tr>
               </thead>
               <tbody>
@@ -460,8 +1090,10 @@ function Invoices({ onBack }) {
                     <td style={{ padding: '10px 12px', fontWeight: 700, color: '#1B4D7A' }}>{Number(inv.total_amount || 0).toLocaleString()} ريال</td>
                     <td style={{ padding: '10px 12px' }}>{statusBadge(inv.status)}</td>
                     <td style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
-                      {inv.status === 'draft' && !isReadOnly ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                                            {(inv.status === 'draft' || inv.status === 'ready' || inv.status === 'rejected' || inv.status === 'cleared') && !isReadOnly ? (
+                                                                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                          {inv.status === 'draft' && (
+                          <>
                           <button
                             type="button"
                             onClick={() => handleZatcaCheck(inv)}
@@ -475,6 +1107,105 @@ function Invoices({ onBack }) {
                             }}>
                             {zatcaChecks[inv.id]?.loading ? 'جاري الفحص...' : '🔍 فحص/توليد QR (تجريبي)'}
                           </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDraft(inv)}
+                            style={{
+                              padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap',
+                              cursor: 'pointer', borderRadius: 6, border: '1px solid #e74c3c',
+                              background: '#fff', color: '#e74c3c', fontWeight: 700,
+                            }}>
+                                                        🗑 حذف المسودة
+                          </button>
+                          </>
+                          )}
+
+                          {(inv.status === 'ready' || inv.status === 'rejected') && (
+                            <button
+                              type="button"
+                              onClick={() => handleSendToZatca(inv)}
+                              disabled={prodSubmissions[inv.id]?.loading}
+                              style={{
+                                padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap',
+                                cursor: prodSubmissions[inv.id]?.loading ? 'default' : 'pointer',
+                                borderRadius: 6, border: '1px solid #27ae60',
+                                background: '#fff', color: '#27ae60', fontWeight: 700,
+                                opacity: prodSubmissions[inv.id]?.loading ? 0.6 : 1,
+                              }}>
+                              {prodSubmissions[inv.id]?.loading
+                                ? 'جاري الإرسال...'
+                                : `📤 إرسال للهيئة (${submissionTypeFor(inv) === 'clearance' ? 'Clearance' : 'Reporting'})`}
+                            </button>
+                          )}
+
+                          {prodSubmissions[inv.id]?.error && (
+                            <span style={{ color: '#e74c3c', fontSize: 12, maxWidth: 240 }}>{prodSubmissions[inv.id].error}</span>
+                          )}
+
+                          {prodSubmissions[inv.id]?.result && (
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: '#f9fafb', padding: 8, borderRadius: 8 }}>
+                              <img
+                                src={prodSubmissions[inv.id].result.qrDataUrl}
+                                alt="ZATCA QR"
+                                width={72}
+                                height={72}
+                                style={{ borderRadius: 4, border: '1px solid #e5e7eb', flexShrink: 0 }}
+                              />
+                              <div style={{ fontSize: 12, maxWidth: 240 }}>
+                                <span style={{
+                                  background: prodSubmissions[inv.id].result.submission.passed ? '#EAFAF1' : '#FDEDEC',
+                                  color: prodSubmissions[inv.id].result.submission.passed ? '#27ae60' : '#e74c3c',
+                                  padding: '2px 8px', borderRadius: 10, fontWeight: 700, display: 'inline-block',
+                                }}>
+                                  {prodSubmissions[inv.id].result.submission.passed ? 'نجح الإرسال ✓' : 'فشل الإرسال ✕'} ({prodSubmissions[inv.id].result.submission.status})
+                                </span>
+                                <div style={{ marginTop: 4, color: '#6b7280' }}>
+                                  البيئة: {prodSubmissions[inv.id].result.environment} — {prodSubmissions[inv.id].result.submission_type === 'clearance' ? 'Clearance' : 'Reporting'}
+                                </div>
+                                {prodSubmissions[inv.id].result.submission_log_id && (
+                                  <div style={{ marginTop: 4, color: '#6b7280', wordBreak: 'break-all' }}>
+                                    رقم سجل التدقيق: {prodSubmissions[inv.id].result.submission_log_id}
+                                  </div>
+                                )}
+                                {prodSubmissions[inv.id].result.submission.messages.errors.length > 0 && (
+                                  <details style={{ marginTop: 4 }}>
+                                    <summary style={{ cursor: 'pointer', color: '#e74c3c' }}>عرض الأخطاء</summary>
+                                    <ul style={{ margin: '4px 0 0', paddingInlineStart: 16 }}>
+                                      {prodSubmissions[inv.id].result.submission.messages.errors.map((m, i) => (
+                                        <li key={i}>{typeof m === 'string' ? m : JSON.stringify(m)}</li>
+                                      ))}
+                                    </ul>
+                                  </details>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {inv.status === 'cleared' && (!inv.document_type || inv.document_type === 'invoice') && (
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenNoteForm(inv, 'credit_note')}
+                                style={{
+                                  padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap',
+                                  cursor: 'pointer', borderRadius: 6, border: '1px solid #8e44ad',
+                                  background: '#fff', color: '#8e44ad', fontWeight: 700,
+                                }}>
+                                📝 إشعار دائن
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenNoteForm(inv, 'debit_note')}
+                                style={{
+                                  padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap',
+                                  cursor: 'pointer', borderRadius: 6, border: '1px solid #d68910',
+                                  background: '#fff', color: '#d68910', fontWeight: 700,
+                                }}>
+                                📝 إشعار مدين
+                              </button>
+                            </div>
+                          )}
 
                           {zatcaChecks[inv.id]?.error && (
                             <span style={{ color: '#e74c3c', fontSize: 12, maxWidth: 240 }}>{zatcaChecks[inv.id].error}</span>
@@ -490,6 +1221,12 @@ function Invoices({ onBack }) {
                                 style={{ borderRadius: 4, border: '1px solid #e5e7eb', flexShrink: 0 }}
                               />
                               <div style={{ fontSize: 12, maxWidth: 220 }}>
+                                <span style={{
+                                  background: '#EAF4FB', color: '#2E86C1',
+                                  padding: '2px 8px', borderRadius: 10, fontWeight: 700, display: 'inline-block', marginInlineEnd: 6,
+                                }}>
+                                  {zatcaChecks[inv.id].result.invoice_type}
+                                </span>
                                 <span style={{
                                   background: zatcaChecks[inv.id].result.compliance.passed ? '#EAFAF1' : '#FDEDEC',
                                   color: zatcaChecks[inv.id].result.compliance.passed ? '#27ae60' : '#e74c3c',
@@ -527,6 +1264,30 @@ function Invoices({ onBack }) {
                       ) : (
                         <span style={{ color: '#9ca3af', fontSize: 12 }}>—</span>
                       )}
+                    </td>
+                    <td style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                        <button
+                          type="button"
+                          onClick={() => handlePrintInvoice(inv, 'print')}
+                          style={{
+                            padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer',
+                            borderRadius: 6, border: '1px solid #1B4D7A', background: '#fff',
+                            color: '#1B4D7A', fontWeight: 700,
+                          }}>
+                          🖨 طباعة
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePrintInvoice(inv, 'pdf')}
+                          style={{
+                            padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer',
+                            borderRadius: 6, border: '1px solid #27ae60', background: '#fff',
+                            color: '#27ae60', fontWeight: 700,
+                          }}>
+                          ⬇️ تحميل PDF
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

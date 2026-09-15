@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabaseClient'
 import ExportToolbar from './components/ExportToolbar'
 import { useReadOnly } from './ReadOnlyContext'
@@ -153,28 +153,33 @@ export default function VatReturns({ onBack }) {
   const [properties, setProperties] = useState([])
   const [tenants, setTenants] = useState([])
   const [filings, setFilings] = useState([])
+  const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
   const [savingKey, setSavingKey] = useState(null)
   const [noteDrafts, setNoteDrafts] = useState({})
   const [selectedQuarters, setSelectedQuarters] = useState([]) // فارغ = كل الأرباع
   const [showAllQuarters, setShowAllQuarters] = useState(false)
+  const [uploadingKey, setUploadingKey] = useState(null)
+  const fileInputRefs = useRef({})
 
   useEffect(() => { fetchAll() }, [])
 
   async function fetchAll() {
     setLoading(true)
-    const [pay, lea, pro, ten, fil] = await Promise.all([
+    const [pay, lea, pro, ten, fil, inv] = await Promise.all([
       supabase.from('payments').select('*'),
       supabase.from('leases').select('id, tenant_id, property_id, rent_amount, tax_enabled, tax_effective_hijri, amount_includes_vat, start_date_hijri, payment_type, payment_frequency'),
       supabase.from('properties').select('id, name'),
       supabase.from('tenants').select('id, name'),
       supabase.from('vat_filings').select('*'),
+      supabase.from('invoices').select('id, invoice_number, customer_name, total_amount, issue_date, lease_id'),
     ])
     setPayments(pay.data || [])
     setLeases(lea.data || [])
     setProperties(pro.data || [])
     setTenants(ten.data || [])
     setFilings(fil.data || [])
+    setInvoices(inv.data || [])
     setLoading(false)
   }
 
@@ -321,6 +326,16 @@ export default function VatReturns({ onBack }) {
     return filings.find(f => f.quarter_key === key)
   }
 
+  // فواتير العملاء (من صفحة الفواتير الإلكترونية) المرتبطة بنفس العقود اللي أنتجت
+  // أرقام هذا الربع فعلياً — الربط بالعقد (lease_id) مو بتاريخ الإصدار الحر اليدوي،
+  // لأن تاريخ الإصدار حقل يدوي ما له علاقة ضرورية بموعد استحقاق الدفعة الفعلي
+  function getQuarterInvoices(quarter) {
+    const leaseIds = new Set(Object.keys(quarter.breakdown))
+    return invoices
+      .filter(inv => inv.lease_id && leaseIds.has(inv.lease_id))
+      .sort((a, b) => new Date(a.issue_date || 0) - new Date(b.issue_date || 0))
+  }
+
   function getStatus(quarter) {
     const filing = getFiling(quarter.key)
     if (filing?.filed) return 'filed'
@@ -397,6 +412,43 @@ export default function VatReturns({ onBack }) {
     }
     setSavingKey(null)
     fetchAll()
+  }
+
+  // رفع ملف الإقرار أو إيصال السداد لكل ربع — يُخزَّن برابط عام مباشر بـ Supabase Storage
+  // (bucket: vat-documents) بنفس نمط رفع عقود الإيجار المعتمد بالنظام
+  async function handleFilingFileUpload(quarter, file, field) {
+    if (!file) return
+    const uploadKey = `${quarter.key}:${field}`
+    setUploadingKey(uploadKey)
+    try {
+      const ext = file.name.split('.').pop()
+      const prefix = field === 'declaration_file_url' ? 'declaration' : 'payment'
+      const path = `vat/${quarter.key}/${prefix}_${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('vat-documents').upload(path, file, { upsert: true })
+      if (upErr) {
+        alert('فشل رفع الملف: ' + upErr.message)
+        return
+      }
+      const { data: pub } = supabase.storage.from('vat-documents').getPublicUrl(path)
+      const existing = getFiling(quarter.key)
+      const payload = {
+        quarter_key: quarter.key,
+        filed: existing?.filed || false,
+        filed_date: existing?.filed_date || null,
+        notes: existing?.notes ?? null,
+        declaration_file_url: existing?.declaration_file_url || null,
+        payment_receipt_url: existing?.payment_receipt_url || null,
+        [field]: pub.publicUrl,
+      }
+      if (existing) {
+        await supabase.from('vat_filings').update(payload).eq('quarter_key', quarter.key)
+      } else {
+        await supabase.from('vat_filings').insert([payload])
+      }
+      fetchAll()
+    } finally {
+      setUploadingKey(null)
+    }
   }
 
   function getDeadlineColor(daysLeft) {
@@ -618,8 +670,26 @@ export default function VatReturns({ onBack }) {
                       ))}
                     </div>
                   )}
+                  {(() => {
+                    const quarterInvoices = getQuarterInvoices(q)
+                    if (quarterInvoices.length === 0) return null
+                    return (
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #e5e7eb' }}>
+                        <div style={{ fontSize: 11.5, color: '#374151', fontWeight: 700, marginBottom: 4 }}>فواتير العملاء بهذا الربع ({quarterInvoices.length}):</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          {quarterInvoices.map(inv => (
+                            <div key={inv.id} style={{ fontSize: 11.5, color: '#6b7280', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                              <span><strong style={{ color: '#374151' }}>{inv.invoice_number}</strong> — {inv.customer_name || '—'}</span>
+                              <span>{Number(inv.total_amount || 0).toLocaleString()} ريال</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   {!isReadOnly && (
+                  <>
                   <div className="no-print" style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <button
                       onClick={() => toggleFiled(q)}
@@ -643,6 +713,40 @@ export default function VatReturns({ onBack }) {
                       style={{ flex: 1, minWidth: 140, padding: '5px 10px', borderRadius: 7, border: '1px solid #e5e7eb', fontSize: 12, fontFamily: 'Cairo, sans-serif' }}
                     />
                   </div>
+                  <div className="no-print" style={{ marginTop: 8, display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                    {[
+                      { field: 'payment_receipt_url', label: 'إيصال السداد', icon: '🧾' },
+                    ].map(({ field, label, icon }) => {
+                      const uploadKey = `${q.key}:${field}`
+                      const isUploading = uploadingKey === uploadKey
+                      const fileUrl = filing?.[field]
+                      return (
+                        <div key={field} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 11, color: '#6b7280' }}>{label}:</span>
+                          <input
+                            type="file"
+                            accept="application/pdf,image/*"
+                            style={{ display: 'none' }}
+                            ref={el => (fileInputRefs.current[uploadKey] = el)}
+                            onChange={e => handleFilingFileUpload(q, e.target.files[0], field)}
+                          />
+                          {fileUrl ? (
+                            <>
+                              <a href={fileUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#1B4D7A', fontWeight: 700 }}>{icon} عرض</a>
+                              <button onClick={() => fileInputRefs.current[uploadKey]?.click()} disabled={isUploading} style={{ fontSize: 11, border: 'none', background: 'none', color: '#6b7280', cursor: 'pointer', textDecoration: 'underline' }}>
+                                {isUploading ? '...' : 'تغيير'}
+                              </button>
+                            </>
+                          ) : (
+                            <button onClick={() => fileInputRefs.current[uploadKey]?.click()} disabled={isUploading} style={{ fontSize: 11, padding: '2px 10px', borderRadius: 5, border: '1px dashed #8e44ad', background: '#fff', color: '#8e44ad', cursor: 'pointer' }}>
+                              {isUploading ? 'جارِ الرفع...' : `${icon} رفع`}
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  </>
                   )}
                   {isReadOnly && filing?.filed && filing?.filed_date && (
                     <div style={{ marginTop: 10, fontSize: 11, color: '#27ae60' }}>تم التقديم بتاريخ: {filing.filed_date}</div>

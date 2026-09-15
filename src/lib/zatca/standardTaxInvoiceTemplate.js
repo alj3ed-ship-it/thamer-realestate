@@ -116,7 +116,10 @@ export default function populate(props) {
     'SET_INVOICE_TYPE',
     props.cancelation ? props.cancelation.cancelation_type : ZATCAInvoiceTypes.INVOICE
   )
-  populated_template = populated_template.replace('SET_BILLING_REFERENCE', '')
+  const billingReferenceBlock = props.cancelation?.billing_reference
+    ? `<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID>${props.cancelation.billing_reference.id}</cbc:ID></cac:InvoiceDocumentReference></cac:BillingReference>`
+    : ''
+  populated_template = populated_template.replace('SET_BILLING_REFERENCE', billingReferenceBlock)
   populated_template = populated_template.replace('SET_INVOICE_SERIAL_NUMBER', props.invoice_serial_number)
   populated_template = populated_template.replace('SET_TERMINAL_UUID', props.egs_info.uuid)
   populated_template = populated_template.replace('SET_ISSUE_DATE', props.issue_date)
