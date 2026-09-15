@@ -13,6 +13,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import axios from 'axios'
 import { EGS, ZATCASimplifiedTaxInvoice } from 'zatca-xml-js'
+import { ZATCAStandardTaxInvoice } from './zatca/ZATCAStandardTaxInvoice.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const CREDENTIALS_FILE = path.join(__dirname, '../../zatca_sandbox_credentials.json')
@@ -116,15 +117,39 @@ function toLineItems(items) {
   }))
 }
 
+// Standard (B2B) invoices are chosen automatically whenever the customer has
+// a VAT number on file — matches the rule: قياسية إذا فيه بيانات مشتري VAT،
+// مبسّطة إذا لا.
+// Standard (B2B) is used whenever the customer is identifiable as an
+// establishment/legal entity — via a VAT number OR a CR number. A customer
+// with neither is treated as a private individual (Simplified/B2C is always
+// permitted for individuals regardless of amount, per Art. 53(7)).
+function isStandardInvoice(invoice) {
+  const hasVat = Boolean(invoice?.customer_vat_number && String(invoice.customer_vat_number).trim())
+  const hasCr = Boolean(invoice?.customer_cr_number && String(invoice.customer_cr_number).trim())
+  return hasVat || hasCr
+}
+
+function buildBuyer(invoice) {
+  return {
+    name: invoice?.customer_name || 'Unnamed Buyer',
+    vat_number: invoice?.customer_vat_number || undefined,
+    cr_number: invoice?.customer_cr_number || undefined,
+    city: invoice?.customer_city || undefined,
+    street: invoice?.customer_address || undefined,
+  }
+}
+
 /**
  * Builds, signs, and submits a real invoice to the ZATCA sandbox compliance
- * endpoint.
+ * endpoint. Automatically picks Standard (B2B) vs Simplified (B2C) based on
+ * whether the customer has a VAT number.
  *
  * @param {object} params
  * @param {{ name?: string, vat_number?: string, cr_number?: string, address?: string }} params.organization
- * @param {{ invoice_number?: string, issue_date?: string, customer_name?: string }} params.invoice
+ * @param {{ invoice_number?: string, issue_date?: string, customer_name?: string, customer_vat_number?: string, customer_cr_number?: string, customer_city?: string, customer_address?: string }} params.invoice
  * @param {Array<{ description?: string, quantity?: number|string, unit_price?: number|string, vat_rate?: number|string }>} params.items
- * @returns {Promise<{ invoice_hash: string, qr: string, compliance: object }>}
+ * @returns {Promise<{ invoice_hash: string, qr: string, invoice_type: string, compliance: object }>}
  */
 export async function runZatcaComplianceCheck({ organization, invoice, items }) {
   const credentials = loadCredentials()
@@ -139,27 +164,44 @@ export async function runZatcaComplianceCheck({ organization, invoice, items }) 
   const issue_time = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`
 
   const line_items = toLineItems(items)
+  const standard = isStandardInvoice(invoice)
 
-  const zatcaInvoice = new ZATCASimplifiedTaxInvoice({
-    props: {
-      egs_info: egs.get(),
-      invoice_counter_number: 1,
-      invoice_serial_number: invoice?.invoice_number || `THAMER-${Date.now()}`,
-      issue_date,
-      issue_time,
-      previous_invoice_hash: FIRST_INVOICE_PIH,
-      line_items,
-    },
-  })
-
-  const buyer_name = invoice?.customer_name || 'Cash Customer'
-  zatcaInvoice.getXML().set('Invoice/cac:AccountingCustomerParty', true, {
-    'cac:Party': {
-      'cac:PartyLegalEntity': {
-        'cbc:RegistrationName': buyer_name,
+  let zatcaInvoice
+  if (standard) {
+    zatcaInvoice = new ZATCAStandardTaxInvoice({
+      props: {
+        egs_info: egs.get(),
+        invoice_counter_number: 1,
+        invoice_serial_number: invoice?.invoice_number || `THAMER-${Date.now()}`,
+        issue_date,
+        issue_time,
+        previous_invoice_hash: FIRST_INVOICE_PIH,
+        buyer: buildBuyer(invoice),
+        line_items,
       },
-    },
-  })
+    })
+  } else {
+    zatcaInvoice = new ZATCASimplifiedTaxInvoice({
+      props: {
+        egs_info: egs.get(),
+        invoice_counter_number: 1,
+        invoice_serial_number: invoice?.invoice_number || `THAMER-${Date.now()}`,
+        issue_date,
+        issue_time,
+        previous_invoice_hash: FIRST_INVOICE_PIH,
+        line_items,
+      },
+    })
+
+    const buyer_name = invoice?.customer_name || 'Cash Customer'
+    zatcaInvoice.getXML().set('Invoice/cac:AccountingCustomerParty', true, {
+      'cac:Party': {
+        'cac:PartyLegalEntity': {
+          'cbc:RegistrationName': buyer_name,
+        },
+      },
+    })
+  }
 
   const { signed_invoice_string, invoice_hash, qr } = egs.signInvoice(zatcaInvoice)
 
@@ -188,6 +230,7 @@ export async function runZatcaComplianceCheck({ organization, invoice, items }) 
   return {
     invoice_hash,
     qr,
+    invoice_type: standard ? 'قياسية' : 'مبسطة',
     compliance: {
       passed,
       status,
