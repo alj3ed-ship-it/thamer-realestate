@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import QRCode from 'qrcode'
-import html2canvas from 'html2canvas'
-import jsPDF from 'jspdf'
 import { supabase } from './supabaseClient'
 import { useReadOnly } from './ReadOnlyContext'
 
@@ -162,57 +160,11 @@ function Invoices({ onBack }) {
   useEffect(() => {
     if (!printingInvoice) return
 
-    if (printingInvoice.mode === 'print') {
+    if (printingInvoice.mode === 'print' || printingInvoice.mode === 'pdf') {
+      // نستخدم نافذة طباعة المتصفح للحالتين — يضمن تطابق التصميم 100% دائماً.
+      // لتحميل PDF: يختار المستخدم "حفظ كـ PDF" من قائمة الطابعة بدل طابعة فعلية.
       const t = setTimeout(() => window.print(), 200)
       return () => clearTimeout(t)
-    }
-
-    if (printingInvoice.mode === 'pdf') {
-      let cancelled = false
-      ;(async () => {
-        const node = printAreaRef.current
-        if (!node) { setPrintingInvoice(null); return }
-        // ننتظر جاهزية الخطوط فعلياً (لا مجرد تأخير ثابت) قبل الالتقاط — هذا هو
-        // سبب تشابك/انعكاس النص العربي: html2canvas كان يلتقط قبل ما يخلص تحميل
-        // خط Cairo، فيرجع يستخدم خط بديل بترتيب حروف غلط لحظة الالتقاط
-        window.scrollTo(0, 0)
-        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-        if (document.fonts && document.fonts.ready) {
-          await document.fonts.ready
-        }
-        await new Promise(r => setTimeout(r, 150))
-        if (cancelled) { setPrintingInvoice(null); return }
-        try {
-          const canvas = await html2canvas(node, {
-            scale: 2, useCORS: true, backgroundColor: '#ffffff', foreignObjectRendering: false,
-          })
-          const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-          const pageWidth = pdf.internal.pageSize.getWidth()
-          const pageHeight = pdf.internal.pageSize.getHeight()
-          const margin = 10
-          const usableWidth = pageWidth - margin * 2
-          const usableHeight = pageHeight - margin * 2
-          const imgHeight = (canvas.height * usableWidth) / canvas.width
-          const imgData = canvas.toDataURL('image/png')
-
-          let heightLeft = imgHeight
-          let position = margin
-          pdf.addImage(imgData, 'PNG', margin, position, usableWidth, imgHeight)
-          heightLeft -= usableHeight
-          while (heightLeft > 0) {
-            pdf.addPage()
-            position = margin - (imgHeight - heightLeft)
-            pdf.addImage(imgData, 'PNG', margin, position, usableWidth, imgHeight)
-            heightLeft -= usableHeight
-          }
-          pdf.save(`${printingInvoice.invoice.invoice_number}.pdf`)
-        } catch (err) {
-          alert('فشل توليد PDF: ' + err.message)
-        } finally {
-          if (!cancelled) setPrintingInvoice(null)
-        }
-      })()
-      return () => { cancelled = true }
     }
   }, [printingInvoice])
 
@@ -450,6 +402,24 @@ function Invoices({ onBack }) {
     }
     setFormSuccess('تم حذف المسودة بنجاح')
     fetchAll()
+  }
+
+  async function handleDownloadPdf(inv) {
+    try {
+      const response = await fetch(`/api/generate-invoice-pdf?invoiceId=${inv.id}`)
+      if (!response.ok) throw new Error('فشل توليد PDF')
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${inv.invoice_number}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('فشل تحميل PDF: ' + err.message)
+    }
   }
 
   async function handlePrintInvoice(inv, mode = 'print') {
@@ -695,7 +665,7 @@ function Invoices({ onBack }) {
 }
 
   return (
-    <div dir="rtl" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px 24px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div dir="rtl" className="inv-page-root" style={{ fontFamily: 'Cairo, sans-serif', padding: '40px 24px', maxWidth: '1200px', margin: '0 auto' }}>
       {zatcaEnvironment && (
         <div style={{
           position: 'sticky', top: 0, zIndex: 9998, textAlign: 'center', padding: '8px 12px',
@@ -920,6 +890,7 @@ function Invoices({ onBack }) {
       )}
       <style>{`
         @media print {
+          @page { margin: 0; size: A4; }
           body * { visibility: hidden; }
           .inv-print-area, .inv-print-area * { visibility: visible; }
           .inv-print-area { position: fixed; inset: 0; }
@@ -927,6 +898,7 @@ function Invoices({ onBack }) {
           .inv-print-area table { page-break-inside: auto; }
           .inv-print-area thead { display: table-header-group; }
           .inv-print-area tr { page-break-inside: avoid; break-inside: avoid; }
+          .inv-page-root { height: 0 !important; min-height: 0 !important; overflow: hidden !important; padding: 0 !important; margin: 0 !important; }
         }
       `}</style>
 
@@ -1530,7 +1502,7 @@ function Invoices({ onBack }) {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handlePrintInvoice(inv, 'pdf')}
+                          onClick={() => handleDownloadPdf(inv)}
                           style={{
                             padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer',
                             borderRadius: 6, border: '1px solid #27ae60', background: '#fff',
