@@ -1118,6 +1118,16 @@ function Invoices({ onBack }) {
                   const match = tenants.find(t => (t.official_name || t.full_name || t.name || '') === val)
                   if (match) handleSelectTenant(match.id)
                 }}
+                onBlur={() => {
+                  const match = tenants.find(t => (t.official_name || t.full_name || t.name || '') === tenantSearchText)
+                  if (!match) {
+                    setTenantSearchText('')
+                    setForm(f => ({ ...f,
+                      customer_name: '', customer_vat_number: '', customer_cr_number: '',
+                      customer_city: '', customer_address: '', customer_id_number: '', customer_phone: ''
+                    }))
+                  }
+                }}
                 placeholder="اكتب اسم المستأجر..."
                 style={inputStyle}
               />
