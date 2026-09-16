@@ -1194,7 +1194,11 @@ function Invoices({ onBack }) {
               <div>
                 <label style={labelStyle}>رقم الهوية / الإقامة</label>
                 <input type="text" value={form.customer_id_number} onChange={e => setForm(f => ({ ...f, customer_id_number: e.target.value }))} style={inputStyle} />
-              </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>المبلغ المستلم (يدوي)</label>
+                  <input type="number" value={form.amount_paid || ''} onChange={e => setForm(f => ({ ...f, amount_paid: e.target.value }))} style={inputStyle} placeholder="0" />
+                </div>
             </div>
 
             <h3 style={{ fontSize: 15, color: '#1B4D7A', margin: '0 0 10px' }}>بنود الفاتورة</h3>

@@ -1,0 +1,392 @@
+﻿  async function fetchAll() {
+    setStatus('loading')
+    const [org, inv, ten, lea] = await Promise.all([
+      supabase.from('organizations').select('id, name, vat_number, cr_number, address, phone').order('name'),
+      supabase.from('invoices').select('*').order('created_at', { ascending: false }).limit(20),
+      supabase.from('tenants').select('id, full_name, name, official_name, vat_number, cr_number, address, id_number').order('full_name'),
+      supabase.from('leases').select('id, tenant_id, lease_number, status'),
+    ])
+    setOrganizations(org.data || [])
+    setInvoices(inv.data || [])
+    setTenants(ten.data || [])
+    setLeases(lea.data || [])
+    setForm(f => ({ ...f, organization_id: f.organization_id || org.data?.[0]?.id || '' }))
+    setStatus('success')
+  }
+
+  useEffect(() => { fetchAll() }, [])
+
+  useEffect(() => {
+    fetch('/api/zatca-environment')
+      .then(r => r.json())
+      .then(d => setZatcaEnvironment(d.environment || 'sandbox'))
+      .catch(() => setZatcaEnvironment('sandbox'))
+  }, [])
+
+  useEffect(() => {
+    function handleAfterPrint() { setPrintingInvoice(null) }
+    window.addEventListener('afterprint', handleAfterPrint)
+    return () => window.removeEventListener('afterprint', handleAfterPrint)
+  }, [])
+
+  useEffect(() => {
+    if (!printingInvoice) return
+
+    if (printingInvoice.mode === 'print' || printingInvoice.mode === 'pdf') {
+      // Ù†Ø³ØªØ®Ø¯Ù… Ù†Ø§ÙØ°Ø© Ø·Ø¨Ø§Ø¹Ø© Ø§Ù„Ù…ØªØµÙØ­ Ù„Ù„Ø­Ø§Ù„ØªÙŠÙ† â€” ÙŠØ¶Ù…Ù† ØªØ·Ø§Ø¨Ù‚ Ø§Ù„ØªØµÙ…ÙŠÙ… 100% Ø¯Ø§Ø¦Ù…Ø§Ù‹.
+      // Ù„ØªØ­Ù…ÙŠÙ„ PDF: ÙŠØ®ØªØ§Ø± Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… "Ø­ÙØ¸ ÙƒÙ€ PDF" Ù…Ù† Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ø·Ø§Ø¨Ø¹Ø© Ø¨Ø¯Ù„ Ø·Ø§Ø¨Ø¹Ø© ÙØ¹Ù„ÙŠØ©.
+      const t = setTimeout(() => window.print(), 200)
+      return () => clearTimeout(t)
+    }
+  }, [printingInvoice])
+
+  function updateItem(key, field, value) {
+    setForm(f => ({
+      ...f,
+      items: f.items.map(it => it.key === key ? { ...it, [field]: value } : it)
+    }))
+  }
+
+  function addItem() {
+    setForm(f => ({ ...f, items: [...f.items, emptyItem()] }))
+  }
+
+  function removeItem(key) {
+    setForm(f => ({ ...f, items: f.items.length > 1 ? f.items.filter(it => it.key !== key) : f.items }))
+  }
+
+  function handleSelectTenant(tenantId) {
+    if (!tenantId) return
+    const t = tenants.find(x => x.id === tenantId)
+    if (!t) return
+    setSelectedTenantId(tenantId)
+    setForm(f => ({
+      ...f,
+      customer_name: t.official_name || t.full_name || t.name || '',
+      customer_vat_number: t.vat_number || '',
+      customer_cr_number: t.cr_number || '',
+      customer_address: t.address || '',
+      customer_id_number: t.id_number || '',
+      lease_id: '',
+    }))
+  }
+
+  const subtotal = form.items.reduce((s, it) => s + lineAmounts(it).lineTotal, 0)
+  const vatTotal = form.items.reduce((s, it) => s + lineAmounts(it).vatAmount, 0)
+  const grandTotal = subtotal + vatTotal
+  // Standard (B2B) invoices are picked automatically whenever the customer
+  // has a VAT number on file â€” mirrors the same rule used server-side in
+  // zatcaCompliance.js.
+    const willBeStandardInvoice = Boolean(form.customer_vat_number.trim() || form.customer_cr_number.trim())
+
+  function generateInvoiceNumber() {
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = String(now.getMonth() + 1).padStart(2, '0')
+    const d = String(now.getDate()).padStart(2, '0')
+    const rand = Math.floor(1000 + Math.random() * 9000)
+    return `DRAFT-${y}${m}${d}-${rand}`
+  }
+
+  async function handleSaveDraft() {
+    setFormError(''); setFormSuccess('')
+    if (!form.customer_name.trim()) { setFormError('ÙŠØ±Ø¬Ù‰ Ø¥Ø¯Ø®Ø§Ù„ Ø§Ø³Ù… Ø§Ù„Ø¹Ù…ÙŠÙ„'); return }
+    const validItems = form.items.filter(it => it.description.trim() && Number(it.unit_price) > 0)
+    if (validItems.length === 0) { setFormError('ÙŠØ±Ø¬Ù‰ Ø¥Ø¶Ø§ÙØ© Ø¨Ù†Ø¯ ÙˆØ§Ø­Ø¯ Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„ Ø¨Ø¨ÙŠØ§Ù† ÙˆØ³Ø¹Ø± ØµØ­ÙŠØ­ÙŠÙ†'); return }
+
+    setSaving(true)
+    const invoicePayload = {
+      organization_id: form.organization_id || null,
+      invoice_number: generateInvoiceNumber(),
+      invoice_type: form.invoice_type,
+      status: 'draft',
+      issue_date: form.issue_date || null,
+      due_date: form.due_date || null,
+      customer_name: form.customer_name || null,
+      customer_vat_number: form.customer_vat_number || null,
+      customer_cr_number: form.customer_cr_number || null,
+      customer_city: form.customer_city || null,
+      customer_address: form.customer_address || null,
+      customer_id_number: form.customer_id_number || null,
+      customer_id_type: form.customer_id_type || null,
+      customer_phone: form.customer_phone || null,
+      amount_paid: form.amount_paid ? Math.round(Number(form.amount_paid) * 100) / 100 : 0,
+      lease_id: form.lease_id || null,
+      subtotal: Math.round(subtotal * 100) / 100,
+      vat_amount: Math.round(vatTotal * 100) / 100,
+      total_amount: Math.round(grandTotal * 100) / 100,
+    }
+
+    const { data: inserted, error: invError } = await supabase.from('invoices').insert([invoicePayload]).select('id')
+    if (invError) { setSaving(false); setFormError(invError.message); return }
+    const invoiceId = inserted?.[0]?.id
+
+    const itemRows = validItems.map((it, idx) => {
+      const { lineTotal, vatAmount } = lineAmounts(it)
+      return {
+        invoice_id: invoiceId,
+        description: it.description,
+        quantity: Number(it.quantity) || 0,
+        unit_price: Number(it.unit_price) || 0,
+        vat_rate: VAT_RATE,
+        vat_amount: Math.round(vatAmount * 100) / 100,
+        line_total: Math.round(lineTotal * 100) / 100,
+        sort_order: idx,
+      }
+    })
+    const { error: itemsError } = await supabase.from('invoice_items').insert(itemRows)
+    setSaving(false)
+    if (itemsError) { setFormError(itemsError.message); return }
+
+    setFormSuccess('ØªÙ… Ø­ÙØ¸ Ø§Ù„ÙØ§ØªÙˆØ±Ø© ÙƒÙ…Ø³ÙˆØ¯Ø© Ø¨Ù†Ø¬Ø§Ø­')
+    setForm(f => ({ ...emptyForm(), organization_id: f.organization_id }))
+    setTenantSearchText('')
+    fetchAll()
+  }
+
+  async function handleUpdateDraft() {
+    setFormError(''); setFormSuccess('')
+    if (!editingInvoiceId) return
+    if (!form.customer_name.trim()) { setFormError('ÙŠØ±Ø¬Ù‰ Ø¥Ø¯Ø®Ø§Ù„ Ø§Ø³Ù… Ø§Ù„Ø¹Ù…ÙŠÙ„'); return }
+    const validItems = form.items.filter(it => it.description.trim() && Number(it.unit_price) > 0)
+    if (validItems.length === 0) { setFormError('ÙŠØ±Ø¬Ù‰ Ø¥Ø¶Ø§ÙØ© Ø¨Ù†Ø¯ ÙˆØ§Ø­Ø¯ Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„ Ø¨Ø¨ÙŠØ§Ù† ÙˆØ³Ø¹Ø± ØµØ­ÙŠØ­ÙŠÙ†'); return }
+
+    setSaving(true)
+    const invoicePayload = {
+      organization_id: form.organization_id || null,
+      invoice_type: form.invoice_type,
+      issue_date: form.issue_date || null,
+      due_date: form.due_date || null,
+      customer_name: form.customer_name || null,
+      customer_vat_number: form.customer_vat_number || null,
+      customer_cr_number: form.customer_cr_number || null,
+      customer_city: form.customer_city || null,
+      customer_address: form.customer_address || null,
+      customer_id_number: form.customer_id_number || null,
+      customer_id_type: form.customer_id_type || null,
+      customer_phone: form.customer_phone || null,
+      amount_paid: form.amount_paid ? Math.round(Number(form.amount_paid) * 100) / 100 : 0,
+      lease_id: form.lease_id || null,
+      subtotal: Math.round(subtotal * 100) / 100,
+      vat_amount: Math.round(vatTotal * 100) / 100,
+      total_amount: Math.round(grandTotal * 100) / 100,
+    }
+
+    const { error: invError } = await supabase.from('invoices').update(invoicePayload).eq('id', editingInvoiceId)
+    if (invError) { setSaving(false); setFormError(invError.message); return }
+
+    const { error: delError } = await supabase.from('invoice_items').delete().eq('invoice_id', editingInvoiceId)
+    if (delError) { setSaving(false); setFormError(delError.message); return }
+
+    const itemRows = validItems.map((it, idx) => {
+      const { lineTotal, vatAmount } = lineAmounts(it)
+      return {
+        invoice_id: editingInvoiceId,
+        description: it.description,
+        quantity: Number(it.quantity) || 0,
+        unit_price: Number(it.unit_price) || 0,
+        vat_rate: VAT_RATE,
+        vat_amount: Math.round(vatAmount * 100) / 100,
+        line_total: Math.round(lineTotal * 100) / 100,
+        sort_order: idx,
+      }
+    })
+    const { error: itemsError } = await supabase.from('invoice_items').insert(itemRows)
+    setSaving(false)
+    if (itemsError) { setFormError(itemsError.message); return }
+
+    setFormSuccess('ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„Ù…Ø³ÙˆØ¯Ø© Ø¨Ù†Ø¬Ø§Ø­')
+    setEditingInvoiceId(null)
+    setEditingInvoiceNumber('')
+    setForm(f => ({ ...emptyForm(), organization_id: f.organization_id }))
+    setTenantSearchText('')
+    fetchAll()
+  }
+
+  async function handleEditDraft(inv) {
+    if (inv.status !== 'draft' || isReadOnly) return
+    setFormError(''); setFormSuccess('')
+    const { data: items, error } = await supabase
+      .from('invoice_items')
+      .select('*')
+      .eq('invoice_id', inv.id)
+      .order('sort_order')
+    if (error) { setFormError(error.message); return }
+
+    setForm({
+      organization_id: inv.organization_id || '',
+      invoice_type: inv.invoice_type || 'Ø¶Ø±ÙŠØ¨ÙŠØ© Ù…Ø¨Ø³Ø·Ø©',
+      issue_date: inv.issue_date || new Date().toISOString().slice(0, 10),
+      due_date: inv.due_date || '',
+      customer_name: inv.customer_name || '',
+      customer_vat_number: inv.customer_vat_number || '',
+      customer_cr_number: inv.customer_cr_number || '',
+      customer_city: inv.customer_city || '',
+      customer_address: inv.customer_address || '',
+      customer_id_number: inv.customer_id_number || '',
+      customer_id_type: inv.customer_id_type || '',
+      customer_phone: inv.customer_phone || '',
+      amount_paid: inv.amount_paid ? String(inv.amount_paid) : '',
+      lease_id: inv.lease_id || '',
+      items: (items && items.length > 0)
+        ? items.map(it => ({
+            key: Math.random().toString(36).slice(2),
+            description: it.description || '',
+            quantity: String(it.quantity ?? '1'),
+            unit_price: String(it.unit_price ?? ''),
+          }))
+        : [emptyItem()],
+    })
+    const linkedLease = leases.find(l => l.id === inv.lease_id)
+    setSelectedTenantId(linkedLease?.tenant_id || '')
+    setEditingInvoiceId(inv.id)
+    setEditingInvoiceNumber(inv.invoice_number)
+    setTenantSearchText('')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function handleNewInvoice() {
+    setFormError(''); setFormSuccess('')
+    setEditingInvoiceId(null)
+    setEditingInvoiceNumber('')
+    setForm(f => ({ ...emptyForm(), organization_id: f.organization_id }))
+    setTenantSearchText('')
+    setSelectedTenantId('')
+  }
+
+  async function handleDeleteDraft(inv) {
+    if (inv.status !== 'draft' || isReadOnly) return
+    const confirmed = window.confirm(`Ù‡Ù„ Ø£Ù†Øª Ù…ØªØ£ÙƒØ¯ Ù…Ù† Ø­Ø°Ù Ø§Ù„Ù…Ø³ÙˆØ¯Ø© Ø±Ù‚Ù… ${inv.invoice_number}ØŸ Ù‡Ø°Ø§ Ø§Ù„Ø¥Ø¬Ø±Ø§Ø¡ Ù„Ø§ ÙŠÙ…ÙƒÙ† Ø§Ù„ØªØ±Ø§Ø¬Ø¹ Ø¹Ù†Ù‡.`)
+    if (!confirmed) return
+
+    setFormError(''); setFormSuccess('')
+    const { error: itemsError } = await supabase.from('invoice_items').delete().eq('invoice_id', inv.id)
+    if (itemsError) { setFormError(itemsError.message); return }
+
+    const { error: invError } = await supabase.from('invoices').delete().eq('id', inv.id)
+    if (invError) { setFormError(invError.message); return }
+
+    if (editingInvoiceId === inv.id) {
+      setEditingInvoiceId(null)
+      setEditingInvoiceNumber('')
+      setForm(f => ({ ...emptyForm(), organization_id: f.organization_id }))
+      setTenantSearchText('')
+    }
+    setFormSuccess('ØªÙ… Ø­Ø°Ù Ø§Ù„Ù…Ø³ÙˆØ¯Ø© Ø¨Ù†Ø¬Ø§Ø­')
+    fetchAll()
+  }
+
+  async function handleDownloadPdf(inv) {
+    try {
+      const response = await fetch(`/api/generate-invoice-pdf?invoiceId=${inv.id}`)
+      if (!response.ok) throw new Error('ÙØ´Ù„ ØªÙˆÙ„ÙŠØ¯ PDF')
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${inv.invoice_number}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('ÙØ´Ù„ ØªØ­Ù…ÙŠÙ„ PDF: ' + err.message)
+    }
+  }
+
+  async function handlePrintInvoice(inv, mode = 'print') {
+    const { data: items } = await supabase
+      .from('invoice_items')
+      .select('*')
+      .eq('invoice_id', inv.id)
+      .order('sort_order')
+    let qrDataUrl = null
+    if (inv.qr_code) {
+      try { qrDataUrl = await QRCode.toDataURL(inv.qr_code, { width: 160 }) } catch {}
+    }
+    const organization = organizations.find(o => o.id === inv.organization_id) || null
+    const { data: settingsRow } = await supabase
+      .from('organization_settings')
+      .select('*')
+      .eq('organization_id', inv.organization_id)
+      .maybeSingle()
+    setPrintingInvoice({ invoice: inv, items: items || [], qrDataUrl, organization, orgSettings: settingsRow || null, mode })
+  }
+
+  async function handleOpenNoteForm(inv, noteType) {
+    setNoteError(''); setNoteResult(null)
+    const { data: items, error } = await supabase
+      .from('invoice_items')
+      .select('*')
+      .eq('invoice_id', inv.id)
+      .order('sort_order')
+    if (error) { setNoteError(error.message); return }
+    setNoteForm({
+      invoice: inv,
+      noteType,
+      reason: '',
+      items: (items || []).map(it => ({
+        key: Math.random().toString(36).slice(2),
+        description: it.description || '',
+        quantity: String(it.quantity ?? '1'),
+        unit_price: String(it.unit_price ?? ''),
+      })),
+    })
+  }
+
+  function updateNoteItem(key, field, value) {
+    setNoteForm(f => ({
+      ...f,
+      items: f.items.map(it => it.key === key ? { ...it, [field]: value } : it)
+    }))
+  }
+
+  function removeNoteItem(key) {
+    setNoteForm(f => ({ ...f, items: f.items.length > 1 ? f.items.filter(it => it.key !== key) : f.items }))
+  }
+
+  async function handleSubmitNote() {
+    if (!noteForm) return
+    setNoteError(''); setNoteResult(null)
+    const validItems = noteForm.items.filter(it => it.description.trim() && Number(it.unit_price) > 0)
+    if (validItems.length === 0) { setNoteError('ÙŠØ±Ø¬Ù‰ Ø¥Ø¨Ù‚Ø§Ø¡ Ø¨Ù†Ø¯ ÙˆØ§Ø­Ø¯ Ø¹Ù„Ù‰ Ø§Ù„Ø£Ù‚Ù„ Ø¨Ø¨ÙŠØ§Ù† ÙˆØ³Ø¹Ø± ØµØ­ÙŠØ­ÙŠÙ†'); return }
+    if (!noteForm.reason.trim()) { setNoteError('ÙŠØ±Ø¬Ù‰ ÙƒØªØ§Ø¨Ø© Ø³Ø¨Ø¨ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±'); return }
+
+    setNoteSaving(true)
+    try {
+      const inv = noteForm.invoice
+      const organization = organizations.find(o => o.id === inv.organization_id) || null
+      const response = await fetch('/api/zatca-credit-debit-note', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organization,
+          originalInvoice: {
+            invoice_number: inv.invoice_number,
+            customer_name: inv.customer_name,
+            customer_vat_number: inv.customer_vat_number,
+            customer_cr_number: inv.customer_cr_number,
+            customer_city: inv.customer_city,
+            customer_address: inv.customer_address,
+          },
+          noteType: noteForm.noteType,
+          reason: noteForm.reason,
+          items: validItems.map(it => ({
+            description: it.description,
+            quantity: it.quantity,
+            unit_price: it.unit_price,
+            vat_rate: VAT_RATE,
+          })),
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'ÙØ´Ù„ Ø¥ØµØ¯Ø§Ø± Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±')
+
+      const qrDataUrl = await QRCode.toDataURL(data.qr, { width: 220 })
+      setNoteResult({ ...data, qrDataUrl })
+
+      if (data.compliance.passed) {
+        const subtotal = validItems.reduce((s, it) => s + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0)
+        const vatAmount = subtotal * (VAT_RATE / 100)
+        await supabase.from('invoices').insert([{
+          organization_id: inv.organization_id || null,
