@@ -162,7 +162,8 @@ export default async function handler(req, res) {
 
     res.setHeader('Content-Type', 'application/pdf')
     res.setHeader('Content-Disposition', `attachment; filename="invoice.pdf"`)
-    res.status(200).send(pdfBuffer)
+    res.setHeader('Content-Length', pdfBuffer.length)
+    res.status(200).end(pdfBuffer)
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
