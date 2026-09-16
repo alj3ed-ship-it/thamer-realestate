@@ -24,6 +24,9 @@ function emptyForm() {
     customer_city: '',
     customer_address: '',
     customer_id_number: '',
+    customer_id_type: '',
+    customer_phone: '',
+    amount_paid: '',
     lease_id: '',
     items: [emptyItem()],
   }
@@ -38,6 +41,15 @@ function lineAmounts(item) {
 }
 
 function Invoices({ onBack }) {
+  useEffect(() => {
+    if (!document.getElementById('tajawal-font-link')) {
+      const link = document.createElement('link')
+      link.id = 'tajawal-font-link'
+      link.rel = 'stylesheet'
+      link.href = 'https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap'
+      document.head.appendChild(link)
+    }
+  }, [])
   const isReadOnly = useReadOnly()
   const [organizations, setOrganizations] = useState([])
   const [tenants, setTenants] = useState([])
@@ -63,11 +75,63 @@ function Invoices({ onBack }) {
   const [prodSubmissions, setProdSubmissions] = useState({}) // { [invoiceId]: { loading, error, result } }
   const [prodConfirm, setProdConfirm] = useState(null) // { invoice, submissionType, confirmText }
   const [prodConfirmSubmitting, setProdConfirmSubmitting] = useState(false)
+  const [settingsModal, setSettingsModal] = useState(null) // { organization_id, id, bank_name, account_name, account_number, iban, invoice_notes_ar, notes_enabled, bank_details_enabled, loading, saving, error }
+
+  async function handleOpenSettings() {
+    const orgId = form.organization_id
+    if (!orgId) { alert('اختر المنشأة أولاً'); return }
+    setSettingsModal({ organization_id: orgId, loading: true })
+    const { data, error } = await supabase
+      .from('organization_settings')
+      .select('*')
+      .eq('organization_id', orgId)
+      .maybeSingle()
+    if (error) {
+      setSettingsModal({ organization_id: orgId, loading: false, error: error.message })
+      return
+    }
+    setSettingsModal({
+      organization_id: orgId,
+      id: data?.id || null,
+      bank_name: data?.bank_name || '',
+      account_name: data?.account_name || '',
+      account_number: data?.account_number || '',
+      iban: data?.iban || '',
+      invoice_notes_ar: data?.invoice_notes_ar || '',
+      notes_enabled: data?.notes_enabled || false,
+      bank_details_enabled: data?.bank_details_enabled || false,
+      loading: false, saving: false, error: '',
+    })
+  }
+
+  async function handleSaveSettings() {
+    if (!settingsModal) return
+    setSettingsModal(s => ({ ...s, saving: true, error: '' }))
+    const payload = {
+      organization_id: settingsModal.organization_id,
+      bank_name: settingsModal.bank_name || null,
+      account_name: settingsModal.account_name || null,
+      account_number: settingsModal.account_number || null,
+      iban: settingsModal.iban || null,
+      invoice_notes_ar: settingsModal.invoice_notes_ar || null,
+      notes_enabled: settingsModal.notes_enabled,
+      bank_details_enabled: settingsModal.bank_details_enabled,
+    }
+    let error
+    if (settingsModal.id) {
+      ;({ error } = await supabase.from('organization_settings').update(payload).eq('id', settingsModal.id))
+    } else {
+      ;({ error } = await supabase.from('organization_settings').insert([payload]))
+    }
+    if (error) { setSettingsModal(s => ({ ...s, saving: false, error: error.message })); return }
+    setSettingsModal(s => ({ ...s, saving: false }))
+    setTimeout(() => setSettingsModal(null), 600)
+  }
 
   async function fetchAll() {
     setStatus('loading')
     const [org, inv, ten, lea] = await Promise.all([
-      supabase.from('organizations').select('id, name, vat_number, cr_number, address').order('name'),
+      supabase.from('organizations').select('id, name, vat_number, cr_number, address, phone').order('name'),
       supabase.from('invoices').select('*').order('created_at', { ascending: false }).limit(20),
       supabase.from('tenants').select('id, full_name, name, official_name, vat_number, cr_number, address, id_number').order('full_name'),
       supabase.from('leases').select('id, tenant_id, lease_number, status'),
@@ -220,6 +284,9 @@ function Invoices({ onBack }) {
       customer_city: form.customer_city || null,
       customer_address: form.customer_address || null,
       customer_id_number: form.customer_id_number || null,
+      customer_id_type: form.customer_id_type || null,
+      customer_phone: form.customer_phone || null,
+      amount_paid: form.amount_paid ? Math.round(Number(form.amount_paid) * 100) / 100 : 0,
       lease_id: form.lease_id || null,
       subtotal: Math.round(subtotal * 100) / 100,
       vat_amount: Math.round(vatTotal * 100) / 100,
@@ -272,6 +339,9 @@ function Invoices({ onBack }) {
       customer_city: form.customer_city || null,
       customer_address: form.customer_address || null,
       customer_id_number: form.customer_id_number || null,
+      customer_id_type: form.customer_id_type || null,
+      customer_phone: form.customer_phone || null,
+      amount_paid: form.amount_paid ? Math.round(Number(form.amount_paid) * 100) / 100 : 0,
       lease_id: form.lease_id || null,
       subtotal: Math.round(subtotal * 100) / 100,
       vat_amount: Math.round(vatTotal * 100) / 100,
@@ -330,6 +400,9 @@ function Invoices({ onBack }) {
       customer_city: inv.customer_city || '',
       customer_address: inv.customer_address || '',
       customer_id_number: inv.customer_id_number || '',
+      customer_id_type: inv.customer_id_type || '',
+      customer_phone: inv.customer_phone || '',
+      amount_paid: inv.amount_paid ? String(inv.amount_paid) : '',
       lease_id: inv.lease_id || '',
       items: (items && items.length > 0)
         ? items.map(it => ({
@@ -390,7 +463,12 @@ function Invoices({ onBack }) {
       try { qrDataUrl = await QRCode.toDataURL(inv.qr_code, { width: 160 }) } catch {}
     }
     const organization = organizations.find(o => o.id === inv.organization_id) || null
-    setPrintingInvoice({ invoice: inv, items: items || [], qrDataUrl, organization, mode })
+    const { data: settingsRow } = await supabase
+      .from('organization_settings')
+      .select('*')
+      .eq('organization_id', inv.organization_id)
+      .maybeSingle()
+    setPrintingInvoice({ invoice: inv, items: items || [], qrDataUrl, organization, orgSettings: settingsRow || null, mode })
   }
 
   async function handleOpenNoteForm(inv, noteType) {
@@ -680,6 +758,68 @@ function Invoices({ onBack }) {
         </div>
       )}
 
+      {settingsModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 480, width: '100%', maxHeight: '85vh', overflowY: 'auto' }}>
+            <h3 style={{ margin: '0 0 16px', color: '#1B4D7A' }}>⚙️ إعدادات الفاتورة</h3>
+            {settingsModal.loading ? (
+              <p>جاري التحميل...</p>
+            ) : (
+              <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontWeight: 700, fontSize: 14 }}>
+                  <input type="checkbox" checked={settingsModal.bank_details_enabled}
+                    onChange={e => setSettingsModal(s => ({ ...s, bank_details_enabled: e.target.checked }))} />
+                  إظهار بيانات الحساب البنكي بالفاتورة
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+                  <div>
+                    <label style={labelStyle}>اسم البنك</label>
+                    <input type="text" value={settingsModal.bank_name} onChange={e => setSettingsModal(s => ({ ...s, bank_name: e.target.value }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>اسم الحساب</label>
+                    <input type="text" value={settingsModal.account_name} onChange={e => setSettingsModal(s => ({ ...s, account_name: e.target.value }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>رقم الحساب</label>
+                    <input type="text" value={settingsModal.account_number} onChange={e => setSettingsModal(s => ({ ...s, account_number: e.target.value }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>رقم الآيبان</label>
+                    <input type="text" value={settingsModal.iban} onChange={e => setSettingsModal(s => ({ ...s, iban: e.target.value }))} style={inputStyle} />
+                  </div>
+                </div>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontWeight: 700, fontSize: 14 }}>
+                  <input type="checkbox" checked={settingsModal.notes_enabled}
+                    onChange={e => setSettingsModal(s => ({ ...s, notes_enabled: e.target.checked }))} />
+                  إظهار ملاحظات بالفاتورة
+                </label>
+                <label style={labelStyle}>نص الملاحظة</label>
+                <textarea value={settingsModal.invoice_notes_ar} onChange={e => setSettingsModal(s => ({ ...s, invoice_notes_ar: e.target.value }))}
+                  style={{ ...inputStyle, minHeight: 70, marginBottom: 16, resize: 'vertical' }} />
+
+                {settingsModal.error && <p style={{ color: '#e74c3c', fontWeight: 700 }}>{settingsModal.error}</p>}
+
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => setSettingsModal(null)}
+                    style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer' }}>
+                    إلغاء
+                  </button>
+                  <button type="button" onClick={handleSaveSettings} disabled={settingsModal.saving}
+                    style={{ padding: '8px 20px', borderRadius: 8, border: 'none', fontWeight: 700, color: '#fff', background: '#1B4D7A', cursor: settingsModal.saving ? 'default' : 'pointer', opacity: settingsModal.saving ? 0.6 : 1 }}>
+                    {settingsModal.saving ? 'جاري الحفظ...' : '💾 حفظ الإعدادات'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {noteForm && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 10000,
@@ -784,14 +924,17 @@ function Invoices({ onBack }) {
           .inv-print-area, .inv-print-area * { visibility: visible; }
           .inv-print-area { position: fixed; inset: 0; }
           .inv-hide-print { display: none !important; }
+          .inv-print-area table { page-break-inside: auto; }
+          .inv-print-area thead { display: table-header-group; }
+          .inv-print-area tr { page-break-inside: avoid; break-inside: avoid; }
         }
       `}</style>
 
       {printingInvoice && (
         <div ref={printAreaRef} className="inv-print-area" style={{
           position: 'fixed', top: 0, left: 0, width: 794, maxWidth: '100%',
-          background: '#fff', zIndex: 9999, padding: 40,
-          fontFamily: 'Cairo, sans-serif', direction: 'rtl',
+          background: '#fff', zIndex: 9999, padding: '38px 45px 32px',
+          fontFamily: 'Tajawal, Cairo, sans-serif', direction: 'rtl',
           textAlign: 'right', wordSpacing: 'normal', letterSpacing: 'normal', textJustify: 'none',
         }}>
           <button className="inv-hide-print" onClick={() => setPrintingInvoice(null)}
@@ -799,68 +942,153 @@ function Invoices({ onBack }) {
             ✕ إغلاق
           </button>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #1B4D7A', paddingBottom: 16, marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
             <div>
-              <h2 style={{ margin: 0, color: '#1B4D7A' }}>{printingInvoice.organization?.name || 'فاتورة ضريبية'}</h2>
-              {printingInvoice.organization?.vat_number && <div style={{ fontSize: 13, color: '#6b7280' }}>الرقم الضريبي: {printingInvoice.organization.vat_number}</div>}
-              {printingInvoice.organization?.cr_number && <div style={{ fontSize: 13, color: '#6b7280' }}>السجل التجاري: {printingInvoice.organization.cr_number}</div>}
-              {printingInvoice.organization?.address && <div style={{ fontSize: 13, color: '#6b7280' }}>{printingInvoice.organization.address}</div>}
+              <h2 style={{ margin: 0, color: '#111', fontSize: 20 }}>{printingInvoice.organization?.name || 'فاتورة ضريبية'}</h2>
+              {printingInvoice.organization?.phone && (
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                  رقم الجوال: <span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.organization.phone}</span>
+                </div>
+              )}
+              {printingInvoice.organization?.address && (
+                <div style={{ fontSize: 13, color: '#6b7280', marginTop: 4, lineHeight: 1.6 }}>
+                  {printingInvoice.organization.address.split('\n').map((line, i) => <div key={i}>{line}</div>)}
+                </div>
+              )}
             </div>
             <div style={{ textAlign: 'left' }}>
-              <h3 style={{ margin: 0 }}>{printingInvoice.invoice.invoice_type}</h3>
-              <div style={{ fontSize: 13, color: '#6b7280' }}>رقم الفاتورة: {printingInvoice.invoice.invoice_number}</div>
-              <div style={{ fontSize: 13, color: '#6b7280' }}>تاريخ الإصدار: {printingInvoice.invoice.issue_date || '—'}</div>
-              {printingInvoice.invoice.due_date && <div style={{ fontSize: 13, color: '#6b7280' }}>تاريخ الاستحقاق: {printingInvoice.invoice.due_date}</div>}
+              {printingInvoice.qrDataUrl && (
+                <img src={printingInvoice.qrDataUrl} alt="ZATCA QR" width={100} height={100} style={{ display: 'block', marginInlineStart: 'auto' }} />
+              )}
+              {printingInvoice.organization?.cr_number && (
+                <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                  السجل التجاري: <span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.organization.cr_number}</span>
+                </div>
+              )}
+              {printingInvoice.organization?.vat_number && (
+                <div style={{ fontSize: 12, color: '#6b7280' }}>
+                  الرقم الضريبي: <span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.organization.vat_number}</span>
+                </div>
+              )}
             </div>
           </div>
 
-          <div style={{ marginBottom: 20 }}>
-            <h4 style={{ margin: '0 0 8px', color: '#1B4D7A' }}>بيانات العميل</h4>
-            <div style={{ fontSize: 13, lineHeight: 1.8 }}>
-              <div><strong>{printingInvoice.invoice.customer_name}</strong></div>
-              {printingInvoice.invoice.customer_vat_number && <div>الرقم الضريبي: {printingInvoice.invoice.customer_vat_number}</div>}
-              {printingInvoice.invoice.customer_cr_number && <div>السجل التجاري: {printingInvoice.invoice.customer_cr_number}</div>}
-              {printingInvoice.invoice.customer_id_number && <div>رقم الهوية/الإقامة: {printingInvoice.invoice.customer_id_number}</div>}
-              {printingInvoice.invoice.customer_city && <div>المدينة: {printingInvoice.invoice.customer_city}</div>}
-              {printingInvoice.invoice.customer_address && <div>العنوان: {printingInvoice.invoice.customer_address}</div>}
+          <div style={{ textAlign: 'center', borderTop: '1px solid #333', borderBottom: '1px solid #333', padding: '6px 0', margin: '16px 0' }}>
+            <h3 style={{ margin: 0, color: '#111', fontSize: 15, fontWeight: 700 }}>{printingInvoice.invoice.invoice_type}</h3>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+            <div style={{ flex: 1 }}>
+              <h4 style={{ margin: '0 0 6px', color: '#111', fontSize: 13 }}>بيانات العميل</h4>
+              <div style={{ fontSize: 12, lineHeight: 1.7 }}>
+                <div><strong>{printingInvoice.invoice.customer_name}</strong></div>
+                {printingInvoice.invoice.customer_vat_number && (
+                  <div>الرقم الضريبي: <span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.invoice.customer_vat_number}</span></div>
+                )}
+                {printingInvoice.invoice.customer_cr_number && (
+                  <div>السجل التجاري: <span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.invoice.customer_cr_number}</span></div>
+                )}
+                {printingInvoice.invoice.customer_id_number && (
+                  <div>
+                    {printingInvoice.invoice.customer_id_type === 'iqama' ? 'رقم الإقامة' : printingInvoice.invoice.customer_id_type === 'national_id' ? 'رقم الهوية الوطنية' : 'رقم الهوية/الإقامة'}:{' '}
+                    <span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.invoice.customer_id_number}</span>
+                  </div>
+                )}
+                {printingInvoice.invoice.customer_phone && (
+                  <div>رقم الجوال: <span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.invoice.customer_phone}</span></div>
+                )}
+                {printingInvoice.invoice.customer_city && <div>المدينة: {printingInvoice.invoice.customer_city}</div>}
+                {printingInvoice.invoice.customer_address && <div>العنوان: {printingInvoice.invoice.customer_address}</div>}
+              </div>
+            </div>
+            <div style={{ textAlign: 'left', fontSize: 13, color: '#6b7280' }}>
+              <div>رقم الفاتورة: <span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.invoice.invoice_number}</span></div>
+              <div>تاريخ الإصدار: <span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.invoice.issue_date || '—'}</span></div>
+              {printingInvoice.invoice.due_date && (
+                <div>تاريخ الاستحقاق: <span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.invoice.due_date}</span></div>
+              )}
             </div>
           </div>
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 20, fontSize: 12 }}>
             <thead>
-              <tr style={{ background: '#f9fafb', textAlign: 'right' }}>
-                <th style={{ padding: 8, border: '1px solid #e5e7eb' }}>البيان</th>
-                <th style={{ padding: 8, border: '1px solid #e5e7eb' }}>الكمية</th>
-                <th style={{ padding: 8, border: '1px solid #e5e7eb' }}>سعر الوحدة</th>
-                <th style={{ padding: 8, border: '1px solid #e5e7eb' }}>الإجمالي قبل الضريبة</th>
-                <th style={{ padding: 8, border: '1px solid #e5e7eb' }}>الضريبة 15%</th>
-                <th style={{ padding: 8, border: '1px solid #e5e7eb' }}>الإجمالي شامل</th>
+              <tr style={{ background: '#1a1a1a', color: '#fff', textAlign: 'right' }}>
+                <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>#</th>
+                <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>الوصف</th>
+                <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>الكمية</th>
+                <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>سعر الوحدة</th>
+                <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>الضريبة 15%</th>
+                <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>المجموع الفرعي بدون الضريبة</th>
+                <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>الإجمالي</th>
               </tr>
             </thead>
             <tbody>
-              {printingInvoice.items.map(it => (
-                <tr key={it.id}>
-                  <td style={{ padding: 8, border: '1px solid #e5e7eb' }}>{it.description}</td>
-                  <td style={{ padding: 8, border: '1px solid #e5e7eb' }}>{it.quantity}</td>
-                  <td style={{ padding: 8, border: '1px solid #e5e7eb' }}>{Number(it.unit_price).toLocaleString()}</td>
-                  <td style={{ padding: 8, border: '1px solid #e5e7eb' }}>{Number(it.line_total).toLocaleString()}</td>
-                  <td style={{ padding: 8, border: '1px solid #e5e7eb' }}>{Number(it.vat_amount).toLocaleString()}</td>
-                  <td style={{ padding: 8, border: '1px solid #e5e7eb' }}>{(Number(it.line_total) + Number(it.vat_amount)).toLocaleString()}</td>
+              {printingInvoice.items.map((it, idx) => (
+                <tr key={it.id} style={{ background: idx % 2 === 0 ? '#F5F5F5' : '#fff' }}>
+                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{idx + 1}</td>
+                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{it.description}</td>
+                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{it.quantity}</td>
+                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{Number(it.unit_price).toLocaleString()}</td>
+                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{Number(it.vat_amount).toLocaleString()}</td>
+                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{Number(it.line_total).toLocaleString()}</td>
+                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{(Number(it.line_total) + Number(it.vat_amount)).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
           </table>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-            <div>
-              {printingInvoice.qrDataUrl && (
-                <img src={printingInvoice.qrDataUrl} alt="ZATCA QR" width={140} height={140} />
-              )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18, pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+            <div style={{ padding: '10px 4px', minWidth: 240, fontSize: 12.5 }}>
+              <div style={{ marginBottom: 3 }}>الإجمالي قبل الضريبة: {Number(printingInvoice.invoice.subtotal || 0).toLocaleString()} ريال</div>
+              <div style={{ marginBottom: 3 }}>ضريبة القيمة المضافة (15%): {Number(printingInvoice.invoice.vat_amount || 0).toLocaleString()} ريال</div>
+              <div style={{ borderTop: '1px solid #ccc', margin: '6px 0' }} />
+              <div style={{ fontWeight: 700, fontSize: 15, color: '#111' }}>الإجمالي النهائي: {Number(printingInvoice.invoice.total_amount || 0).toLocaleString()} ريال</div>
+              <div style={{ borderTop: '1px solid #ccc', margin: '6px 0' }} />
+              <div style={{ marginBottom: 3 }}>المستلم: {Number(printingInvoice.invoice.amount_paid || 0).toLocaleString()} ريال</div>
+              <div>المتبقي: {(Number(printingInvoice.invoice.total_amount || 0) - Number(printingInvoice.invoice.amount_paid || 0)).toLocaleString()} ريال</div>
             </div>
-            <div style={{ textAlign: 'left', fontSize: 14 }}>
-              <div>الإجمالي قبل الضريبة: {Number(printingInvoice.invoice.subtotal || 0).toLocaleString()} ريال</div>
-              <div>ضريبة القيمة المضافة (15%): {Number(printingInvoice.invoice.vat_amount || 0).toLocaleString()} ريال</div>
-              <div style={{ fontWeight: 700, fontSize: 16, marginTop: 6 }}>الإجمالي شامل الضريبة: {Number(printingInvoice.invoice.total_amount || 0).toLocaleString()} ريال</div>
+          </div>
+
+          {printingInvoice.orgSettings?.bank_details_enabled && (
+            <div style={{ marginBottom: 18, pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <tbody>
+                  {printingInvoice.orgSettings.bank_name && (
+                    <tr><td style={{ padding: '6px 10px', border: '1px solid #ddd', fontWeight: 700, background: '#F3F3F3', width: 130 }}>البنك</td><td style={{ padding: '6px 10px', border: '1px solid #ddd' }}>{printingInvoice.orgSettings.bank_name}</td></tr>
+                  )}
+                  {printingInvoice.orgSettings.account_name && (
+                    <tr><td style={{ padding: '6px 10px', border: '1px solid #ddd', fontWeight: 700, background: '#F3F3F3' }}>اسم الحساب</td><td style={{ padding: '6px 10px', border: '1px solid #ddd' }}>{printingInvoice.orgSettings.account_name}</td></tr>
+                  )}
+                  {printingInvoice.orgSettings.account_number && (
+                    <tr><td style={{ padding: '6px 10px', border: '1px solid #ddd', fontWeight: 700, background: '#F3F3F3' }}>رقم الحساب</td><td style={{ padding: '6px 10px', border: '1px solid #ddd' }}><span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.orgSettings.account_number}</span></td></tr>
+                  )}
+                  {printingInvoice.orgSettings.iban && (
+                    <tr><td style={{ padding: '6px 10px', border: '1px solid #ddd', fontWeight: 700, background: '#F3F3F3' }}>رقم الآيبان</td><td style={{ padding: '6px 10px', border: '1px solid #ddd' }}><span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.orgSettings.iban}</span></td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {printingInvoice.orgSettings?.notes_enabled && printingInvoice.orgSettings?.invoice_notes_ar && (
+            <div style={{ marginBottom: 18, fontSize: 12, color: '#555', background: '#F7F7F7', padding: '8px 12px', borderRadius: 4, pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+              {printingInvoice.orgSettings.invoice_notes_ar}
+            </div>
+          )}
+
+          <div style={{ borderTop: '1px solid #ccc', paddingTop: 10, marginTop: 4, fontSize: 10.5, color: '#888', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <div>* هذا المستند صادر من النظام الإلكتروني</div>
+              <div><span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.invoice.issue_date || ''}</span></div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                {printingInvoice.organization?.phone && (
+                  <>رقم الجوال: <span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.organization.phone}</span> — </>
+                )}
+                {printingInvoice.organization?.name}
+              </div>
+              <div>1/1</div>
             </div>
           </div>
         </div>
@@ -884,12 +1112,18 @@ function Invoices({ onBack }) {
               <h3 style={{ margin: 0, fontSize: 16, color: '#1B4D7A' }}>
                 {editingInvoiceId ? `تعديل مسودة: ${editingInvoiceNumber}` : 'فاتورة جديدة'}
               </h3>
-              {editingInvoiceId && (
-                <button type="button" onClick={handleNewInvoice}
-                  style={{ padding: '8px 16px', cursor: 'pointer', borderRadius: 8, border: '1px solid #1B4D7A', background: '#fff', color: '#1B4D7A', fontWeight: 700 }}>
-                  + فاتورة جديدة
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" onClick={handleOpenSettings}
+                  style={{ padding: '8px 16px', cursor: 'pointer', borderRadius: 8, border: '1px solid #6b7280', background: '#fff', color: '#6b7280', fontWeight: 700 }}>
+                  ⚙️ إعدادات الفاتورة
                 </button>
-              )}
+                {editingInvoiceId && (
+                  <button type="button" onClick={handleNewInvoice}
+                    style={{ padding: '8px 16px', cursor: 'pointer', borderRadius: 8, border: '1px solid #1B4D7A', background: '#fff', color: '#1B4D7A', fontWeight: 700 }}>
+                    + فاتورة جديدة
+                  </button>
+                )}
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 18 }}>
               <div>
@@ -965,6 +1199,10 @@ function Invoices({ onBack }) {
                 <input type="text" value={form.customer_name} onChange={e => setForm(f => ({ ...f, customer_name: e.target.value }))} style={inputStyle} />
               </div>
               <div>
+                <label style={labelStyle}>رقم جوال العميل</label>
+                <input type="text" value={form.customer_phone} onChange={e => setForm(f => ({ ...f, customer_phone: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
                 <label style={labelStyle}>الرقم الضريبي للعميل</label>
                 <input type="text" value={form.customer_vat_number} onChange={e => setForm(f => ({ ...f, customer_vat_number: e.target.value }))} style={inputStyle} />
               </div>
@@ -979,6 +1217,14 @@ function Invoices({ onBack }) {
               <div>
                 <label style={labelStyle}>عنوان العميل</label>
                 <input type="text" value={form.customer_address} onChange={e => setForm(f => ({ ...f, customer_address: e.target.value }))} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>نوع الهوية</label>
+                <select value={form.customer_id_type} onChange={e => setForm(f => ({ ...f, customer_id_type: e.target.value }))} style={inputStyle}>
+                  <option value="">— اختر النوع —</option>
+                  <option value="national_id">هوية وطنية</option>
+                  <option value="iqama">إقامة</option>
+                </select>
               </div>
               <div>
                 <label style={labelStyle}>رقم الهوية / الإقامة</label>
@@ -1032,6 +1278,11 @@ function Invoices({ onBack }) {
               style={{ padding: '8px 16px', marginBottom: 20, cursor: 'pointer', borderRadius: 8, border: '1px solid #1B4D7A', background: '#fff', color: '#1B4D7A', fontWeight: 700 }}>
               + إضافة بند
             </button>
+
+            <div style={{ marginBottom: 18, maxWidth: 240 }}>
+              <label style={labelStyle}>المبلغ المستلم (اختياري)</label>
+              <input type="number" min="0" value={form.amount_paid} onChange={e => setForm(f => ({ ...f, amount_paid: e.target.value }))} style={inputStyle} placeholder="0" />
+            </div>
 
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
               <div style={{ background: '#EBF5FB', padding: '10px 18px', borderRadius: 8, fontWeight: 700, color: '#1B4D7A' }}>
