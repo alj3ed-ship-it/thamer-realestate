@@ -2,6 +2,7 @@ import chromium from '@sparticuz/chromium'
 import puppeteer from 'puppeteer-core'
 import QRCode from 'qrcode'
 import { createClient } from '@supabase/supabase-js'
+import { TAJAWAL_FONT_CSS } from './tajawal-font.js'
 
 export const config = { maxDuration: 30 }
 
@@ -56,7 +57,7 @@ async function buildHtml(invoiceId) {
 <head>
 <meta charset="utf-8" />
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
+  ${TAJAWAL_FONT_CSS}
   * { box-sizing: border-box; }
   body { font-family: 'Tajawal', sans-serif; direction: rtl; text-align: right; margin: 0; padding: 38px 45px 32px; color:#111; }
 </style>
