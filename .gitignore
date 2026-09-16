@@ -28,3 +28,5 @@ zatca_sandbox_credentials.json
 
 .vercel
 .env*
+
+zatca_production_credentials.json
