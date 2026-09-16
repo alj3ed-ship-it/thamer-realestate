@@ -12,9 +12,15 @@ function esc(v) { return (v ?? '').toString().replace(/</g, '&lt;') }
 
 async function buildHtml(invoiceId) {
   const { data: invoice } = await supabase.from('invoices').select('*').eq('id', invoiceId).single()
-  const { data: items } = await supabase.from('invoice_items').select('*').eq('invoice_id', invoiceId).order('sort_order')
-  const { data: organization } = await supabase.from('organizations').select('*').eq('id', invoice.organization_id).maybeSingle()
-  const { data: orgSettings } = await supabase.from('organization_settings').select('*').eq('organization_id', invoice.organization_id).maybeSingle()
+
+  const [itemsRes, organizationRes, orgSettingsRes] = await Promise.all([
+    supabase.from('invoice_items').select('*').eq('invoice_id', invoiceId).order('sort_order'),
+    supabase.from('organizations').select('*').eq('id', invoice.organization_id).maybeSingle(),
+    supabase.from('organization_settings').select('*').eq('organization_id', invoice.organization_id).maybeSingle(),
+  ])
+  const { data: items } = itemsRes
+  const { data: organization } = organizationRes
+  const { data: orgSettings } = orgSettingsRes
 
   let qrImg = ''
   if (invoice.qr_code) {
@@ -157,7 +163,7 @@ export default async function handler(req, res) {
       headless: chromium.headless,
     })
     const page = await browser.newPage()
-    await page.setContent(html, { waitUntil: 'networkidle0' })
+    await page.setContent(html, { waitUntil: 'domcontentloaded' })
     const pdfBuffer = await page.pdf({ format: 'a4', printBackground: true, margin: { top: 0, bottom: 0, left: 0, right: 0 } })
     await browser.close()
 
