@@ -404,24 +404,6 @@ function Invoices({ onBack }) {
     fetchAll()
   }
 
-  async function handleDownloadPdf(inv) {
-    try {
-      const response = await fetch(`/api/generate-invoice-pdf?invoiceId=${inv.id}`)
-      if (!response.ok) throw new Error('فشل توليد PDF')
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${inv.invoice_number}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      window.URL.revokeObjectURL(url)
-    } catch (err) {
-      alert('فشل تحميل PDF: ' + err.message)
-    }
-  }
-
   async function handlePrintInvoice(inv, mode = 'print') {
     const organization = organizations.find(o => o.id === inv.organization_id) || null
     const [itemsResult, qrDataUrl, settingsResult] = await Promise.all([
@@ -1496,16 +1478,6 @@ function Invoices({ onBack }) {
                             color: '#1B4D7A', fontWeight: 700,
                           }}>
                           🖨 طباعة
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadPdf(inv)}
-                          style={{
-                            padding: '6px 12px', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer',
-                            borderRadius: 6, border: '1px solid #27ae60', background: '#fff',
-                            color: '#27ae60', fontWeight: 700,
-                          }}>
-                          ⬇️ تحميل PDF
                         </button>
                       </div>
                     </td>
