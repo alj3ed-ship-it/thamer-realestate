@@ -853,7 +853,19 @@ export default function ViewerLimited() {
         ? `${due.toLocaleString()} / ${paid.toLocaleString()} / ${Math.max(due - paid, 0).toLocaleString()}`
         : `${due.toLocaleString()} ر.س`,
       status: statusToArabic(status, paidState),
-      date: p.payment_date_hijri ? `${p.payment_date_hijri} هـ` : "—",
+      date: (() => {
+        const h = computeInstallmentHijri(p.leases?.start_date_hijri, p.total_installments, p.installment_number);
+        const dueTxt = h ? `${h.year}/${String(h.month).padStart(2, "0")}/${String(h.day).padStart(2, "0")}` : null;
+        if (p.payment_date_hijri) {
+          return {
+            value: dueTxt ? `${dueTxt} هـ` : "—",
+            color: "#e74c3c",
+            subtext: `✓ ${p.payment_date_hijri} هـ`,
+            subtextColor: "#27ae60",
+          };
+        }
+        return { value: dueTxt ? `${dueTxt} هـ` : "—", color: "#e74c3c" };
+      })(),
       method: p.payment_method || "—",
       notes: p.notes || "—",
     };
@@ -1546,6 +1558,7 @@ export default function ViewerLimited() {
                       ) : filteredPaymentsList.map((p) => {
                         const hijri = computeInstallmentHijri(p.leases?.start_date_hijri, p.total_installments, p.installment_number);
                         const { status, paidState } = computeStatus(p, hijri);
+                        const dueDateHijriTxt = hijri ? `${hijri.year}/${String(hijri.month).padStart(2, "0")}/${String(hijri.day).padStart(2, "0")}` : null;
                         const due = Number(p.amount_due || 0);
                         const paid = Number(p.amount_paid || 0);
                         const unitsList = p.leases?.lease_units?.map((lu) => lu.units).filter(Boolean) || [];
@@ -1566,7 +1579,10 @@ export default function ViewerLimited() {
                             <td style={{ padding: "12px" }}>{amountDisplay({ status, paidState, amount: due, paidAmount: paid, historyEntries: paymentHistory.filter((h) => h.payment_id === p.id) })}</td>
                             <td style={{ padding: "12px" }}>{statusBadge(status, paidState)}</td>
                             <td style={{ padding: "12px", color: "#6b7280" }}>
-                              <div>{p.payment_date_hijri ? `${p.payment_date_hijri} هـ` : "—"}</div>
+                              <div style={{ color: "#e74c3c", fontWeight: "bold" }}>{dueDateHijriTxt ? `${dueDateHijriTxt} هـ` : "—"}</div>
+                              {p.payment_date_hijri && (
+                                <div style={{ color: "#27ae60", fontWeight: "bold", marginTop: 3 }}>✓ {p.payment_date_hijri} هـ</div>
+                              )}
                               {p.first_partial_date_hijri && (
                                 <div style={{ fontSize: 10, color: "#e67e22", marginTop: 2 }} title="تاريخ أول دفعة جزئية">
                                   أول دفعة جزئية: {p.first_partial_date_hijri} هـ

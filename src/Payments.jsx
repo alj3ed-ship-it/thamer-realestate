@@ -764,7 +764,19 @@ function Payments({ onBack }) {
       })(),
       vatType: taxApplies ? (isAmountVatInclusive(p) ? 'شامل الضريبة' : 'الضريبة على المالك') : '—',
       statusLabel: statusToArabic(computed),
-      date: hijriText ? hijriText + ' هـ' : '—',
+      date: (() => {
+        const dueText = getUnpaidDueInfo(p).hijriText
+        const paidText = p.payment_date_hijri
+        if (paidText) {
+          return {
+            value: dueText ? `استحقاق: ${dueText} هـ` : '—',
+            color: '#c0392b',
+            subtext: `استلام: ${paidText} هـ`,
+            subtextColor: '#27ae60'
+          }
+        }
+        return { value: dueText ? dueText + ' هـ' : '—', color: '#c0392b' }
+      })(),
       method: p.payment_method || '—',
       notes: p.notes || '—'
     }
@@ -1055,6 +1067,7 @@ function Payments({ onBack }) {
                           const totalInst = p.total_installments || getTotalInstallments(p.lease_id)
                           const index = p.installment_number || getPaymentIndex(p)
                           const { hijriText, isEstimated } = getPaymentHijriDisplay(p)
+                          const dueHijriText = getUnpaidDueInfo(p).hijriText
                           return (
                             <tr key={p.id} style={{ background: idx % 2 === 0 ? '#fff' : '#fbfbfb', borderTop: '1px solid #f0f0f0' }}>
                               <td style={{ padding: '10px' }}>
@@ -1065,8 +1078,15 @@ function Payments({ onBack }) {
                               <td style={{ padding: '10px' }}>{amountCell(p)}</td>
                               <td style={{ padding: '10px' }}>{statusBadge(p)}</td>
                               <td style={{ padding: '10px', color: '#6b7280' }}>
-                                <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{hijriText ? hijriText + ' هـ' : '—'}</div>
-                                <div style={{ fontSize: 10, color: '#9ca3af', whiteSpace: 'nowrap' }}>{p.payment_date || (isEstimated ? 'متوقع' : '—')}</div>
+                                <div style={{ fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap', color: '#c0392b' }}>
+                                  استحقاق: {dueHijriText ? dueHijriText + ' هـ' : '—'}
+                                </div>
+                                {p.payment_date_hijri && (
+                                  <div style={{ fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap', color: '#27ae60', marginTop: 2 }}>
+                                    استلام: {p.payment_date_hijri} هـ
+                                  </div>
+                                )}
+                                <div style={{ fontSize: 10, color: '#9ca3af', whiteSpace: 'nowrap', marginTop: 2 }}>{p.payment_date || (isEstimated ? 'متوقع' : '—')}</div>
                                 {p.first_partial_date_hijri && (
                                   <div style={{ fontSize: 10, color: '#e67e22', marginTop: 2, wordBreak: 'break-word' }} title="تاريخ أول دفعة جزئية">
                                     أول دفعة جزئية: {p.first_partial_date_hijri} هـ
