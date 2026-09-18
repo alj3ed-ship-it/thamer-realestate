@@ -215,17 +215,15 @@ function toLineItems(items) {
   }))
 }
 
-// Standard (B2B) invoices are chosen automatically whenever the customer has
-// a VAT number on file — matches the rule: قياسية إذا فيه بيانات مشتري VAT،
-// مبسّطة إذا لا.
-// Standard (B2B) is used whenever the customer is identifiable as an
-// establishment/legal entity — via a VAT number OR a CR number. A customer
-// with neither is treated as a private individual (Simplified/B2C is always
-// permitted for individuals regardless of amount, per Art. 53(7)).
+// Business decision (17 Sept 2026, confirmed by tax advisor أصيل الجعيد):
+// every invoice this office issues is a Standard (B2B) tax invoice,
+// regardless of whether the customer has a VAT number or CR number on
+// file. Simplified (B2C) invoices are reserved for end-consumer retail
+// sales (groceries, restaurants, cafes) under 1,000 SAR with no buyer
+// identity recorded at all — not applicable to this office's tenant
+// invoices, which always identify a specific contracting party.
 function isStandardInvoice(invoice) {
-  const hasVat = Boolean(invoice?.customer_vat_number && String(invoice.customer_vat_number).trim())
-  const hasCr = Boolean(invoice?.customer_cr_number && String(invoice.customer_cr_number).trim())
-  return hasVat || hasCr
+  return true
 }
 
 function buildBuyer(invoice) {
