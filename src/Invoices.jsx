@@ -13,7 +13,7 @@ function emptyItem() {
 function emptyForm() {
   return {
     organization_id: '',
-    invoice_type: 'ضريبية مبسطة',
+    invoice_type: 'ضريبية',
     issue_date: new Date().toISOString().slice(0, 10),
     due_date: '',
     customer_name: '',
@@ -25,6 +25,7 @@ function emptyForm() {
     customer_id_type: '',
     customer_phone: '',
     amount_paid: '',
+    discount_amount: '',
     lease_id: '',
     items: [emptyItem()],
   }
@@ -199,13 +200,15 @@ function Invoices({ onBack }) {
     }))
   }
 
-  const subtotal = form.items.reduce((s, it) => s + lineAmounts(it).lineTotal, 0)
-  const vatTotal = form.items.reduce((s, it) => s + lineAmounts(it).vatAmount, 0)
+  const rawSubtotal = form.items.reduce((s, it) => s + lineAmounts(it).lineTotal, 0)
+  const discountAmount = Number(form.discount_amount) || 0
+  const subtotal = Math.max(rawSubtotal - discountAmount, 0)
+  const vatTotal = subtotal * (VAT_RATE / 100)
   const grandTotal = subtotal + vatTotal
   // Standard (B2B) invoices are picked automatically whenever the customer
   // has a VAT number on file — mirrors the same rule used server-side in
   // zatcaCompliance.js.
-    const willBeStandardInvoice = Boolean(form.customer_vat_number.trim() || form.customer_cr_number.trim())
+    const willBeStandardInvoice = true // كل الفواتير قياسية دائمًا (قرار 17 سبتمبر 2026)
 
   function generateInvoiceNumber() {
     const now = new Date()
@@ -239,6 +242,7 @@ function Invoices({ onBack }) {
       customer_id_type: form.customer_id_type || null,
       customer_phone: form.customer_phone || null,
       amount_paid: form.amount_paid ? Math.round(Number(form.amount_paid) * 100) / 100 : 0,
+      discount_amount: Math.round(discountAmount * 100) / 100,
       lease_id: form.lease_id || null,
       subtotal: Math.round(subtotal * 100) / 100,
       vat_amount: Math.round(vatTotal * 100) / 100,
@@ -294,6 +298,7 @@ function Invoices({ onBack }) {
       customer_id_type: form.customer_id_type || null,
       customer_phone: form.customer_phone || null,
       amount_paid: form.amount_paid ? Math.round(Number(form.amount_paid) * 100) / 100 : 0,
+      discount_amount: Math.round(discountAmount * 100) / 100,
       lease_id: form.lease_id || null,
       subtotal: Math.round(subtotal * 100) / 100,
       vat_amount: Math.round(vatTotal * 100) / 100,
@@ -343,7 +348,7 @@ function Invoices({ onBack }) {
 
     setForm({
       organization_id: inv.organization_id || '',
-      invoice_type: inv.invoice_type || 'ضريبية مبسطة',
+      invoice_type: inv.invoice_type || 'ضريبية',
       issue_date: inv.issue_date || new Date().toISOString().slice(0, 10),
       due_date: inv.due_date || '',
       customer_name: inv.customer_name || '',
@@ -970,22 +975,39 @@ function Invoices({ onBack }) {
               </tr>
             </thead>
             <tbody>
-              {printingInvoice.items.map((it, idx) => (
-                <tr key={it.id} style={{ background: idx % 2 === 0 ? '#F5F5F5' : '#fff' }}>
-                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{idx + 1}</td>
-                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{it.description}</td>
-                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{it.quantity}</td>
-                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{Number(it.unit_price).toLocaleString()}</td>
-                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{Number(it.vat_amount).toLocaleString()}</td>
-                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{Number(it.line_total).toLocaleString()}</td>
-                  <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{(Number(it.line_total) + Number(it.vat_amount)).toLocaleString()}</td>
-                </tr>
-              ))}
+              {(() => {
+                const rawSubtotalForItems = printingInvoice.items.reduce((s, it) => s + Number(it.line_total || 0), 0)
+                const invoiceDiscount = Number(printingInvoice.invoice.discount_amount || 0)
+                return printingInvoice.items.map((it, idx) => {
+                  const share = rawSubtotalForItems > 0 ? Number(it.line_total || 0) / rawSubtotalForItems : 0
+                  const itemDiscount = invoiceDiscount * share
+                  const itemTaxable = Number(it.line_total || 0) - itemDiscount
+                  const itemVat = itemTaxable * 0.15
+                  const itemTotal = itemTaxable + itemVat
+                  return (
+                  <tr key={it.id} style={{ background: idx % 2 === 0 ? '#F5F5F5' : '#fff' }}>
+                    <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{idx + 1}</td>
+                    <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{it.description}</td>
+                    <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{it.quantity}</td>
+                    <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{Number(it.unit_price).toLocaleString()}</td>
+                    <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{itemVat.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                    <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{itemTaxable.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                    <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{itemTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                  </tr>
+                  )
+                })
+              })()}
             </tbody>
           </table>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18, pageBreakInside: 'avoid', breakInside: 'avoid' }}>
             <div style={{ padding: '10px 4px', minWidth: 240, fontSize: 12.5 }}>
+              {Number(printingInvoice.invoice.discount_amount || 0) > 0 && (
+                <>
+                  <div style={{ marginBottom: 3 }}>المبلغ الأصلي: {(Number(printingInvoice.invoice.subtotal || 0) + Number(printingInvoice.invoice.discount_amount || 0)).toLocaleString()} ريال</div>
+                  <div style={{ marginBottom: 3, color: '#e74c3c' }}>الخصم: {Number(printingInvoice.invoice.discount_amount || 0).toLocaleString()} ريال</div>
+                </>
+              )}
               <div style={{ marginBottom: 3 }}>الإجمالي قبل الضريبة: {Number(printingInvoice.invoice.subtotal || 0).toLocaleString()} ريال</div>
               <div style={{ marginBottom: 3 }}>ضريبة القيمة المضافة (15%): {Number(printingInvoice.invoice.vat_amount || 0).toLocaleString()} ريال</div>
               <div style={{ borderTop: '1px solid #ccc', margin: '6px 0' }} />
@@ -1025,7 +1047,6 @@ function Invoices({ onBack }) {
 
           <div style={{ borderTop: '1px solid #ccc', paddingTop: 10, marginTop: 4, fontSize: 10.5, color: '#888', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <div>* هذا المستند صادر من النظام الإلكتروني</div>
               <div><span style={{ direction: 'ltr', unicodeBidi: 'plaintext', display: 'inline-block' }}>{printingInvoice.invoice.issue_date || ''}</span></div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1191,6 +1212,11 @@ function Invoices({ onBack }) {
                   <label style={labelStyle}>المبلغ المستلم (يدوي)</label>
                   <input type="number" value={form.amount_paid || ''} onChange={e => setForm(f => ({ ...f, amount_paid: e.target.value }))} style={inputStyle} placeholder="0" />
                 </div>
+
+                <div style={{ marginBottom: 18, maxWidth: 240 }}>
+                  <label style={labelStyle}>الخصم (اختياري)</label>
+                  <input type="number" min="0" value={form.discount_amount} onChange={e => setForm(f => ({ ...f, discount_amount: e.target.value }))} style={inputStyle} placeholder="0" />
+                </div>
             </div>
 
             <h3 style={{ fontSize: 15, color: '#1B4D7A', margin: '0 0 10px' }}>بنود الفاتورة</h3>
@@ -1246,6 +1272,11 @@ function Invoices({ onBack }) {
             </div>
 
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+              {discountAmount > 0 && (
+                <div style={{ background: '#FDEDEC', padding: '10px 18px', borderRadius: 8, fontWeight: 700, color: '#e74c3c' }}>
+                  الخصم: {discountAmount.toLocaleString()} ريال
+                </div>
+              )}
               <div style={{ background: '#EBF5FB', padding: '10px 18px', borderRadius: 8, fontWeight: 700, color: '#1B4D7A' }}>
                 الإجمالي قبل الضريبة: {subtotal.toLocaleString()} ريال
               </div>
