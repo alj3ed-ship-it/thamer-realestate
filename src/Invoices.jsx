@@ -550,6 +550,8 @@ function Invoices({ onBack }) {
             customer_name: inv.customer_name,
             customer_vat_number: inv.customer_vat_number,
             customer_cr_number: inv.customer_cr_number,
+      customer_id_number: inv.customer_id_number,
+      customer_id_type: inv.customer_id_type,
             customer_city: inv.customer_city,
             customer_address: inv.customer_address,
           },
@@ -587,7 +589,7 @@ function Invoices({ onBack }) {
   // Simplified (B2C) go through Reporting — same rule used server-side.
   function submissionTypeFor(inv) {
     const standard = Boolean((inv.customer_vat_number || '').trim() || (inv.customer_cr_number || '').trim())
-    return standard ? 'clearance' : 'reporting'
+    return 'clearance' // always Standard: matches server isStandardInvoice()
   }
 
   async function doProductionSubmit(inv, submissionType) {
