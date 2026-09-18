@@ -32,7 +32,7 @@ export class ZATCAStandardTaxInvoice {
       if (!this.invoice_xml) throw new Error('Error parsing invoice XML string.')
     } else {
       if (!props) throw new Error('Unable to create new XML invoice.')
-           if (!props.buyer || !props.buyer.name || (!props.buyer.vat_number && !props.buyer.cr_number)) {
+           if (!props.buyer || !props.buyer.name || (!props.buyer.vat_number && !props.buyer.cr_number && !props.buyer.id_number)) {
         throw new Error('فاتورة قياسية (B2B) تتطلب بيانات المشتري: الاسم، ورقم ضريبي أو سجل تجاري على الأقل')
       }
       this.invoice_xml = new XMLDocument(populateStandardTemplate(props))

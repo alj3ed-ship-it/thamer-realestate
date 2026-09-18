@@ -231,6 +231,8 @@ function buildBuyer(invoice) {
     name: invoice?.customer_name || 'Unnamed Buyer',
     vat_number: invoice?.customer_vat_number || undefined,
     cr_number: invoice?.customer_cr_number || undefined,
+    id_number: invoice?.customer_id_number || undefined,
+    id_type: invoice?.customer_id_type || undefined,
     city: invoice?.customer_city || undefined,
     street: invoice?.customer_address || undefined,
   }
@@ -442,7 +444,7 @@ export async function runProductionCsidOnboarding() {
   }
 
   const response = await axios.post(
-    `${SANDBOX_BASEURL}/production/csids`,
+    `${getProductionBaseUrl(getZatcaEnvironment())}/production/csids`,
     {
       compliance_request_id: String(credentials.compliance_request_id),
     },
