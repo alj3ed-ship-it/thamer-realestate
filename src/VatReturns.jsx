@@ -146,6 +146,27 @@ function formatDateShort(d) {
   return d.toLocaleDateString('ar-SA-u-ca-gregory', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
+// ترتيب سطور الربع: بحسب أولوية العقار، ثم رقم العقد، ثم رقم الدفعة
+function sortLines(lines) {
+  return [...(lines || [])].sort((a, b) =>
+    (a.propOrder - b.propOrder) ||
+    String(a.property).localeCompare(String(b.property), 'ar') ||
+    String(a.leaseNumber).localeCompare(String(b.leaseNumber)) ||
+    (Number(a.installmentNo || 0) - Number(b.installmentNo || 0)) ||
+    String(a.dueGregorian || '').localeCompare(String(b.dueGregorian || ''))
+  )
+}
+
+function lineInstallmentText(l) {
+  if (l.installmentNo && l.totalInstallments) return `${l.installmentNo} / ${l.totalInstallments}`
+  return l.installmentNo ? String(l.installmentNo) : '—'
+}
+
+function lineDueText(l) {
+  if (!l.dueHijri && !l.dueGregorian) return '—'
+  return `${l.dueHijri || '—'} هـ (${l.dueGregorian || '—'})`
+}
+
 export default function VatReturns({ onBack }) {
   const isReadOnly = useReadOnly()
   const [payments, setPayments] = useState([])
@@ -168,8 +189,8 @@ export default function VatReturns({ onBack }) {
     setLoading(true)
     const [pay, lea, pro, ten, fil, inv] = await Promise.all([
       supabase.from('payments').select('*'),
-      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, tax_enabled, tax_effective_hijri, amount_includes_vat, start_date_hijri, payment_type, payment_frequency'),
-      supabase.from('properties').select('id, name'),
+      supabase.from('leases').select('id, tenant_id, property_id, rent_amount, tax_enabled, tax_effective_hijri, amount_includes_vat, start_date_hijri, payment_type, payment_frequency, lease_number'),
+      supabase.from('properties').select('id, name, priority'),
       supabase.from('tenants').select('id, name'),
       supabase.from('vat_filings').select('*'),
       supabase.from('invoices').select('id, invoice_number, customer_name, total_amount, issue_date, lease_id'),
@@ -278,6 +299,24 @@ export default function VatReturns({ onBack }) {
     const lease = getLease(p.lease_id)
     if (lease) {
       entry.properties.add(lease.property_id)
+      const lineProp = properties.find(pr => pr.id === lease.property_id)
+      entry.lines = entry.lines || []
+      entry.lines.push({
+        key: p.id,
+        leaseId: lease.id,
+        property: getPropertyName(lease.property_id),
+        propOrder: Number(lineProp?.priority ?? 999),
+        tenant: getTenantName(lease.tenant_id),
+        leaseNumber: lease.lease_number || '—',
+        installmentNo: p.installment_number || null,
+        totalInstallments: p.total_installments || FREQUENCY_MAP[lease.payment_type] || FREQUENCY_MAP[lease.payment_frequency] || null,
+        dueHijri: dueInfo.hijriText,
+        dueGregorian: p.due_date_gregorian || `${dueInfo.gDate.getFullYear()}-${String(dueInfo.gDate.getMonth() + 1).padStart(2, '0')}-${String(dueInfo.gDate.getDate()).padStart(2, '0')}`,
+        contractAmount: Number(p.amount || 0),
+        inclusive: !!lease.amount_includes_vat,
+        base,
+        tax,
+      })
       const bKey = lease.id
       if (!entry.breakdown[bKey]) {
         entry.breakdown[bKey] = {
@@ -305,6 +344,12 @@ export default function VatReturns({ onBack }) {
     }
     const entry = quartersMap[f.quarter_key]
     entry.taxTotal += adj
+    entry.lines = entry.lines || []
+    entry.lines.push({
+      manual: true, key: 'manual-' + f.quarter_key, property: 'تعديل يدوي', propOrder: 9999,
+      tenant: 'ضريبة مسبقة السداد', leaseNumber: '—', installmentNo: null, totalInstallments: null,
+      dueHijri: null, dueGregorian: null, contractAmount: null, inclusive: null, base: 0, tax: adj,
+    })
     entry.breakdown['manual-adjustment'] = {
       property: 'تعديل يدوي',
       tenant: 'ضريبة مسبقة السداد',
@@ -478,23 +523,30 @@ export default function VatReturns({ onBack }) {
     const rows = []
     list.forEach(q => {
       const st = getStatus(q)
-      const breakdownList = Object.values(q.breakdown)
-      if (breakdownList.length === 0) {
+      const quarterLabel = `${q.key} (${getQuarterRangeLabel(q.year, q.q)})`
+      const deadlineText = formatDate(getDeadline(q.year, q.q))
+      const lines = sortLines(q.lines)
+      if (lines.length === 0) {
         rows.push({
-          quarter: `${q.key} (${getQuarterRangeLabel(q.year, q.q)})`,
-          property: '—', tenant: '—', base: '0 ريال', tax: '0 ريال',
-          deadline: formatDate(getDeadline(q.year, q.q)), status: statusInfo[st].label,
+          quarter: quarterLabel,
+          property: '—', leaseNumber: '—', tenant: '—', installment: '—', due: '—',
+          amount: '—', vatType: '—', tax: '0 ريال',
+          deadline: deadlineText, status: statusInfo[st].label,
         })
         return
       }
-      breakdownList.forEach(b => {
+      lines.forEach(l => {
         rows.push({
-          quarter: `${q.key} (${getQuarterRangeLabel(q.year, q.q)})`,
-          property: b.property,
-          tenant: b.tenant,
-          base: b.base.toLocaleString() + ' ريال',
-          tax: b.tax.toLocaleString() + ' ريال',
-          deadline: formatDate(getDeadline(q.year, q.q)),
+          quarter: quarterLabel,
+          property: l.property,
+          leaseNumber: l.leaseNumber,
+          tenant: l.tenant,
+          installment: l.manual ? '—' : lineInstallmentText(l),
+          due: l.manual ? '—' : lineDueText(l),
+          amount: l.manual ? '—' : { value: l.contractAmount.toLocaleString(), color: '#1B4D7A' },
+          vatType: l.manual ? '—' : (l.inclusive ? 'شامل' : 'غير شامل'),
+          tax: { value: l.tax.toLocaleString() + ' ريال', color: '#B42318' },
+          deadline: deadlineText,
           status: statusInfo[st].label,
         })
       })
@@ -576,9 +628,13 @@ export default function VatReturns({ onBack }) {
             columns={[
               { key: 'quarter', label: 'الربع' },
               { key: 'property', label: 'العقار' },
+              { key: 'leaseNumber', label: 'رقم العقد' },
               { key: 'tenant', label: 'المستأجر' },
-              { key: 'base', label: 'الإيراد الأساسي' },
-              { key: 'tax', label: 'الضريبة المستحقة' },
+              { key: 'installment', label: 'الدفعة' },
+              { key: 'due', label: 'تاريخ الاستحقاق' },
+              { key: 'amount', label: 'مبلغ الدفعة (ريال)' },
+              { key: 'vatType', label: 'نوع المبلغ' },
+              { key: 'tax', label: 'الضريبة' },
               { key: 'deadline', label: 'آخر موعد للتقديم' },
               { key: 'status', label: 'الحالة' },
             ]}
@@ -660,11 +716,11 @@ export default function VatReturns({ onBack }) {
 
                   {breakdownList.length > 0 && (
                     <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #e5e7eb', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      {breakdownList.map((b, i) => (
+                      {sortLines(q.lines).map((b, i) => (
                         <div key={i} style={{ fontSize: 11.5, color: '#6b7280', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-                          <span><strong style={{ color: '#374151' }}>{b.property}</strong> — {b.tenant}</span>
+                          <span><strong style={{ color: '#374151' }}>{b.property}</strong> — {b.tenant}{b.manual ? '' : ` — عقد ${b.leaseNumber} — دفعة ${lineInstallmentText(b)} — استحقاق ${lineDueText(b)}`}</span>
                           <span>
-                            أساسي <strong style={{ color: '#1d4ed8' }}>{b.base.toLocaleString()}</strong> + ضريبة <strong style={{ color: '#dc2626' }}>{b.tax.toLocaleString()}</strong> ريال
+                            {b.manual ? <>ضريبة <strong style={{ color: '#dc2626' }}>{b.tax.toLocaleString()}</strong> ريال</> : <>مبلغ الدفعة <strong style={{ color: '#1d4ed8' }}>{b.contractAmount.toLocaleString()}</strong> ({b.inclusive ? 'شامل' : 'غير شامل'}) — ضريبة <strong style={{ color: '#dc2626' }}>{b.tax.toLocaleString()}</strong> ريال</>}
                           </span>
                         </div>
                       ))}

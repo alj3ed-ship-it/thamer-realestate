@@ -211,7 +211,7 @@ export default function ExportToolbar({
 
       sheet.columns = displayCols.map((col) => ({
         key: col.key,
-        width: col.label.includes("مستأجر") || col.label.includes("عقار") ? 26 : 18,
+        width: col.label.includes("مستأجر") || col.label.includes("عقار") || col.label.includes("الاستحقاق") ? 26 : 18,
       }));
 
       const headerRow = sheet.addRow(displayCols.map((c) => c.label));
