@@ -2,7 +2,8 @@ import React from 'react';
 
 export const EVENT_TYPES = ['كاملة', 'نساء', 'رجال', 'أخرى'];
 export const RECEIVER_STAGE1_OPTIONS = ['أبو أيوب', 'تحويل مباشر', 'نقدي مباشر'];
-export const RECEIVER_FINAL_OPTIONS = ['مستلم', 'الوالد', 'لم يستلم'];
+export const HALL_OWNER = 'جميلة ابراهيم الجعيد';
+export const RECEIVER_FINAL_OPTIONS = [HALL_OWNER, 'لم يستلم'];
 export const REMAINING_STATUS_OPTIONS = ['مستلم', 'جزئي', 'غير مستلم'];
 export const DEFAULT_STAFF_RATES = { 'كاملة': 1970, 'نساء': 1020, 'رجال': 950, 'أخرى': 0 };
 export const DEFAULT_SUPPLIES_RATES = { 'كاملة': 450, 'نساء': 225, 'رجال': 225, 'أخرى': 0 };
@@ -97,7 +98,7 @@ export function clientBadge(name) {
 }
 
 export function receiverColor(value) {
-  if (value === 'مستلم') return '#27ae60';
+  if (value === 'مستلم' || value === HALL_OWNER) return '#27ae60';
   if (value === 'لم يستلم') return '#e74c3c';
   return '#1B4D7A';
 }

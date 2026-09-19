@@ -127,6 +127,19 @@ function hijriSortKey(hijriText) {
   return y * 10000 + m * 100 + d
 }
 
+// مالك القسط: owner_note إمّا اسم واحد (مثل "سلمان") أو مالكين بحسب الدفعة
+// (مثل "سلمان (الدفعة الأولى) / حماد النباتي (الدفعة الثانية)")
+const INSTALLMENT_ORDINALS = { 'الأولى': 1, 'الاولى': 1, 'الثانية': 2, 'الثالثة': 3, 'الرابعة': 4 }
+function ownerForInstallment(ownerNote, installmentNo) {
+  if (!ownerNote) return null
+  const parts = ownerNote.split('/').map(s => s.trim()).filter(Boolean)
+  for (const part of parts) {
+    const m = part.match(/^(.*?)\s*\(\s*الدفعة\s+(\S+?)\s*\)\s*$/)
+    if (m && INSTALLMENT_ORDINALS[m[2]] === Number(installmentNo)) return m[1].trim()
+  }
+  return parts.find(part => !/\(\s*الدفعة/.test(part)) || null
+}
+
 function HijriPicker({ label, value, onChange }) {
   return (
     <div>
@@ -197,7 +210,7 @@ function Payments({ onBack }) {
       supabase.from('payments').select('*').order('payment_date', { ascending: true }),
       supabase.from('leases').select('id, tenant_id, property_id, rent_amount, payment_frequency, payment_type, unit_id, start_date_hijri, end_date, lease_number, tax_enabled, tax_effective_hijri, amount_includes_vat, status'),
       supabase.from('tenants').select('id, name, note'),
-      supabase.from('properties').select('id, name').order('name'),
+      supabase.from('properties').select('id, name, owner_note').order('name'),
       supabase.from('units').select('id, unit_number, unit_type'),
       supabase.from('lease_units').select('lease_id, unit_id'),
       supabase.from('payment_installments_history').select('*').order('created_at', { ascending: true }),
@@ -449,6 +462,13 @@ function Payments({ onBack }) {
       payment_method: form.payment_method || null,
       notes: form.notes || null
     }
+
+    // المستلم النهائي = مالك العقار (أو مالك القسط حسب رقم الدفعة)، ويبقى كما هو لو سُجّل سابقاً
+    const receiverOwnerNote = properties.find(pr => pr.id === getLease(form.lease_id)?.property_id)?.owner_note || null
+    const receiverInstNo = existing
+      ? (existing.installment_number || getPaymentIndex(existing))
+      : payments.filter(x => x.lease_id === form.lease_id).length + 1
+    payload.received_by = isUnpaid ? null : (existing?.received_by || ownerForInstallment(receiverOwnerNote, receiverInstNo))
 
     // تاريخ أول دفعة جزئية: يُحفظ مرة واحدة فقط ولا يُستبدل لاحقاً عند اكتمال الدفعة
     const hasFirstPartialDate = existing && (existing.first_partial_date || existing.first_partial_date_hijri)
@@ -777,6 +797,7 @@ function Payments({ onBack }) {
         }
         return { value: dueText ? dueText + ' هـ' : '—', color: '#c0392b' }
       })(),
+      receivedBy: p.received_by || '—',
       method: p.payment_method || '—',
       notes: p.notes || '—'
     }
@@ -982,6 +1003,7 @@ function Payments({ onBack }) {
               { key: 'totalWithTax', label: 'الإجمالي' },
               { key: 'statusLabel', label: 'الحالة' },
               { key: 'date', label: 'التاريخ' },
+              { key: 'receivedBy', label: 'المستلم النهائي' },
               { key: 'method', label: 'طريقة الدفع' },
               { key: 'notes', label: 'ملاحظات' },
             ]}
@@ -1076,7 +1098,12 @@ function Payments({ onBack }) {
                                 </span>
                               </td>
                               <td style={{ padding: '10px' }}>{amountCell(p)}</td>
-                              <td style={{ padding: '10px' }}>{statusBadge(p)}</td>
+                              <td style={{ padding: '10px' }}>
+                                {statusBadge(p)}
+                                {Number(p.amount_paid || 0) > 0 && p.received_by && (
+                                  <div style={{ fontSize: 10.5, color: '#1B4D7A', marginTop: 4, fontWeight: 700 }}>المستلم: {p.received_by}</div>
+                                )}
+                              </td>
                               <td style={{ padding: '10px', color: '#6b7280' }}>
                                 <div style={{ fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap', color: '#c0392b' }}>
                                   استحقاق: {dueHijriText ? dueHijriText + ' هـ' : '—'}

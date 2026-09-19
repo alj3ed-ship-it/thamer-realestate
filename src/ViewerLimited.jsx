@@ -13,7 +13,7 @@ const HALL_PROPERTY_NAME = "قاعة مذهلة";
 const HALL_EDIT_PASSWORD = "adil2026";
 const EVENT_TYPES = ["كاملة", "نساء", "رجال", "أخرى"];
 const RECEIVER_STAGE1_OPTIONS = ["أبو أيوب", "تحويل مباشر", "نقدي مباشر"];
-const RECEIVER_FINAL_OPTIONS = ["مستلم", "الوالد", "لم يستلم"];
+const RECEIVER_FINAL_OPTIONS = ['جميلة ابراهيم الجعيد', 'لم يستلم'];
 const REMAINING_STATUS_OPTIONS = ["مستلم", "جزئي", "غير مستلم"];
 
 const UNIT_TYPE_ORDER = { "محل": 1, "شقة": 2, "ورشة": 3 };
