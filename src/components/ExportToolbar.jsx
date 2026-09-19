@@ -33,6 +33,7 @@ export default function ExportToolbar({
   filename,
   title,
   stats = null,
+  subtotalLabel = null,
   officeName = "مكتب ثامر بن سلمان العقاري",
   officeSubtitle = "إدارة الأملاك",
   logoSrc = null,
@@ -294,7 +295,8 @@ export default function ExportToolbar({
           const titleCell = titleRow.getCell(1);
           titleCell.font = { bold: true, name: "Arial" };
           titleCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E2F3" } };
-          titleCell.alignment = { horizontal: "center", vertical: "middle" };
+          titleCell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+          if (String(titleCell.value || "").length > 90) titleRow.height = 34;
 
           const firstDataRowNum = titleRow.number + 1;
           group.rows.forEach((r) => writeDataRow(r));
@@ -303,7 +305,7 @@ export default function ExportToolbar({
           // مهم: نكتب قيمة بخلية العنوان بس، وما نحط "" بباقي الخلايا —
           // خلية فيها "" تُعتبر "مشغولة" بنظر إكسل/WPS وتمنع فيض النص الطويل
           // (overflow) لليسار، فيصير النص محشور ومقصوص من جهة اليمين.
-          const subtotalRow = sheet.addRow([rtlFix(`إجمالي ${formatQuarterLabel(group.key)}`)]);
+          const subtotalRow = sheet.addRow([rtlFix(subtotalLabel || `إجمالي ${formatQuarterLabel(group.key)}`)]);
           const firstNumericIdx = displayCols.findIndex((c) => numericKeys.has(c.key));
           if (firstNumericIdx > 1) {
             sheet.mergeCells(subtotalRow.number, 1, subtotalRow.number, firstNumericIdx);
@@ -640,7 +642,7 @@ export default function ExportToolbar({
                         if (i === 0) {
                           return (
                             <td key={col.key} style={styles.subtotalLabelCell}>
-                              {`إجمالي ${formatQuarterLabel(group.key)}`}
+                              {subtotalLabel || `إجمالي ${formatQuarterLabel(group.key)}`}
                             </td>
                           );
                         }

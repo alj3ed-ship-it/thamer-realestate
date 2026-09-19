@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabaseClient";
 import ExportToolbar from "./components/ExportToolbar";
 
@@ -18,14 +18,69 @@ function propertyRank(name = "") {
   return 99;
 }
 
+// ===== مساعدات تفاصيل الدفعات =====
+function normalizeHijri(text) {
+  if (!text) return null;
+  const parts = String(text).replace(/-/g, "/").split("/").map((n) => parseInt(n, 10));
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return String(text);
+  let [y, m, d] = parts;
+  if (y < 1300 && d >= 1300) { const t = y; y = d; d = t; }
+  return `${y}/${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}`;
+}
+
+function hijriKey(text) {
+  const n = normalizeHijri(text);
+  if (!n) return -1;
+  const [y, m, d] = n.split("/").map((x) => parseInt(x, 10) || 0);
+  return y * 10000 + m * 100 + d;
+}
+
+function installmentAmount(p) {
+  return Number(p.amount ?? p.amount_due ?? 0);
+}
+
+function installmentDueText(p) {
+  const h = normalizeHijri(p.due_date_hijri);
+  const g = p.due_date_gregorian;
+  if (h && g) return `${h} (${g})`;
+  return h || g || "—";
+}
+
+function installmentTax(lease, p, amount) {
+  if (!lease.tax_enabled) return 0;
+  if (lease.tax_effective_hijri && hijriKey(p.due_date_hijri) < hijriKey(lease.tax_effective_hijri)) return 0;
+  return lease.amount_includes_vat ? Math.round(amount - amount / 1.15) : Math.round(amount * 0.15);
+}
+
+function installmentStatus(p) {
+  const due = installmentAmount(p);
+  const paid = Number(p.amount_paid || 0);
+  if (paid > 0 && paid >= due) return "✓ مدفوع";
+  if (paid > 0) return "جزئي ⚠";
+  return "غير مسدد";
+}
+
 export default function LeaseContracts({ onBack, onSelectLease }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("الكل");
-  const [propertyFilter, setPropertyFilter] = useState("الكل");
+  const [propertyFilters, setPropertyFilters] = useState([]); // فارغ = كل العقارات
+  const [taxFilter, setTaxFilter] = useState("الكل");
+  const [showPropertyMenu, setShowPropertyMenu] = useState(false);
+  const propertyMenuRef = useRef(null);
   const [properties, setProperties] = useState([]);
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (propertyMenuRef.current && !propertyMenuRef.current.contains(e.target)) {
+        setShowPropertyMenu(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   async function load() {
     setLoading(true);
@@ -34,7 +89,7 @@ export default function LeaseContracts({ onBack, onSelectLease }) {
       .select(`
         id, lease_number, start_date_hijri, end_date_hijri, start_date, end_date,
         payment_type, payment_frequency, rent_amount, contract_value, status,
-        tax_enabled, amount_includes_vat, contract_file_url,
+        tax_enabled, amount_includes_vat, tax_effective_hijri, contract_file_url,
         tenants ( full_name, name ),
         properties ( name ),
         lease_units ( units ( unit_number ) )
@@ -42,11 +97,13 @@ export default function LeaseContracts({ onBack, onSelectLease }) {
 
     const { data: payments } = await supabase
       .from("payments")
-      .select("lease_id, amount_due");
+      .select("lease_id, installment_number, total_installments, amount, amount_due, amount_paid, due_date_hijri, due_date_gregorian, status");
 
     const countByLease = {};
+    const paymentsByLease = {};
     (payments || []).forEach((p) => {
       countByLease[p.lease_id] = (countByLease[p.lease_id] || 0) + 1;
+      (paymentsByLease[p.lease_id] = paymentsByLease[p.lease_id] || []).push(p);
     });
 
     // قيد دائم: فقط العقود اللي عندها ملف عقد مرفوع فعلياً
@@ -70,6 +127,7 @@ export default function LeaseContracts({ onBack, onSelectLease }) {
         unitsText: unitNumbers.join("، ") || "—",
         minUnit,
         installmentsCount: countByLease[l.id] || 0,
+        installments: (paymentsByLease[l.id] || []).slice().sort((a, b) => (a.installment_number || 0) - (b.installment_number || 0)),
         contractValue: l.contract_value || l.rent_amount || 0,
       };
     });
@@ -88,7 +146,10 @@ export default function LeaseContracts({ onBack, onSelectLease }) {
 
   const filtered = rows.filter((r) => {
     if (statusFilter !== "الكل" && r.status !== statusFilter) return false;
-    if (propertyFilter !== "الكل" && r.propertyName !== propertyFilter) return false;
+    if (propertyFilters.length > 0 && !propertyFilters.includes(r.propertyName)) return false;
+    if (taxFilter === "شامل" && !(r.tax_enabled && r.amount_includes_vat)) return false;
+    if (taxFilter === "غير شامل" && !(r.tax_enabled && !r.amount_includes_vat)) return false;
+    if (taxFilter === "غير خاضع" && r.tax_enabled) return false;
     return true;
   });
 
@@ -104,21 +165,54 @@ export default function LeaseContracts({ onBack, onSelectLease }) {
   });
   groups.sort((a, b) => propertyRank(a.propertyName) - propertyRank(b.propertyName));
 
-  const exportRows = groups.flatMap((g) => g.items).map((r) => ({
-    tenant: r.tenantName,
-    property: r.propertyName,
-    unit: r.unitsText,
-    leaseNumber: r.lease_number || "—",
-    startDateHijri: r.start_date_hijri || "—",
-    endDateHijri: r.end_date_hijri || "—",
-    startDateGregorian: r.start_date || "—",
-    endDateGregorian: r.end_date || "—",
-    paymentType: r.payment_type || r.payment_frequency || "—",
-    installments: r.installmentsCount,
-    contractValue: `${Number(r.contractValue).toLocaleString()} ريال`,
-    status: statusLabel(r.status),
-    vat: r.tax_enabled ? (r.amount_includes_vat ? "شامل الضريبة" : "غير شامل الضريبة") : "غير خاضع",
-  }));
+  const exportKeyCounts = {};
+  const exportRows = groups.flatMap((g) => g.items).flatMap((r) => {
+    const vatLabel = r.tax_enabled ? (r.amount_includes_vat ? "شامل الضريبة" : "غير شامل الضريبة") : "غير خاضع";
+    const payText = r.payment_type || r.payment_frequency || "—";
+    const baseKey = [
+      r.tenantName,
+      r.propertyName,
+      `وحدة ${r.unitsText}`,
+      r.lease_number ? `عقد ${r.lease_number}` : "بدون رقم عقد",
+      /دفع/.test(payText) ? payText : `${payText} · ${r.installmentsCount} دفعة`,
+      `القيمة ${Number(r.contractValue).toLocaleString()} ريال (${vatLabel})`,
+      `${r.start_date_hijri || "—"} إلى ${r.end_date_hijri || "—"} هـ (${r.start_date || "—"} إلى ${r.end_date || "—"})`,
+      statusLabel(r.status),
+    ].join(" — ");
+    exportKeyCounts[baseKey] = (exportKeyCounts[baseKey] || 0) + 1;
+    const groupKey = exportKeyCounts[baseKey] > 1 ? `${baseKey} (${exportKeyCounts[baseKey]})` : baseKey;
+
+    if (r.installments.length === 0) {
+      return [{ contract: groupKey, installment: "—", dueHijri: "—", dueGregorian: "—", amount: "", tax: "", status: "لا توجد دفعات" }];
+    }
+    return r.installments.map((p, i) => {
+      const amount = installmentAmount(p);
+      const tax = installmentTax(r, p, amount);
+      return {
+        contract: groupKey,
+        installment: `${p.installment_number || i + 1} / ${p.total_installments || r.installmentsCount}`,
+        dueHijri: normalizeHijri(p.due_date_hijri) || "—",
+        dueGregorian: p.due_date_gregorian || "—",
+        amount: { value: `${amount.toLocaleString()} ريال`, color: "#1B4D7A" },
+        tax: r.tax_enabled ? { value: `${tax.toLocaleString()} ريال`, color: "#B42318" } : "",
+        status: installmentStatus(p),
+      };
+    });
+  });
+
+  const totalContractsValue = filtered.reduce((s, r) => s + Number(r.contractValue || 0), 0);
+  const totalInstallmentsCount = filtered.reduce((s, r) => s + r.installments.length, 0);
+  const exportStats = [
+    { label: "عدد العقود", value: filtered.length, color: "#1B4D7A" },
+    { label: "عدد الدفعات", value: totalInstallmentsCount, color: "#059669" },
+    { label: "إجمالي قيمة العقود", value: `${totalContractsValue.toLocaleString()} ريال`, color: "#1d4ed8" },
+  ];
+  const taxFilterLabel = { "شامل": "شامل الضريبة", "غير شامل": "غير شامل الضريبة", "غير خاضع": "غير خاضع للضريبة" }[taxFilter] || "";
+  const propertyFilterLabel = propertyFilters.length === 0
+    ? ""
+    : propertyFilters.length <= 2 ? propertyFilters.join("، ") : `${propertyFilters.length} عقارات`;
+  const filterSummary = [taxFilterLabel, propertyFilterLabel].filter(Boolean).join(" — ");
+  const reportTitle = ["عقود الإيجار — تفاصيل الدفعات", filterSummary].filter(Boolean).join(" — ");
 
   return (
     <div style={{ padding: "18px 22px", fontFamily: "Cairo, sans-serif", direction: "rtl" }}>
@@ -146,22 +240,18 @@ export default function LeaseContracts({ onBack, onSelectLease }) {
         <ExportToolbar
           data={exportRows}
           columns={[
-            { key: "tenant", label: "المستأجر" },
-            { key: "property", label: "العقار" },
-            { key: "unit", label: "الوحدة" },
-            { key: "leaseNumber", label: "رقم العقد" },
-            { key: "startDateHijri", label: "تاريخ البداية (هـ)" },
-            { key: "endDateHijri", label: "تاريخ النهاية (هـ)" },
-            { key: "startDateGregorian", label: "تاريخ البداية (م)" },
-            { key: "endDateGregorian", label: "تاريخ النهاية (م)" },
-            { key: "paymentType", label: "نوع الدفع" },
-            { key: "installments", label: "عدد الدفعات" },
-            { key: "contractValue", label: "قيمة العقد" },
+            { key: "contract", label: "العقد", group: true },
+            { key: "installment", label: "الدفعة" },
+            { key: "dueHijri", label: "تاريخ الاستحقاق (هـ)" },
+            { key: "dueGregorian", label: "تاريخ الاستحقاق (م)" },
+            { key: "amount", label: "مبلغ الدفعة (ريال)" },
+            { key: "tax", label: "الضريبة" },
             { key: "status", label: "الحالة" },
-            { key: "vat", label: "الضريبة" },
           ]}
           filename="lease_contracts"
-          title="عقود الإيجار"
+          subtotalLabel="إجمالي دفعات العقد"
+          stats={exportStats}
+          title={reportTitle}
         />
       </div>
 
@@ -172,15 +262,62 @@ export default function LeaseContracts({ onBack, onSelectLease }) {
           <option value="active">نشط</option>
           <option value="منتهي">ملغي</option>
         </select>
-        <select value={propertyFilter} onChange={(e) => setPropertyFilter(e.target.value)}
+        <div ref={propertyMenuRef} style={{ position: "relative" }}>
+          <button type="button" onClick={() => setShowPropertyMenu(!showPropertyMenu)}
+            style={{
+              padding: "8px 12px", borderRadius: "8px", border: "1px solid #ccc", background: "#fff", cursor: "pointer",
+              fontFamily: "Cairo, sans-serif", minWidth: "200px", textAlign: "right", display: "flex",
+              justifyContent: "space-between", alignItems: "center", gap: "8px"
+            }}>
+            <span>
+              {propertyFilters.length === 0
+                ? "كل العقارات"
+                : propertyFilters.length === 1
+                  ? propertyFilters[0]
+                  : `${propertyFilters.length} عقارات محددة`}
+            </span>
+            <span style={{ fontSize: "10px", color: "#999" }}>▾</span>
+          </button>
+          {showPropertyMenu && (
+            <div style={{
+              position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "#fff", border: "1px solid #ddd",
+              borderRadius: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.12)", padding: "10px", zIndex: 20,
+              minWidth: "240px", maxHeight: "320px", overflowY: "auto"
+            }}>
+              <div style={{ display: "flex", gap: "8px", marginBottom: "8px", paddingBottom: "8px", borderBottom: "1px solid #eee" }}>
+                <button type="button" onClick={() => setPropertyFilters(properties)}
+                  style={{ fontSize: "12px", color: "#1B4D7A", background: "none", border: "none", cursor: "pointer", fontWeight: 700, fontFamily: "Cairo, sans-serif" }}>
+                  تحديد الكل
+                </button>
+                <button type="button" onClick={() => setPropertyFilters([])}
+                  style={{ fontSize: "12px", color: "#e74c3c", background: "none", border: "none", cursor: "pointer", fontWeight: 700, fontFamily: "Cairo, sans-serif" }}>
+                  إلغاء الكل
+                </button>
+              </div>
+              {properties.map((p) => (
+                <label key={p} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 4px", fontSize: "14px", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={propertyFilters.includes(p)}
+                    onChange={() => setPropertyFilters((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])}
+                  />
+                  {p}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <select value={taxFilter} onChange={(e) => setTaxFilter(e.target.value)}
           style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid #ccc", fontFamily: "Cairo, sans-serif" }}>
-          <option value="الكل">كل العقارات</option>
-          {properties.map((p) => <option key={p} value={p}>{p}</option>)}
+          <option value="الكل">كل أنواع الضريبة</option>
+          <option value="شامل">شامل الضريبة</option>
+          <option value="غير شامل">غير شامل الضريبة</option>
+          <option value="غير خاضع">غير خاضع للضريبة</option>
         </select>
       </div>
 
       <div className="lc-print-area">
-        <h2 style={{ color: "#1B4D7A", fontSize: "18px", marginBottom: "4px" }}>{T.title}</h2>
+        <h2 style={{ color: "#1B4D7A", fontSize: "18px", marginBottom: "4px" }}>{T.title}{filterSummary ? ` — ${filterSummary}` : ""}</h2>
         <div style={{ color: "#888", fontSize: "12px", marginBottom: "16px" }}>
           تعرض هذه الصفحة فقط العقود التي رُفع لها ملف عقد رسمي. أي مستأجر غير ظاهر هنا فعقده إما ملغي/منتهي أو لم يُرفع له عقد بعد.
         </div>
@@ -247,6 +384,18 @@ export default function LeaseContracts({ onBack, onSelectLease }) {
                         <span style={{ color: "#666" }}>{r.payment_type || r.payment_frequency || "—"} · {r.installmentsCount} دفعة</span>
                         <span style={{ fontWeight: "bold", color: "#1B4D7A" }}>{Number(r.contractValue).toLocaleString()} ريال</span>
                       </div>
+
+                      {r.installments.length > 0 && (
+                        <div style={{ background: "#f8fafc", borderRadius: "8px", padding: "6px 8px", fontSize: "11px", display: "flex", flexDirection: "column", gap: "3px" }}>
+                          {r.installments.map((p, i) => (
+                            <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: "6px", color: "#555" }}>
+                              <span>{p.installment_number || i + 1} / {p.total_installments || r.installmentsCount}</span>
+                              <span>{installmentDueText(p)}</span>
+                              <span style={{ fontWeight: "bold", color: "#1B4D7A" }}>{installmentAmount(p).toLocaleString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
                       <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                         <span style={{
