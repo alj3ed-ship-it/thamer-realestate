@@ -206,13 +206,17 @@ function toLineItems(items) {
   if (!items || items.length === 0) {
     throw new Error('لا توجد بنود في هذه الفاتورة')
   }
-  return items.map((it, idx) => ({
-    id: String(idx + 1),
-    name: it.description || `بند ${idx + 1}`,
-    quantity: Number(it.quantity) || 1,
-    tax_exclusive_price: Number(it.unit_price) || 0,
-    VAT_percent: (Number(it.vat_rate) || 15) / 100,
-  }))
+  return items.map((it, idx) => {
+    const discountAmount = Number(it.discount_amount) || 0
+    return {
+      id: String(idx + 1),
+      name: it.description || `بند ${idx + 1}`,
+      quantity: Number(it.quantity) || 1,
+      tax_exclusive_price: Number(it.unit_price) || 0,
+      VAT_percent: (Number(it.vat_rate) || 15) / 100,
+      ...(discountAmount > 0 ? { discounts: [{ amount: discountAmount, reason: 'خصم' }] } : {}),
+    }
+  })
 }
 
 // Business decision (17 Sept 2026, confirmed by tax advisor أصيل الجعيد):

@@ -104,11 +104,12 @@ export class ZATCAStandardTaxInvoice {
         'cbc:ID': line_item.id,
         'cbc:InvoicedQuantity': { '@_unitCode': 'PCE', '#text': line_item.quantity },
         'cbc:LineExtensionAmount': { '@_currencyID': 'SAR', '#text': line_item_total_tax_exclusive.toFixedNoRounding(2) },
+        ...(cacAllowanceCharges.length > 0 ? { 'cac:AllowanceCharge': cacAllowanceCharges } : {}),
         'cac:TaxTotal': cacTaxTotal,
         'cac:Item': { 'cbc:Name': line_item.name, 'cac:ClassifiedTaxCategory': cacClassifiedTaxCategories },
         'cac:Price': {
           'cbc:PriceAmount': { '@_currencyID': 'SAR', '#text': line_item.tax_exclusive_price },
-          'cac:AllowanceCharge': cacAllowanceCharges,
+          ...(cacAllowanceCharges.length > 0 ? {} : { 'cac:AllowanceCharge': cacAllowanceCharges }),
         },
       },
       line_item_totals: { taxes_total: line_item_total_taxes, discounts_total: line_item_total_discounts, subtotal: line_item_total_tax_exclusive },

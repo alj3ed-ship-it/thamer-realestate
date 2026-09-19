@@ -7,7 +7,7 @@ const INVOICE_TYPES = ['ضريبية', 'ضريبية مبسطة']
 const VAT_RATE = 15
 
 function emptyItem() {
-  return { key: Math.random().toString(36).slice(2), description: '', quantity: '1', unit_price: '' }
+  return { key: Math.random().toString(36).slice(2), description: '', quantity: '1', unit_price: '', discount: '' }
 }
 
 function emptyForm() {
@@ -35,8 +35,10 @@ function lineAmounts(item) {
   const qty = Number(item.quantity) || 0
   const price = Number(item.unit_price) || 0
   const lineTotal = qty * price
-  const vatAmount = lineTotal * (VAT_RATE / 100)
-  return { lineTotal, vatAmount, gross: lineTotal + vatAmount }
+  const discount = Math.min(Math.max(Number(item.discount) || 0, 0), lineTotal)
+  const net = lineTotal - discount
+  const vatAmount = net * (VAT_RATE / 100)
+  return { lineTotal, discount, net, vatAmount, gross: net + vatAmount }
 }
 
 function Invoices({ onBack }) {
@@ -201,7 +203,7 @@ function Invoices({ onBack }) {
   }
 
   const rawSubtotal = form.items.reduce((s, it) => s + lineAmounts(it).lineTotal, 0)
-  const discountAmount = Number(form.discount_amount) || 0
+  const discountAmount = form.items.reduce((s, it) => s + lineAmounts(it).discount, 0)
   const subtotal = Math.max(rawSubtotal - discountAmount, 0)
   const vatTotal = subtotal * (VAT_RATE / 100)
   const grandTotal = subtotal + vatTotal
@@ -254,9 +256,10 @@ function Invoices({ onBack }) {
     const invoiceId = inserted?.[0]?.id
 
     const itemRows = validItems.map((it, idx) => {
-      const { lineTotal, vatAmount } = lineAmounts(it)
+      const { lineTotal, vatAmount, discount } = lineAmounts(it)
       return {
         invoice_id: invoiceId,
+        discount_amount: Math.round(discount * 100) / 100,
         description: it.description,
         quantity: Number(it.quantity) || 0,
         unit_price: Number(it.unit_price) || 0,
@@ -312,9 +315,10 @@ function Invoices({ onBack }) {
     if (delError) { setSaving(false); setFormError(delError.message); return }
 
     const itemRows = validItems.map((it, idx) => {
-      const { lineTotal, vatAmount } = lineAmounts(it)
+      const { lineTotal, vatAmount, discount } = lineAmounts(it)
       return {
         invoice_id: editingInvoiceId,
+        discount_amount: Math.round(discount * 100) / 100,
         description: it.description,
         quantity: Number(it.quantity) || 0,
         unit_price: Number(it.unit_price) || 0,
@@ -367,6 +371,7 @@ function Invoices({ onBack }) {
             description: it.description || '',
             quantity: String(it.quantity ?? '1'),
             unit_price: String(it.unit_price ?? ''),
+            discount: it.discount_amount ? String(it.discount_amount) : '',
           }))
         : [emptyItem()],
     })
@@ -560,6 +565,7 @@ function Invoices({ onBack }) {
             quantity: it.quantity,
             unit_price: it.unit_price,
             vat_rate: it.vat_rate,
+            discount_amount: it.discount_amount,
           })),
         }),
       })
@@ -971,6 +977,7 @@ function Invoices({ onBack }) {
                 <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>الوصف</th>
                 <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>الكمية</th>
                 <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>سعر الوحدة</th>
+                <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>الخصم</th>
                 <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>الضريبة 15%</th>
                 <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>المجموع الفرعي بدون الضريبة</th>
                 <th style={{ padding: '7px 8px', border: '1px solid #ccc' }}>الإجمالي</th>
@@ -982,7 +989,7 @@ function Invoices({ onBack }) {
                 const invoiceDiscount = Number(printingInvoice.invoice.discount_amount || 0)
                 return printingInvoice.items.map((it, idx) => {
                   const share = rawSubtotalForItems > 0 ? Number(it.line_total || 0) / rawSubtotalForItems : 0
-                  const itemDiscount = invoiceDiscount * share
+                  const itemDiscount = printingInvoice.items.some(x => Number(x.discount_amount || 0) > 0) ? Number(it.discount_amount || 0) : invoiceDiscount * share
                   const itemTaxable = Number(it.line_total || 0) - itemDiscount
                   const itemVat = itemTaxable * 0.15
                   const itemTotal = itemTaxable + itemVat
@@ -992,6 +999,7 @@ function Invoices({ onBack }) {
                     <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{it.description}</td>
                     <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{it.quantity}</td>
                     <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{Number(it.unit_price).toLocaleString()}</td>
+                    <td style={{ padding: '7px 8px', border: '1px solid #ddd', color: itemDiscount > 0 ? '#e74c3c' : undefined }}>{itemDiscount > 0 ? itemDiscount.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}</td>
                     <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{itemVat.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                     <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{itemTaxable.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                     <td style={{ padding: '7px 8px', border: '1px solid #ddd' }}>{itemTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
@@ -1215,20 +1223,17 @@ function Invoices({ onBack }) {
                   <input type="number" value={form.amount_paid || ''} onChange={e => setForm(f => ({ ...f, amount_paid: e.target.value }))} style={inputStyle} placeholder="0" />
                 </div>
 
-                <div style={{ marginBottom: 18, maxWidth: 240 }}>
-                  <label style={labelStyle}>الخصم (اختياري)</label>
-                  <input type="number" min="0" value={form.discount_amount} onChange={e => setForm(f => ({ ...f, discount_amount: e.target.value }))} style={inputStyle} placeholder="0" />
-                </div>
             </div>
 
             <h3 style={{ fontSize: 15, color: '#1B4D7A', margin: '0 0 10px' }}>بنود الفاتورة</h3>
             <div style={{ overflowX: 'auto', marginBottom: 12 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 780 }}>
                 <thead>
                   <tr style={{ background: '#f9fafb', textAlign: 'right' }}>
                     <th style={{ padding: '8px 10px', fontSize: 13, color: '#6b7280' }}>البيان</th>
                     <th style={{ padding: '8px 10px', fontSize: 13, color: '#6b7280', width: 90 }}>الكمية</th>
                     <th style={{ padding: '8px 10px', fontSize: 13, color: '#6b7280', width: 130 }}>سعر الوحدة</th>
+                    <th style={{ padding: '8px 10px', fontSize: 13, color: '#6b7280', width: 110 }}>الخصم (ريال)</th>
                     <th style={{ padding: '8px 10px', fontSize: 13, color: '#6b7280', width: 120 }}>الإجمالي قبل الضريبة</th>
                     <th style={{ padding: '8px 10px', fontSize: 13, color: '#6b7280', width: 110 }}>الضريبة 15%</th>
                     <th style={{ padding: '8px 10px', fontSize: 13, color: '#6b7280', width: 120 }}>الإجمالي شامل</th>
@@ -1237,7 +1242,7 @@ function Invoices({ onBack }) {
                 </thead>
                 <tbody>
                   {form.items.map(it => {
-                    const { lineTotal, vatAmount, gross } = lineAmounts(it)
+                    const { net, vatAmount, gross } = lineAmounts(it)
                     return (
                       <tr key={it.key} style={{ borderTop: '1px solid #f0f0f0' }}>
                         <td style={{ padding: '6px 8px' }}>
@@ -1249,7 +1254,10 @@ function Invoices({ onBack }) {
                         <td style={{ padding: '6px 8px' }}>
                           <input type="number" min="0" value={it.unit_price} onChange={e => updateItem(it.key, 'unit_price', e.target.value)} style={inputStyle} />
                         </td>
-                        <td style={{ padding: '6px 8px', fontWeight: 700 }}>{lineTotal.toLocaleString()} ريال</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input type="number" min="0" value={it.discount ?? ''} onChange={e => updateItem(it.key, 'discount', e.target.value)} style={inputStyle} placeholder="0" />
+                        </td>
+                        <td style={{ padding: '6px 8px', fontWeight: 700 }}>{net.toLocaleString()} ريال</td>
                         <td style={{ padding: '6px 8px', color: '#8e44ad', fontWeight: 700 }}>{vatAmount.toLocaleString()} ريال</td>
                         <td style={{ padding: '6px 8px', color: '#27ae60', fontWeight: 700 }}>{gross.toLocaleString()} ريال</td>
                         <td style={{ padding: '6px 8px', textAlign: 'center' }}>
